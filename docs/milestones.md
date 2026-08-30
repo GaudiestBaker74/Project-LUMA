@@ -37,21 +37,42 @@ Fuera de alcance: GX, ventana, input, audio (M3+).
 - [x] Mismo código compila con MSVC 2022 (x64); `#ifdef` solo en `platform/windows/`.
 - [x] CI GitHub Actions (`.github/workflows/ci.yml`): Linux (GCC) + Windows (MSVC) con `ctest` + aarch64 cross-compile.
 - [x] *(Opcional)* build aarch64 Linux (Steam Deck) verificado (cross-compile, solo compilación).
-- Verificación hecha: build cruzado MinGW-w64 OK (compila contra `windows.h` real) y **tests 36/36 bajo Wine** en el `.exe` de Windows; demo M1 completa también bajo Wine. El build MSVC real lo valida el CI en `windows-latest`.
+- Verificación hecha: build cruzado MinGW-w64 OK (compila contra `windows.h` real) y tests 36/36 bajo Wine en el `.exe` de Windows; **build MSVC 2022 real en verde por el usuario (build + `ctest` OK)**; demo M1 completa también bajo Wine.
 
 Notas de portabilidad descubiertas en M2 (ver `porting.md`):
 - `std::thread::id` se formatea en hexadecimal en Windows (puntero) y decimal en Linux — no parsear su stream; copiar sus bytes.
-- `Inline.hpp` del vendered usa `__attribute__` sin guarda → override con `__declspec(noinline)` para MSVC.
+- `Inline.hpp` del vendered usa `__attribute__` sin guarda y el juego lo usa en posición postfija (`int f() NO_INLINE`) — MSVC no acepta atributos postfijos → el override expande a vacío en MSVC (noinline es solo optimización) y a `__attribute__` en GCC/Clang, con `#ifndef` para no pisar el fallback de `types.h` (C4005).
+- MSVC resuelve `#include "..."` con la cadena completa de includes → los overrides "paraguas" (p. ej. `revolution/gx.h`) deben usar `<...>` con ángulos.
 - `std::atomic<Stats>` no lock-free necesita `libatomic` en GCC/MinGW (no en MSVC).
+- MSVC necesita `/EHsc` (semántica de excepciones) para el STL — añadido en el CMake.
 
-## M3 — Ventana + Vulkan + bucle de juego
+## M3 — Ventana + Vulkan + bucle de juego ✅ (completado)
 
-- SDL3: ventana (resizable, fullscreen), vsync.
-- Vulkan (volk): device, swapchain, validation layers, debug labels, `VK_KHR_dynamic_rendering`.
-- Bucle de juego: timestep fijo 60 Hz + presentación; delta time correcto; cierre limpio (señales/ventana).
-- Input mínimo (SDL3) expuesto como `Platform::Input` básico.
-- Demo: triángulo/quads con shader generado + overlay de FPS por `Platform::Log`.
-- `GXInit` mínimo + `GXClearColor`/`GXSetViewport` dibujando el fondo (primer olor a GX).
+- [x] SDL3: ventana (`Platform::Window`, resizable, fullscreen con F11, `SDL_WINDOW_HIGH_PIXEL_DENSITY`), vsync FIFO / `--no-vsync` IMMEDIATE.
+- [x] Vulkan vía volk (sin enlazar vulkan-1): instance con extensiones SDL, surface, device 1.3 con dynamic rendering, swapchain recreada en resize/out-of-date, 1 frame in flight (fence + 2 semáforos).
+- [x] Validation layers + debug messenger (`--gpu-debug`; warn si no está instalada) — **0 VUIDs**.
+- [x] Bucle de juego: timestep fijo 60 Hz con accumulator + clamp 0,25 s; delta correcto; cierre limpio (Esc/cierre de ventana → shutdown ordenado). `--frames N` para run automatizado.
+- [x] Input mínimo SDL3 como `Platform::Input` (quit, F11 edge-triggered, flechas/espacio level-triggered).
+- [x] Demo: triángulo con SPIR-V embebido (regenerable con `tools/compile_shaders.sh`), rotación por step fijo, FPS por `Platform::Log`.
+- [x] Primer olor GX: `compat/gx/GXCompat` (`GXInit`, `GXSetViewport`, `GXClearColor`, `GXClear`) dibujando el fondo.
+- [x] Test Vulkan headless en CI (offscreen + readback de píxeles; SKIP sin ICD) + smoke test de la demo bajo Xvfb con validación.
+
+Verificación hecha:
+- **Linux (sandbox, lavapipe)**: build OK, `ctest` 37/37, demo bajo Xvfb a 800+ fps sin VUIDs con `--gpu-debug`, salida limpia.
+- **Windows (MSVC, máquina del usuario — RTX 2060)**: build + `ctest` + demo OK. La validación cazó un bug real que lavapipe no reproduce: **reutilización del semáforo `renderFinished`** (VUID-vkQueueSubmit-pSignalSemaphores-00067) con swapchain de 3 imágenes → fix con **un semáforo por imagen** (`mRenderFinished[imageIndex]`, ligado al ciclo de vida del swapchain). Documentado en porting.md.
+- Quirks encontrados en el camino: `SDL_STATIC` hay que activarlo explícitamente en Windows (SDL3 por defecto solo hace shared) y el `find_package(Vulkan)` pide headers+loader (no existe componente `headers`); ambos con mensaje de error amigable en el CMake.
+
+## M4 — Renderer (API cerrada) ← *próximo*
+
+**Objetivo:** convertir la pila Vulkan de M3 (device/swapchain/present) en la API cerrada `Platform::Renderer` de `docs/renderer.md`: la capa fina entre GX y Vulkan. `Platform::Video` desaparece como módulo público (su código pasa a ser el backend de Renderer).
+
+Sub-hitos (cada uno termina compilando + `ctest` verde):
+- **M4.1 — Núcleo ✅**: `Renderer` absorbe device/swapchain/present de Video (con los fixes de M3); API de frames y passes (`beginFrame/endFrame/beginPass/endPass`, `setViewport/setScissor`), `createBuffer`/`bindVertexBuffer`, pipeline con **caché por hash de estado** (`getOrCreatePipeline`), uniforms vía **push constants**, `draw`/`drawIndexed`. Demo y GXCompat migrados a la nueva API; rotación del demo vía uniform (push constant) con shaders regenerados. Validado: ctest 40/40 en Linux (incluye 3 tests nuevos de formatos/equality), demo bajo Xvfb con lavapipe sin VUIDs, pixel-check del frame (fondo = GXClearColor pulsante, triángulo dibujado). Quirks nuevos en porting.md: hay que habilitar `VK_KHR_swapchain` en el device (si no, volk deja NULL los entry points del swapchain) y `pickPhysicalDevice` debe aceptar out-params null (test headless).
+- **M4.2 — Recursos ✅**: `createTexture` (subida vía staging → `SHADER_READ_ONLY`, debug labels), `createSampler` (caché por `SamplerDesc`), `createRenderTarget` (color + profundidad, Z24X8→`D24_UNORM_S8_UINT`, el futuro EFB), `beginPass(rt)` con depth attachment, y **muestreo de texturas en el fragment shader** (descriptor set por pipeline, `bindTexture` sobre el array `set0/binding0`). Validado: ctest **44/44** en Linux — el test `vulkan_offscreen_textured_quad` renderiza un quad con un checkerboard 4×4 subido por staging y verifica los colores exactos pixel a pixel; la demo sigue sin VUIDs con `--gpu-debug`. Quirk nuevo en porting.md: el header público no puede usar tipos volk ni en métodos privados (firmas opacas), y un `friend struct` declarado en namespace anónimo NO coincide con la declaración del header — hay que forward-declararlo fuera de la clase y definirlo en namespace nombrado.
+- **M4.3 — Timing y presupuesto ✅**: GPU timestamps (`VK_QUERY_TYPE_TIMESTAMP`, 2 queries por frame, auto-deshabilitados si `timestampComputeAndGraphics` es falso) + CPU time de la fase de render (Timing) + `VK_EXT_memory_budget` (opcional: se habilita solo si la extensión existe). El log de FPS muestra `cpu-render X ms | gpu Y ms | vram U/B MB` cada segundo. Helper puro `gpuTicksToMs` testeable sin device. Validado: ctest **45/45**, demo con lavapipe reportando timestamps (period 1 ns), gpu ~1.7 ms y presupuesto VRAM real, 0 VUIDs.
+- **Tests M4**: conversión de formatos (tabla pura, sin Vulkan), pipeline cache (misma desc → mismo handle), offscreen draw con la API (píxeles verificados), y los tests existentes siguen en verde.
+
+Criterio de éxito M4: **cumplido** — la demo M3 sigue idéntica a través de la API nueva; ctest verde (45/45 en Linux; Windows pendiente de validar por el usuario); `--gpu-debug` sin VUIDs.
 
 ## M4 — Renderer (API cerrada)
 

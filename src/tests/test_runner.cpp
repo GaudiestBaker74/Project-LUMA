@@ -18,6 +18,8 @@ std::vector<Failure>& failureStorage() {
 }
 
 const char* kCurrentTestName = nullptr;
+bool gSkipFlag = false;
+const char* gSkipReason = nullptr;
 
 } // namespace
 
@@ -38,17 +40,33 @@ void recordFailure(const char* file, int line, const std::string& message) {
     failureStorage().push_back({file, line, message});
 }
 
+void markSkip(const char* reason) {
+    gSkipFlag = true;
+    gSkipReason = reason;
+}
+
+const char* skipReason() {
+    return gSkipReason;
+}
+
 TestResult runTest(const TestCase& test) {
     failureStorage().clear();
     kCurrentTestName = test.name;
+    gSkipFlag = false;
+    gSkipReason = nullptr;
 
     test.fn();
 
     TestResult result;
-    result.passed = failureStorage().empty();
     result.name = test.name;
     result.failures = failureStorage();
     result.failuresReported = static_cast<int>(failureStorage().size());
+    if (gSkipFlag) {
+        result.skipped = true;
+        result.passed = true;
+    } else {
+        result.passed = failureStorage().empty();
+    }
     return result;
 }
 
@@ -68,7 +86,10 @@ int runAll(const char* filter) {
             continue;
         }
         const auto result = pc_test::runTest(*it);
-        if (result.passed) {
+        if (result.skipped) {
+            std::printf("[SKIP] %s — %s\n", it->name, pc_test::skipReason() ? pc_test::skipReason() : "skipped");
+            ++skipped;
+        } else if (result.passed) {
             std::printf("[ OK ] %s\n", it->name);
             ++passed;
         } else {

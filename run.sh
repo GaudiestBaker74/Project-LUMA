@@ -7,8 +7,9 @@
 # snapshots, so this script rebuilds it on demand instead of assuming it
 # exists.
 #
-#   ./run.sh                      # demo M1 (JKR heap + platform bootstrap)
-#   ./run.sh --log-level TRACE    # boot logs at TRACE level
+#   ./run.sh                      # M3 demo: ventana SDL3 + Vulkan + triángulo 60 Hz
+#   ./run.sh --gpu-debug          # con capas de validación
+#   ./run.sh --frames 120         # 120 frames y salida limpia (smoke/CI)
 #   ./run.sh --help               # usage
 #   ./run.sh --version
 #

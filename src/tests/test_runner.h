@@ -43,9 +43,17 @@ int registerTest(const char* name, void (*fn)());
 // Records a failure for the currently running test.
 void recordFailure(const char* file, int line, const std::string& message);
 
+// Marks the current test as skipped (no failure). Should be followed by
+// `return` in the test body.
+void markSkip(const char* reason);
+
+// Reason of the most recently skipped test (or nullptr).
+const char* skipReason();
+
 // Result of running one test.
 struct TestResult {
     bool passed;
+    bool skipped = false;
     std::string name;
     std::vector<Failure> failures;
     int failuresReported = 0;
@@ -64,6 +72,15 @@ int runSuite(int argc, char** argv);
     static void pc_test_##name();                                                  \
     static const int pc_test_reg_##name = ::pc_test::registerTest(#name, &pc_test_##name); \
     static void pc_test_##name()
+
+// Skips the current test (e.g. a hardware-dependent test on a machine
+// without the required device). Prints the reason, marks the test skipped and
+// returns from the test function.
+#define SKIP(reason)                                                              \
+    do {                                                                          \
+        ::pc_test::markSkip(reason);                                              \
+        return;                                                                   \
+    } while (0)
 
 #define PC_TEST_STRINGIFY_IMPL(x) #x
 #define PC_TEST_STRINGIFY(x) PC_TEST_STRINGIFY_IMPL(x)

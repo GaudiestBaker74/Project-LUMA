@@ -1,6 +1,10 @@
 # docs/gx.md — Capa de compatibilidad GX (análisis y diseño)
 
 > Estado: M0 (análisis). Este documento define **qué** implementa `src/compat/gx/` y **cómo** se traduce a Vulkan.
+> **M3**: primer olor implementado en `src/compat/gx/GXCompat.{h,cpp}` — `GXInit`,
+> `GXSetViewport`, `GXClearColor` y `GXClear` dibujan el fondo del demo a través de
+> `Platform::Video` (ver §7, sub-hitos M5). `GXClearColor`/`GXClear` no existen en el
+> RVL_SDK vendered: GXCompat declara las firmas estándar reutilizando `GXColor`.
 > El inventario de llamadas se regenera con: `grep -rhoE "GX[A-Za-z0-9_]+\(" src/Game src/JSystem src/nw4r --include=*.cpp --include=*.hpp | sed 's/(//' | sort | uniq -c | sort -rn`
 
 ---

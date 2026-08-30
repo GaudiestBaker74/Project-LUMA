@@ -332,13 +332,25 @@ JKRErrorHandler JKRHeap::setErrorHandler(JKRErrorHandler errorHandler) {
 // The placement forms (`new (heap, align)`) keep their original semantics:
 // the explicit-heap forms always use that heap; the `new (align)` form uses
 // the current heap when available, falling back to Platform::Memory pre-boot.
+//
+// PC_PORT alignment: the console's plain `new` went through JKR with 4-byte
+// alignment, which is fine on PPC (no strict alignment traps). x86-64 code —
+// including the host runtime and dlopen'd libraries (SDL, lavapipe/LLVM, ...)
+// — requires at least alignof(max_align_t) = 16 for plain new, and misaligned
+// stores fault (movaps). We therefore route through JKR with 16-byte
+// alignment for the plain forms. Game code that needs more alignment already
+// uses the explicit forms (`new (align)`, `new (heap, align)`), so game
+// behavior is unchanged. TODO(PC_PORT): a library that fills the JKR arena
+// (or requests exotic alignment) needs a dedicated allocation policy in M5+.
 // =============================================================================
+constexpr size_t kPcNewAlign = 16;
+
 void* operator new(size_t size) {
     if (JKRHeap::sRootHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), 4, nullptr);
+        return JKRHeap::alloc(static_cast<u32>(size), kPcNewAlign, nullptr);
     }
     // PC_PORT: pre-boot fallback (see block comment above).
-    return Platform::Memory::allocate(size, 16);
+    return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new(size_t size, int align) {
@@ -356,10 +368,10 @@ void* operator new(size_t size, JKRHeap* pHeap, int align) {
 
 void* operator new[](size_t size) {
     if (JKRHeap::sRootHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), 4, nullptr);
+        return JKRHeap::alloc(static_cast<u32>(size), kPcNewAlign, nullptr);
     }
     // PC_PORT: pre-boot fallback.
-    return Platform::Memory::allocate(size, 16);
+    return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new[](size_t size, int align) {

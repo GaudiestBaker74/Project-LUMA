@@ -1,6 +1,14 @@
 # docs/renderer.md — Abstracción de renderer (diseño)
 
-> Estado: M0 (diseño preliminar). Se refina en M4, cuando se valide contra el inventario GX (docs/gx.md).
+> Estado: **M4 completo** (`src/platform/Renderer/`, el antiguo `src/platform/Video/` de M3 es
+> su backend). M4.1: device/swapchain/present, passes, buffers, pipeline cache por hash de
+> estado, uniforms por push constants, draw/drawIndexed. M4.2: texturas (staging upload +
+> debug labels), samplers cacheados, render targets (color + profundidad Z24X8→
+> D24_UNORM_S8_UINT), muestreo en fragment shader (array de combined image samplers por
+> pipeline, `bindTexture`). M4.3: frame stats — GPU timestamps (query pool, auto-disable),
+> CPU time del render path y `VK_EXT_memory_budget` (opcional), logueados cada segundo
+> (`cpu-render/gpu/vram`). El EFB real (render target 640×448/576 + `GXCopyDisp`) se conecta
+> en M5 con el GX.
 
 ## 1. Principio
 

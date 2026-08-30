@@ -1,6 +1,6 @@
 # docs/build.md — Build del port PC
 
-> Estado: M0 (plan). Se valida en M1 (Linux) y M2 (Windows).
+> Estado: **M3 validado en Linux** (SDL3 + Vulkan + bucle de juego). Windows pendiente de validar (CI).
 
 ## 1. Contexto: dos builds conviven
 
@@ -30,11 +30,11 @@ La opción `PLATFORM=PC` es explícita para dejar claro que es un objetivo disti
 
 | Dependencia | Uso | Cómo se obtiene |
 |---|---|---|
-| **Vulkan** (headers + loader) | Renderer | En Linux: paquete `vulkan-headers`/`vulkan-loader` o Vulkan SDK; en Windows: Vulkan SDK. **`volk`** como cargador dinámico (se vende en `third_party/volk` o FetchContent) |
-| **SDL3** | Ventana, input, audio | `FetchContent` (tarball release) o paquete del sistema (`libsdl3-dev` en Debian/Ubuntu; en Windows se descarga el binario dev o vcpkg). Se prefiere **FetchContent** para que ambos SO usen la misma versión |
-| **doctest** (o Catch2) | Tests unitarios | header-only (FetchContent) — decisión confirmable; doctest es de un solo header, encaja con "sin frameworks enormes" |
+| **Vulkan** (solo headers) | Renderer (vía volk) | `find_package(Vulkan)` (paquete `libvulkan-dev` en Debian/Ubuntu, Vulkan SDK en Windows). El **loader NO se enlaza**: `volk` (vendored en `third_party/volk`, MIT) carga `vulkan-1`/`libvulkan` en runtime |
+| **SDL3** | Ventana, input, audio | Paquete del sistema si existe (`find_package(SDL3)`); si no, **FetchContent** del tag `release-3.2.10` (así Windows/MSVC lo obtiene solo). Static (`SDL_SHARED=OFF`) cuando se hace FetchContent: sin DLL que desplegar |
+| — | Tests unitarios | **Runner propio** (`src/tests/test_runner.h`, ~100 líneas, CHECK/REQUIRE/SKIP + ctest). Sin frameworks externos (decisión M1) |
 
-La política es: **pocas dependencias, todas multiplataforma**. SDL3 + Vulkan (vía volk) + doctest cubren el 100 % del build mínimo.
+La política es: **pocas dependencias, todas multiplataforma**. SDL3 + Vulkan (vía volk) cubren el 100 % del build mínimo; los shaders del demo se venden como SPIR-V embebido (regenerable con `tools/compile_shaders.sh` + glslangValidator, no hace falta en runtime).
 
 ## 4. Estructura CMake
 
@@ -42,9 +42,8 @@ La política es: **pocas dependencias, todas multiplataforma**. SDL3 + Vulkan (v
 galaxy-pc/
 ├── CMakeLists.txt          # raíz: opciones (PLATFORM), subdirectorios
 ├── cmake/
-│   ├── FetchSDL3.cmake
-│   ├── FetchVulkan.cmake   # volk + headers
 │   ├── CompilerWarnings.cmake
+│   ├── Toolchain-MinGW.cmake / Toolchain-LinuxAArch64.cmake
 │   └── PlatformSelect.cmake  # PLATFORM=PC → windows/ o linux/
 └── src/
     ├── CMakeLists.txt
@@ -75,10 +74,14 @@ Requisitos (Debian/Ubuntu):
 
 ```sh
 sudo apt install build-essential cmake ninja-build git
-# Vulkan (headers + loader + glslc para la generación de shaders en runtime no — los shaders se compilan
-# en runtime con glslang/SPIR-V; se vendila glslang en third_party o se usa shaderc)
-sudo apt install libvulkan-dev glslang-tools
-# SDL3 se obtiene con FetchContent (no hace falta paquete)
+# Vulkan: headers + un ICD de software (lavapipe) para correr sin GPU real + capas de validación
+sudo apt install libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers
+# SDL3: paquete del sistema (si no, el CMake lo descarga con FetchContent)
+sudo apt install libsdl3-dev
+# Headless (CI/servidor): X virtual para la demo de ventana
+sudo apt install xvfb
+# Opcional: glslangValidator solo si regeneras los shaders del demo (tools/compile_shaders.sh)
+sudo apt install glslang-tools
 ```
 
 Configurar y compilar:
@@ -89,15 +92,21 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Arranque rápido (sin assets, con backends de prueba):
+Arranque rápido:
 
 ```sh
 ./build/src/galaxy-pc --help
-./build/src/galaxy-pc                  # demo M1: heap JKR de Petari corriendo nativo
-./build/src/galaxy-pc --log-level TRACE
+./build/src/galaxy-pc                  # M3: ventana SDL3 + Vulkan + triángulo girando a 60 Hz
+./build/src/galaxy-pc --no-vsync       # present IMMEDIATE (sin vsync)
+./build/src/galaxy-pc --gpu-debug      # capas de validación + debug messenger (warn si no instaladas)
+./build/src/galaxy-pc --frames 300     # ejecuta 300 frames y sale limpio (para CI/smoke)
+# Headless (sin display físico):
+xvfb-run -a ./build/src/galaxy-pc --frames 120 --gpu-debug
 # o vía el script de conveniencia (compila si falta y ejecuta):
 ./run.sh
 ```
+
+Notas de la demo M3: Esc o cerrar la ventana termina con shutdown ordenado (se flush-ea el log); F11 alterna fullscreen; el bucle usa timestep fijo de 60 Hz (acumulador + clamp de 0,25 s) para la simulación y renderiza lo más rápido posible; el FPS se loguea cada segundo.
 
 También se puede instalar el binario (a `bin/` dentro del build tree):
 
@@ -107,7 +116,7 @@ cmake --install build
 
 ## 6. Windows (M2) — pasos
 
-Requisitos: Visual Studio 2022 (MSVC, componente C++), CMake, Git. Vulkan SDK de LunarG (solo para M3+; M2 no lo necesita).
+Requisitos: Visual Studio 2022 (MSVC, componente C++), CMake, Git, **Vulkan SDK de LunarG** (headers; el loader lo carga volk en runtime) y **Git** (SDL3 se baja por FetchContent).
 
 ```powershell
 cmake -B build -DPLATFORM=PC -G "Visual Studio 17 2022" -A x64
@@ -119,6 +128,12 @@ Notas:
 - Mismo código fuente: **cero `#ifdef _WIN32` fuera de `src/platform/windows/`** (ADR-010).
 - En Windows el único "C" de plataforma vive en `platform/windows/`; SDL3 y Vulkan no requieren código Win32 en nuestro árbol (aunque puede haber un par de ficheros para cosas como el icono de la app o integración con el sistema de ficheros wide-path).
 - `std::atomic<Platform::Memory::Stats>` (48 B, no lock-free) necesita `libatomic` con GCC/MinGW; MSVC lo provee en su CRT (el CMake lo enlaza solo para toolchains no-MSVC en Windows).
+
+### Verificación M3 (Linux, hecha)
+
+- `ctest` **37/37** (incluye `vulkan_offscreen_triangle`: instancia/device headless, render offscreen del triángulo con dynamic rendering y verificación de píxeles vía readback; SKIP si no hay ICD).
+- Demo bajo `Xvfb` con lavapipe: 800+ fps, **0 VUIDs** con `--gpu-debug`, salida limpia (exit 0).
+- Windows: SDL3 vía FetchContent + Vulkan SDK — **pendiente de validar** (build MSVC real en la máquina del usuario / CI).
 
 ### Verificación M2 (hecha)
 

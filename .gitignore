@@ -1,5 +1,6 @@
 # Build output
 build/
+build-*/
 
 # User-provided game assets (never committed; extracted from the user's own copy)
 assets/

@@ -17,6 +17,8 @@ add_executable(galaxy-pc-tests
     threading_test.cpp
     log_test.cpp
     jkr_heap_test.cpp
+    video_test.cpp
+    renderer_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)

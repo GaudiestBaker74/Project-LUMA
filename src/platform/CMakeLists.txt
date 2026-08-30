@@ -10,6 +10,10 @@ add_library(pc_platform STATIC
     Filesystem/Filesystem.cpp
     Timing/Timing.cpp
     Threading/Threading.cpp
+    Window/Window.cpp
+    Input/Input.cpp
+    Renderer/Renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/volk/volk.c
 )
 
 if(PC_HOST_OS STREQUAL "linux")
@@ -20,8 +24,22 @@ endif()
 
 # Include root is src/ so headers are included as "platform/...", "tests/...".
 target_include_directories(pc_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# volk (Vulkan meta-loader) — header + implementation live in third_party/volk.
+target_include_directories(pc_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/volk)
+# Vulkan SDK headers (loader intentionally NOT linked — volk loads it at runtime).
+target_include_directories(pc_platform PUBLIC ${Vulkan_INCLUDE_DIRS})
 
 pc_enable_warnings(pc_platform)
+
+# SDL3 is PUBLIC: consumers (galaxy-pc, galaxy-pc-tests) include SDL3 headers
+# indirectly via platform/Window/Window.h and need the target too.
+if(TARGET SDL3::SDL3)
+    target_link_libraries(pc_platform PUBLIC SDL3::SDL3)
+elseif(TARGET SDL3::SDL3-shared)
+    target_link_libraries(pc_platform PUBLIC SDL3::SDL3-shared)
+else()
+    message(FATAL_ERROR "SDL3 target not found (system or FetchContent)")
+endif()
 
 if(PC_HOST_OS STREQUAL "linux")
     # pthread for std::thread; atomic for std::atomic<Platform::Memory::Stats>

@@ -268,8 +268,8 @@ Ordenado por "cantidad de trabajo":
 |---|---|---|
 | **`compat/os`** (hilos, mutex, colas, ticks, panics, casts) | `src/compat/os/` | Medio — mecánico, pero exige fidelidad semántica |
 | **`compat/dvd` + VFS** | `src/compat/dvd/`, `src/platform/Filesystem/` | Bajo-medio |
-| **`compat/vi` + presentación** | `src/compat/vi/`, `src/platform/Video/` | Bajo |
-| **`compat/gx` sobre Vulkan** | `src/compat/gx/`, `src/platform/Renderer/vulkan/` | **Muy alto** — el corazón del proyecto |
+| **`compat/vi` + presentación** | `src/compat/vi/`, `src/platform/Renderer/` | Bajo |
+| **`compat/gx` sobre Vulkan** | `src/compat/gx/`, `src/platform/Renderer/` | **Muy alto** — el corazón del proyecto |
 | **`compat/wpad/kpad/pad` + input** | `src/compat/input/`, `src/platform/Input/` | Medio (más la decisión de mapeo Wiimote) |
 | **`compat/ax` + audio** | `src/compat/ax/`, `src/platform/Audio/` | Alto (JAudio2 + mezclador DSP) |
 | **`compat/nand` (saves)** | `src/compat/nand/` | Bajo-medio |
@@ -330,9 +330,10 @@ galaxy-pc/
 │   │   ├── Filesystem/             # VFS: disco (y futuro: archivos empaquetados)
 │   │   ├── Timing/                 # reloj de alta resolución, timestep fijo
 │   │   ├── Threading/              # hilos, mutex, colas, semáforos
-│   │   ├── Input/                  # teclado, ratón, gamepad (SDL3); mapeo Wiimote
+│   │   │   ├── Input/                  # teclado, ratón, gamepad (SDL3); mapeo Wiimote
 │   │   ├── Audio/                  # backend audio PC (SDL3) + mezclador
-│   │   ├── Video/                  # ventana, vsync, presentación
+│   │   ├── Window/                 # ventana SDL3 (resizable, fullscreen, flag Vulkan)
+│   │   ├── Video/                  # Vulkan: instance/device/swapchain/present + offscreen (M3)
 │   │   ├── Renderer/
 │   │   │   ├── renderer.h          # API estrecha definida por el uso de GX (docs/renderer.md)
 │   │   │   ├── vulkan/             # backend Vulkan (device, shaders, pipelines, buffers)
@@ -355,12 +356,15 @@ galaxy-pc/
 │   │   └── runtime/                # (Δ) sustitutos de Runtime/MetroTRK/MSL_C no portables
 │   │
 │   ├── tools/                      # (Δ) CLI: verify-assets, dump-gx, extract-textures…
-│   └── tests/                      # (Δ) tests unitarios (doctest/Catch2 o runner propio)
+│   │   └── shaders/                # (M3) GLSL del demo + compile_shaders.sh → SPIR-V embebido
+│   └── tests/                      # (Δ) runner propio (~100 líneas) + ctest, sin frameworks
 │
 ├── third_party/
-│   └── petari/                     # (Δ) submodule git → SMGCommunity/Petari (upstream puro)
-│       ├── src/Game/  src/JSystem/  src/nw4r/   # se compilan desde aquí, sin copiar
-│       └── libs/RVL_SDK/include/revolution/     # cabeceras originales (include path)
+│   ├── petari/                     # (Δ) COPIA vendored de SMGCommunity/Petari (decisión M1:
+│   │                               #     no submodule; se actualiza copiando y se documenta)
+│   │   ├── src/Game/  src/JSystem/  src/nw4r/   # se compilan desde aquí, sin copiar
+│   │   └── libs/RVL_SDK/include/revolution/     # cabeceras originales (include path)
+│   └── volk/                       # (M3) meta-loader Vulkan (zeux/volk, MIT): headers + volk.c
 │
 ├── docs/
 │   ├── architecture.md             # ← este documento
@@ -376,7 +380,7 @@ galaxy-pc/
 
 **Justificación de los cambios `(Δ)` frente a la estructura inicial:**
 
-1. **Petari como submodule (`third_party/petari`)** en lugar de copiar `src/game/` dentro de nuestro árbol: el port y la decompilación avanzan a ritmos distintos; con submodule seguimos recibiendo módulos decompilados nuevos y los diffs quedan limpios. El código se compila directamente desde el submodule (CMake con paths absolutos del submodule) — sin copias duplicadas.
+1. **Petari como copia vendored (`third_party/petari`)** — decisión M1 (no submodule): el árbol de la decompilación se copia y se actualiza explícitamente (documentado en `porting.md`); los diffs del port quedan limpios y el build PC es hermético (no depende de clonar submodules). El código se compila directamente desde `third_party/petari` (include paths en orden: `compat/include` → `third_party/petari/include` → `RVL_SDK/include` …).
 2. **`compat/include` aparte**: las cabeceras originales de `revolution/*` se usan tal cual como include path (los tipos deben ser idénticos). Solo los ficheros que no compilen en host se overridan con cabeceras propias (include path nuestro con prioridad).
 3. **`compat/runtime`** explícito para los sustitutos de Runtime/MetroTRK.
 4. **`tools/` y `tests/`** dentro de `src/` para que CMake los vea sin ruta mágica.

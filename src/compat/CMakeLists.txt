@@ -23,6 +23,9 @@ add_library(pc_compat STATIC
     os/OSReport.cpp
     jsystem/JUTConsoleCompat.cpp
     jsystem/JUTExceptionCompat.cpp
+    # M3 "first GX smell": minimal GX subset routed to Platform::Video.
+    # Replaced by the real GX implementation in M5 (see gx/GXCompat.h).
+    gx/GXCompat.cpp
     # --- Vendored Petari game code (unmodified or patched) --------------------
     ${JKR_EXPHEAP_SOURCE}   # patched copy (see patches/README.md)
     ${JKR_HEAP_SOURCE}      # patched copy (see patches/README.md)
