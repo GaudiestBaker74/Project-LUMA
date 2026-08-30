@@ -1,0 +1,349 @@
+#include "Game/Enemy/JumpBeamer.hpp"
+#include "Game/Enemy/JumpGuarder.hpp"
+#include "Game/Enemy/RingBeam.hpp"
+#include "Game/LiveActor/HitSensor.hpp"
+#include "Game/LiveActor/Nerve.hpp"
+#include "Game/LiveActor/PartsModel.hpp"
+#include "Game/Util/ActorMovementUtil.hpp"
+#include "Game/Util/ActorSensorUtil.hpp"
+#include "Game/Util/ActorShadowUtil.hpp"
+#include "Game/Util/ActorSwitchUtil.hpp"
+#include "Game/Util/EffectUtil.hpp"
+#include "Game/Util/Functor.hpp"
+#include "Game/Util/JMapUtil.hpp"
+#include "Game/Util/JointUtil.hpp"
+#include "Game/Util/LiveActorUtil.hpp"
+#include "Game/Util/MtxUtil.hpp"
+#include "Game/Util/ObjUtil.hpp"
+#include "Game/Util/PlayerUtil.hpp"
+#include "Game/Util/SoundUtil.hpp"
+
+namespace NrvJumpBeamer {
+    NEW_NERVE(JumpBeamerNrvHide, JumpBeamer, Hide);
+    NEW_NERVE(JumpBeamerNrvUp, JumpBeamer, Up);
+    NEW_NERVE(JumpBeamerNrvWait, JumpBeamer, Wait);
+    NEW_NERVE(JumpBeamerNrvDown, JumpBeamer, Down);
+    NEW_NERVE(JumpBeamerNrvHopStart, JumpBeamer, HopStart);
+    NEW_NERVE(JumpBeamerNrvHopWait, JumpBeamer, HopWait);
+    NEW_NERVE(JumpBeamerNrvHopJump, JumpBeamer, HopJump);
+    NEW_NERVE(JumpBeamerNrvHopEnd, JumpBeamer, HopEnd);
+    NEW_NERVE(JumpBeamerNrvPreOpen, JumpBeamer, PreOpen);
+    NEW_NERVE(JumpBeamerNrvOpen, JumpBeamer, Open);
+    NEW_NERVE(JumpBeamerNrvClose, JumpBeamer, Close);
+    NEW_NERVE(JumpBeamerNrvInter, JumpBeamer, Inter);
+};  // namespace NrvJumpBeamer
+
+JumpBeamer::JumpBeamer(const char* pName) : JumpEmitter(pName) {
+}
+
+void JumpBeamer::control() {
+    PartsModel* head = mHeadModel;
+    TMtx34f mtx;
+    mtx.identity();
+    MR::makeMtxTRS(mtx, TVec3f(0.0f, 0.0f, 0.0f), head->mRotation, head->mScale);
+    _90.setInline(mBodyJointMtx);
+    TMtx34f v5;
+    v5.concat(_90, mtx);
+    _90.setInline(v5);
+    updateEventCamera();
+}
+
+void JumpBeamer::init(const JMapInfoIter& rIter) {
+    initModelManagerWithAnm("JumpBeamerBody", nullptr, false);
+    mHeadModel = MR::createPartsModelMapObjStrongLight(this, "ジャンプビーマー頭", "JumpBeamerHead", _90);
+    MR::initLightCtrl(mHeadModel);
+    MR::initDefaultPos(this, rIter);
+    MR::connectToSceneEnemy(this);
+    MR::initLightCtrl(this);
+    initHitSensor(2);
+    MR::addHitSensorMtx(this, "Jump", ATYPE_PLAYER_AUTO_JUMP, 8, 145.0f, MR::getJointMtx(mHeadModel, "SpringJoint3"), TVec3f(0.0f, -100.0f, 0.0f));
+    MR::addHitSensorMtxEnemy(this, "Body", 8, 145.0f, MR::getJointMtx(this, "Body"), TVec3f(0.0f, 35.0f, 0.0f));
+    getSensor("Body")->setType(ATYPE_BEGOMAN);
+    getSensor("Body")->validate();
+    getSensor("Jump")->invalidate();
+    MR::initShadowVolumeSphere(this, 140.0f);
+    MR::invalidateShadow(this, nullptr);
+    initEffectKeeper(1, nullptr, false);
+    initSound(8, false);
+    MR::invalidateClipping(this);
+    initNerve(&NrvJumpBeamer::JumpBeamerNrvHide::sInstance);
+    MR::startBckWithInterpole(this, "Down", 0);
+    MR::setBckFrame(this, MR::getBckCtrl(this)->getEnd() - 1);
+    MR::calcAnimDirect(this);
+    mBodyJointMtx = MR::getJointMtx(this, "Top");
+    MR::useStageSwitchReadA(this, rIter);
+
+    if (MR::useStageSwitchReadB(this, rIter)) {
+        MR::listenStageSwitchOffB(this, MR::Functor_Inline(this, &JumpBeamer::syncSwitchOffB));
+    }
+
+    initEventCamera(rIter);
+    MR::joinToGroupArray(this, rIter, nullptr, 32);
+    makeActorAppeared();
+    f32 arg1 = 20.0f;
+    s32 arg0 = 100;
+    MR::getJMapInfoArg0NoInit(rIter, &arg1);
+    MR::getJMapInfoArg1NoInit(rIter, &arg0);
+    mBeams = new RingBeam*[5];
+
+    for (s32 i = 0; i < 5; i++) {
+        mBeams[i] = nullptr;
+    }
+
+    for (s32 i = 0; i < 3; i++) {
+        mBeams[i] = new RingBeam("リングビーム", this, false, false);
+        mBeams[i]->init(rIter);
+        mBeams[i]->setSpeed(arg1);
+        mBeams[i]->setLife(arg0);
+    }
+}
+
+void JumpBeamer::attackSensor(HitSensor* pSender, HitSensor* pReceiver) {
+    if (MR::isSensorPlayer(pReceiver)) {
+        MR::sendMsgPush(pReceiver, pSender);
+    }
+}
+
+bool JumpBeamer::receiveMsgPlayerAttack(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (MR::isMsgPlayerTrample(msg)) {
+        if (pReceiver->isType(ATYPE_PLAYER_AUTO_JUMP)) {
+            TVec3f up;
+            MR::calcUpVec(&up, this);
+            MR::setPlayerJumpVec(up);
+            startEventCamera();
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvHopJump::sInstance);
+        } else {
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvHopStart::sInstance);
+        }
+
+        return true;
+    } else if (MR::isMsgPlayerHipDrop(msg)) {
+        MR::forceJumpPlayer(-mGravity);
+        return true;
+    } else if (MR::isMsgPlayerSpinAttack(msg)) {
+        if (!isNerve(&NrvJumpBeamer::JumpBeamerNrvHopStart::sInstance)) {
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvHopStart::sInstance);
+        }
+
+        return true;
+    }
+
+    return MR::isMsgStarPieceReflect(msg);
+}
+
+void JumpBeamer::syncSwitchOffB() {
+    setNerve(&NrvJumpBeamer::JumpBeamerNrvInter::sInstance);
+
+    for (s32 i = 0; i < 3; i++) {
+        mBeams[i]->kill();
+    }
+}
+
+bool JumpBeamer::receiveOtherMsg(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (msg == ACTMES_GROUP_ATTACK) {
+        MR::invalidateClipping(this);
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvUp::sInstance);
+        return true;
+    }
+
+    if (msg == ACTMES_GROUP_HIDE) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvDown::sInstance);
+        return true;
+    }
+
+    return false;
+}
+
+void JumpBeamer::exeHide() {
+    bool v2 = MR::isValidSwitchB(this) && !MR::isOnSwitchB(this);
+
+    if (!v2) {
+        updateRotate();
+    }
+
+    if (MR::isFirstStep(this)) {
+        MR::startBck(mHeadModel, "Wait", nullptr);
+        MR::startBrk(mHeadModel, "Green");
+        MR::validateClipping(this);
+        MR::setShadowVolumeSphereRadius(this, nullptr, 110.0f);
+    }
+
+    if (MR::enableGroupAttack(this, 3000.0f, 500.0f)) {
+        MR::sendMsgToGroupMember(ATYPE_WATER_PRESSURE_BULLET_BIND, this, getSensor("Body"), "Body");
+    }
+}
+
+void JumpBeamer::exeUp() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Up", nullptr);
+        MR::startSound(this, "SE_EM_JGUARDER_APPEAR");
+        MR::validateShadow(this, nullptr);
+    }
+
+    s16 end = MR::getBckCtrl(this)->getEnd();
+    f32 frame = MR::getBckFrame(this);
+    MR::setShadowVolumeSphereRadius(this, nullptr, (110.0f + (30.0f * (frame / (end)))));
+
+    if (MR::isBckStopped(this)) {
+        MR::invalidateShadow(this, nullptr);
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvWait::sInstance);
+    }
+}
+
+void JumpBeamer::exeWait() {
+    updateRotate();
+
+    if (!MR::enableGroupAttack(this, 3200.0f, 500.0f)) {
+        MR::sendMsgToGroupMember(ACTMES_GROUP_HIDE, this, getSensor("Body"), "Body");
+    } else {
+        bool v3 = MR::isValidSwitchB(this) && !MR::isOnSwitchB(this);
+
+        if (!v3) {
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvPreOpen::sInstance);
+        }
+    }
+}
+
+void JumpBeamer::exeDown() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Down", nullptr);
+        MR::startSound(this, "SE_EM_JGUARDER_HIDE");
+    }
+
+    s16 end = MR::getBckCtrl(this)->getEnd();
+    f32 frame = MR::getBckFrame(this);
+    MR::setShadowVolumeSphereRadius(this, nullptr, (110.0f + (30.0f * (1.0f - frame / (end)))));
+    if (MR::isBckStopped(this)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvHide::sInstance);
+    }
+}
+
+void JumpBeamer::exeHopStart() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(mHeadModel, "HopStart", nullptr);
+        MR::startBrk(mHeadModel, "OnAndOff");
+        MR::startBck(this, "Damage", nullptr);
+        MR::deleteEffect(this, "Charge");
+        MR::startSound(this, "SE_EM_JGUARDER_HIT");
+        HitSensor* bodySensor = getSensor("Body");
+        bodySensor->mRadius = 120.0f;
+    }
+
+    MR::startLevelSound(this, "SE_EM_LV_JGUARDER_SHAKE");
+
+    if (MR::isBckStopped(mHeadModel)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvHopWait::sInstance);
+    }
+}
+
+void JumpBeamer::exeHopWait() {
+    if (MR::isFirstStep(this)) {
+        MR::stopBck(this);
+        MR::startBck(mHeadModel, "HopWait", nullptr);
+        getSensor("Jump")->validate();
+    }
+
+    MR::startLevelSound(this, "SE_EM_LV_JGUARDER_SHAKE");
+
+    if (MR::isStep(this, 300)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvHopEnd::sInstance);
+    }
+}
+
+void JumpBeamer::exeHopJump() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(mHeadModel, "HopJump", nullptr);
+        MR::startSound(this, "SE_EM_JGUARDER_TRAMPLE");
+    }
+
+    if (MR::isBckStopped(mHeadModel)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvHopWait::sInstance);
+    }
+}
+
+void JumpBeamer::exeHopEnd() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "HopEnd", nullptr);
+        MR::startBck(mHeadModel, "HopEnd", nullptr);
+        MR::startBrk(mHeadModel, "Green");
+        MR::startSound(this, "SE_EM_JGUARDER_CLOSE_SPRING");
+    }
+
+    if (MR::isBckStopped(this)) {
+        if (MR::isBckStopped(mHeadModel)) {
+            HitSensor* bodySensor = getSensor("Body");
+            bodySensor->mRadius = 145.0f;
+            getSensor("Jump")->invalidate();
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvWait::sInstance);
+        }
+    }
+}
+
+void JumpBeamer::exePreOpen() {
+    updateRotate();
+
+    if (!MR::enableGroupAttack(this, 3200.0f, 500.0f)) {
+        MR::sendMsgToGroupMember(ATYPE_QUESTION_COIN_BIND, this, getSensor("Body"), "Body");
+
+    } else {
+        if (MR::isStep(this, 0)) {
+            setNerve(&NrvJumpBeamer::JumpBeamerNrvOpen::sInstance);
+        }
+    }
+}
+
+void JumpBeamer::exeOpen() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Open", nullptr);
+    }
+
+    if (MR::isGreaterEqualStep(this, 240)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvClose::sInstance);
+    } else {
+        if (!(getNerveStep() % 80)) {
+            MR::emitEffect(this, "Charge");
+        }
+
+        if (getNerveStep() % 80 == 79) {
+            MR::deleteEffect(this, "Charge");
+
+            if (mBeams[getNerveStep() / 80] != nullptr) {
+                mBeams[getNerveStep() / 80]->appear();
+            }
+        }
+    }
+}
+
+void JumpBeamer::exeClose() {
+    if (MR::isFirstStep(this)) {
+    }
+
+    MR::startLevelSound(this, "SE_EM_LV_JGUARDER_SHUTTER_CLOSE");
+
+    if (MR::isBckStopped(this)) {
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvInter::sInstance);
+    }
+}
+
+void JumpBeamer::exeInter() {
+    bool v2 = MR::isValidSwitchB(this) && !MR::isOnSwitchB(this);
+
+    if (!v2) {
+        updateRotate();
+    }
+
+    if (!MR::enableGroupAttack(this, 3200.0f, 500.0f)) {
+        MR::sendMsgToGroupMember(ATYPE_QUESTION_COIN_BIND, this, getSensor("Body"), "Body");
+    } else if (MR::isGreaterEqualStep(this, 80)) {
+        for (s32 i = 0; i < 3; i++) {
+            if (!MR::isDead(mBeams[i])) {
+                return;
+            }
+        }
+
+        setNerve(&NrvJumpBeamer::JumpBeamerNrvWait::sInstance);
+    }
+}
+
+JumpBeamer::~JumpBeamer() {
+}

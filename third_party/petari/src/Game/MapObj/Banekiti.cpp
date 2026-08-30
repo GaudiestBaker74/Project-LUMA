@@ -1,0 +1,122 @@
+#include "Game/MapObj/Banekiti.hpp"
+#include "Game/Enemy/AnimScaleController.hpp"
+#include "Game/Enemy/WalkerStateBindStarPointer.hpp"
+#include "Game/LiveActor/Nerve.hpp"
+#include "Game/MapObj/MapPartsRailMover.hpp"
+#include "Game/Util.hpp"
+
+namespace NrvBanekiti {
+    NEW_NERVE(BanekitiNrvWait, Banekiti, Wait);
+    NEW_NERVE(BanekitiNrvRepel, Banekiti, Repel);
+    NEW_NERVE_ONEND(BanekitiNrvDPDSwoon, Banekiti, DPDSwoon, DPDSwoon);
+};  // namespace NrvBanekiti
+
+Banekiti::Banekiti(const char* pName) : LiveActor(pName) {
+    mAnimScaleCtrl = nullptr;
+    mBindStarPointer = nullptr;
+    mRailMover = nullptr;
+}
+
+void Banekiti::init(const JMapInfoIter& rIter) {
+    MR::initDefaultPos(this, rIter);
+    initModelManagerWithAnm("Banekiti", nullptr, false);
+    MR::connectToSceneMapObjStrongLight(this);
+    MR::initLightCtrl(this);
+    initHitSensor(3);
+    MR::addHitSensorMapObjSimple(this, "body", 4, 80.0f, TVec3f(0.0f, 0.0f, 0.0f));
+    MR::addHitSensorMapObjSimple(this, "right", 4, 80.0f, TVec3f(-100.0f, 0.0f, 0.0f));
+    MR::addHitSensorMapObjSimple(this, "left", 4, 80.0f, TVec3f(100.0f, 0.0f, 0.0f));
+    initEffectKeeper(1, nullptr, false);
+    initSound(4, false);
+    initRailRider(rIter);
+    mRailMover = new MapPartsRailMover(this);
+    mRailMover->init(rIter);
+    mRailMover->start();
+    TVec3f offset;
+    offset.y = offset.z = offset.x = 0.0f;
+    MR::initStarPointerTarget(this, 120.0f, offset);
+    mAnimScaleCtrl = new AnimScaleController(nullptr);
+    mBindStarPointer = new WalkerStateBindStarPointer(this, mAnimScaleCtrl);
+    initNerve(&NrvBanekiti::BanekitiNrvWait::sInstance);
+    makeActorAppeared();
+}
+
+void Banekiti::exeWait() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Wait", nullptr);
+    }
+    MR::startLevelSound(this, "SE_OJ_LV_BANEKITI_MOVE");
+}
+
+void Banekiti::exeRepel() {
+    if (MR::isFirstStep(this)) {
+        MR::tryRumblePadWeak(this, WPAD_CHAN0);
+        MR::shakeCameraWeak();
+        MR::startBck(this, "Repel", nullptr);
+        MR::startSound(this, "SE_OJ_BANEKITI_REPEL");
+    }
+    if (MR::isBckStopped(this)) {
+        setNerve(&NrvBanekiti::BanekitiNrvWait::sInstance);
+    }
+}
+
+void Banekiti::exeDPDSwoon() {
+    if (MR::isFirstStep(this)) {
+        mRailMover->mIsActive = false;
+    }
+    MR::updateActorStateAndNextNerve(this, mBindStarPointer, &NrvBanekiti::BanekitiNrvWait::sInstance);
+}
+
+void Banekiti::endDPDSwoon() {
+    mRailMover->mIsActive = true;
+    mBindStarPointer->kill();
+}
+
+void Banekiti::calcAndSetBaseMtx() {
+    LiveActor::calcAndSetBaseMtx();
+    TVec3f scale = mAnimScaleCtrl->_C * mScale;
+    MR::setBaseScale(this, scale);
+}
+
+void Banekiti::control() {
+    mAnimScaleCtrl->updateNerve();
+    mRailMover->movement();
+    if (mRailMover->isWorking()) {
+        mPosition.x = mRailMover->_28.x;
+        mPosition.y = mRailMover->_28.y;
+        mPosition.z = mRailMover->_28.z;
+    }
+    if (!isNerve(&NrvBanekiti::BanekitiNrvDPDSwoon::sInstance)) {
+        if (mBindStarPointer->tryStartPointBind()) {
+            setNerve(&NrvBanekiti::BanekitiNrvDPDSwoon::sInstance);
+        }
+    }
+}
+
+bool Banekiti::receiveMsgPlayerAttack(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (MR::isMsgStarPieceAttack(msg)) {
+        mAnimScaleCtrl->startHitReaction();
+
+        return true;
+    }
+
+    return false;
+}
+
+bool Banekiti::receiveOtherMsg(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (!MR::isSensorPlayer(pSender)) {
+        return false;
+    }
+
+    if (isNerve(&NrvBanekiti::BanekitiNrvRepel::sInstance)) {
+        return false;
+    }
+
+    if (msg == ACTMES_TERESA_PLAYER_TOUCH) {
+        setNerve(&NrvBanekiti::BanekitiNrvRepel::sInstance);
+
+        return true;
+    }
+
+    return false;
+}

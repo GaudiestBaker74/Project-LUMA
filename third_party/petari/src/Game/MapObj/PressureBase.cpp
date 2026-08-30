@@ -1,0 +1,288 @@
+#include "Game/MapObj/PressureBase.hpp"
+#include "Game/LiveActor/Nerve.hpp"
+#include "Game/Util.hpp"
+
+namespace NrvPressureMessenger {
+    NEW_NERVE(PressureMessengerNrvSync, PressureMessenger, Sync);
+};  // namespace NrvPressureMessenger
+
+namespace NrvPressureBase {
+    NEW_NERVE(PressureBaseNrvRelaxStart, PressureBase, Bound);
+    NEW_NERVE(PressureBaseNrvWaitStart, PressureBase, Bound);
+    NEW_NERVE(PressureBaseNrvRelax, PressureBase, Relax);
+    NEW_NERVE(PressureBaseNrvSyncWait, PressureBase, SyncWait);
+    NEW_NERVE(PressureBaseNrvFirstWait, PressureBase, FirstWait);
+    NEW_NERVE(PressureBaseNrvWait, PressureBase, Wait);
+    NEW_NERVE(PressureBaseNrvPrepareToShot, PressureBase, PrepareToShot);
+    NEW_NERVE(PressureBaseNrvShot, PressureBase, Shot);
+};  // namespace NrvPressureBase
+
+PressureMessenger::PressureMessenger(MsgSharedGroup* pGroup, const char* pName) : LiveActor(pName) {
+    mSharedGroup = pGroup;
+    _90 = 0;
+}
+
+void PressureMessenger::init(const JMapInfoIter& rIter) {
+    MR::connectToSceneMapObjMovement(this);
+    initHitSensor(1);
+    MR::addBodyMessageSensorMapObj(this);
+    MR::invalidateClipping(this);
+    initNerve(&NrvPressureMessenger::PressureMessengerNrvSync::sInstance);
+    makeActorAppeared();
+}
+
+void PressureMessenger::exeSync() {
+    if (MR::isStep(this, _90)) {
+        mSharedGroup->sendMsgToGroupMember(ACTMES_GROUP_MOVE_START, getSensor("body"), "body");
+        setNerve(&NrvPressureMessenger::PressureMessengerNrvSync::sInstance);
+    }
+}
+
+PressureBase::PressureBase(const char* pName) : LiveActor(pName) {
+    mJointController = nullptr;
+    mFront.x = 0.0f;
+    mFront.y = 0.0f;
+    mFront.z = 1.0f;
+    _9C = 0.0f;
+    mNozzleRotation = 0.0f;
+    mWaitTime = 300;
+    mBallSpeed = 30.0f;
+    mShotType = 0;
+    _B0 = 0;
+    mMessenger = nullptr;
+    mGroup = nullptr;
+    _BC = 0;
+}
+
+void PressureBase::init(const JMapInfoIter& rIter) {
+    MR::initDefaultPos(this, rIter);
+    const char* objName;
+    MR::getObjectName(&objName, rIter);
+    initModelManagerWithAnm(objName, nullptr, false);
+    MR::calcFrontVec(&mFront, this);
+    MR::connectToSceneNoShadowedMapObjStrongLight(this);
+    initHitSensor(2);
+    MR::addHitSensorMapObj(this, "body", 8, 70.0f, TVec3f(0.0f, 30.0f, 0.0f));
+    MR::addHitSensorAtJointMapObjSimple(this, "cannon", "Cannon1", 8, 70.0f, TVec3f(40.0f, 0.0f, 0.0f));
+    initEffectKeeper(0, nullptr, false);
+    initSound(6, false);
+    MR::initShadowVolumeSphere(this, 75.0f);
+    MR::invalidateShadow(this, nullptr);
+    mJointController = MR::createJointDelegatorWithNullChildFunc(this, &PressureBase::calcJointCannonV, "Cannon1");
+    MR::initJointTransform(this);
+    MR::getJMapInfoArg0NoInit(rIter, &mNozzleRotation);
+    MR::getJMapInfoArg1NoInit(rIter, &mWaitTime);
+    s16 frame = MR::getBckFrameMax(this, "ShotStart");
+    _B0 = (mWaitTime < frame);
+    //_B0 = ((frame ^ mWaitTime >> 1) - (frame ^ mWaitTime) < 0;
+    initBullet(rIter);
+    MR::getJMapInfoArg2NoInit(rIter, &mBallSpeed);
+    MR::getJMapInfoArg3NoInit(rIter, &mShotType);
+    MR::calcGravity(this);
+    MR::setGroupClipping(this, rIter, 32);
+    mGroup = MR::joinToGroupArray(this, rIter, "プレッシャー軍団", 32);
+
+    if (mGroup != nullptr) {
+        PressureBase* actor = static_cast< PressureBase* >(mGroup->getActor(0));
+
+        if (this == actor) {
+            mMessenger = new PressureMessenger(mGroup, "プレッシャー同期メッセンジャー");
+            mMessenger->initWithoutIter();
+        }
+    }
+
+    MR::tryRegisterDemoCast(this, rIter);
+    MR::useStageSwitchSleep(this, rIter);
+
+    if (MR::useStageSwitchReadA(this, rIter)) {
+        MR::listenStageSwitchOnOffA(this, MR::Functor(this, &PressureBase::startRelax), MR::Functor(this, &PressureBase::startWait));
+        initNerve(&NrvPressureBase::PressureBaseNrvRelax::sInstance);
+    } else {
+        initNerve(&NrvPressureBase::PressureBaseNrvFirstWait::sInstance);
+    }
+
+    if (MR::useStageSwitchReadAppear(this, rIter)) {
+        MR::syncStageSwitchAppear(this);
+        makeActorDead();
+    } else {
+        makeActorAppeared();
+    }
+}
+
+// regswap
+void PressureBase::initAfterPlacement() {
+    if (mMessenger != nullptr) {
+        s32 waitTime = -1;
+
+        for (u16 i = 0; i < MR::getGroupFromArray(this)->mObjectCount; ++i) {
+            PressureBase* actor = (PressureBase*)MR::getGroupFromArray(this)->getActor(i);
+
+            if (actor->mWaitTime > waitTime) {
+                waitTime = actor->mWaitTime;
+            }
+        }
+
+        mMessenger->_90 = waitTime + 60;
+    }
+}
+
+void PressureBase::calcAndSetBaseMtx() {
+    LiveActor::calcAndSetBaseMtx();
+    mJointController->registerCallBack();
+}
+
+void PressureBase::control() {
+    if (mWaitTime == 3) {
+        MR::turnDirectionToTargetDegree(this, &mFront, *MR::getPlayerPos(), 5.0f);
+    }
+}
+
+void PressureBase::exeBound() {
+    if (MR::isFirstStep(this)) {
+        if (isNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance)) {
+            MR::startBck(this, "SwitchOff", nullptr);
+        } else {
+            MR::startBck(this, "SwitchOn", nullptr);
+        }
+    }
+
+    f32 rate = MR::calcNerveRate(this, 20);
+    f32 scale = MR::getScaleWithReactionValueZeroToOne(rate, 1.0f, -2.0f);
+    scale *= (-45.0f - mNozzleRotation);
+
+    if (isNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance)) {
+        _9C = mNozzleRotation + scale;
+    } else {
+        _9C = -45.0f - scale;
+    }
+
+    if (MR::isStep(this, 20)) {
+        if (isNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance)) {
+            setNerve(&NrvPressureBase::PressureBaseNrvRelax::sInstance);
+        } else {
+            setNerve(&NrvPressureBase::PressureBaseNrvWait::sInstance);
+        }
+    }
+}
+
+void PressureBase::exeRelax() {
+    if (MR::isFirstStep(this)) {
+        _9C = -45.0f;
+    }
+}
+
+void PressureBase::exeSyncWait() {
+}
+
+void PressureBase::exeFirstWait() {
+    if (MR::isStep(this, mWaitTime)) {
+        setNerve(&NrvPressureBase::PressureBaseNrvPrepareToShot::sInstance);
+    }
+}
+
+void PressureBase::exeWait() {
+    if (mWaitTime == MR::getBckFrameMax(this, "ShotStart") + getNerveStep()) {
+        setNerve(&NrvPressureBase::PressureBaseNrvPrepareToShot::sInstance);
+    } else if (MR::isStep(this, mWaitTime)) {
+        setNerve(&NrvPressureBase::PressureBaseNrvShot::sInstance);
+    }
+}
+
+void PressureBase::exePrepareToShot() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "ShotStart", nullptr);
+    }
+
+    if (MR::isBckStopped(this)) {
+        setNerve(&NrvPressureBase::PressureBaseNrvShot::sInstance);
+    }
+}
+
+void PressureBase::exeShot() {
+    if (MR::isFirstStep(this)) {
+        if (_B0) {
+            MR::startBck(this, "ShortShot", nullptr);
+        } else {
+            MR::startBck(this, "Shot", nullptr);
+        }
+    }
+
+    if (_B0) {
+        if (MR::isStep(this, 54)) {
+            shotBullet(mBallSpeed);
+        }
+    } else {
+        if (MR::isStep(this, 16)) {
+            shotBullet(mBallSpeed);
+        }
+    }
+
+    if (MR::isBckStopped(this)) {
+        if (mGroup != nullptr) {
+            setNerve(&NrvPressureBase::PressureBaseNrvSyncWait::sInstance);
+        } else {
+            setNerve(&NrvPressureBase::PressureBaseNrvWait::sInstance);
+        }
+    }
+}
+
+void PressureBase::attackSensor(HitSensor* pSender, HitSensor* pReceiver) {
+    if (MR::isSensorPlayer(pReceiver) || MR::isSensorEnemy(pReceiver)) {
+        MR::sendMsgPush(pReceiver, pSender);
+    }
+}
+
+bool PressureBase::receiveMsgPlayerAttack(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    return MR::isMsgStarPieceReflect(msg);
+}
+
+bool PressureBase::receiveOtherMsg(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (msg == ACTMES_GROUP_MOVE_START) {
+        bool v5 = isNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance) || isNerve(&NrvPressureBase::PressureBaseNrvRelax::sInstance);
+
+        if (v5) {
+            return false;
+        }
+
+        setNerve(&NrvPressureBase::PressureBaseNrvWait::sInstance);
+
+        return true;
+    }
+
+    return false;
+}
+
+void PressureBase::startWait() {
+    if (isNerve(&NrvPressureBase::PressureBaseNrvRelax::sInstance)) {
+        setNerve(&NrvPressureBase::PressureBaseNrvWaitStart::sInstance);
+    }
+}
+
+void PressureBase::startRelax() {
+    bool isRelax = isNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance) || isNerve(&NrvPressureBase::PressureBaseNrvRelax::sInstance);
+
+    if (!isRelax) {
+        MR::startSound(this, "SE_OJ_W_PRESS_HEAD_OFF");
+        setNerve(&NrvPressureBase::PressureBaseNrvRelaxStart::sInstance);
+    }
+}
+
+void PressureBase::initBullet(const JMapInfoIter&) {
+}
+
+bool PressureBase::shotBullet(f32) {
+    return false;
+}
+
+// PressureBase::calcJointCannonV
+
+bool PressureBase::isShotTypeOnGravity() const {
+    return mShotType == 0;
+}
+
+bool PressureBase::isShotTypeFollow() const {
+    return mShotType == 2;
+}
+
+PressureMessenger::~PressureMessenger() {
+}

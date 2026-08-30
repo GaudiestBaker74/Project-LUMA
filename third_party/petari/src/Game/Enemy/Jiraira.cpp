@@ -1,0 +1,210 @@
+#include "Game/Enemy/Jiraira.hpp"
+#include "Game/LiveActor/HitSensor.hpp"
+#include "Game/LiveActor/Nerve.hpp"
+#include "Game/Map/CollisionParts.hpp"
+#include "Game/Util/ActorSensorUtil.hpp"
+#include "Game/Util/ActorSwitchUtil.hpp"
+#include "Game/Util/EffectUtil.hpp"
+#include "Game/Util/JMapUtil.hpp"
+#include "Game/Util/JointUtil.hpp"
+#include "Game/Util/LiveActorUtil.hpp"
+#include "Game/Util/MapUtil.hpp"
+#include "Game/Util/ObjUtil.hpp"
+#include "Game/Util/PlayerUtil.hpp"
+#include "Game/Util/SoundUtil.hpp"
+#include "revolution/types.h"
+
+void Jiraira_FORCE_MATCH_SDATA2() {
+    (void)0.0f;
+}
+
+namespace {
+    static const s32 hPreRecoverTime = 188;
+    static const s32 hBeginExplodeTime = 30;
+    static const s32 hExplodeTime = 8;
+    static const s32 hExplodeInvalidTime = 120;
+};  // namespace
+
+namespace NrvJiraira {
+    NEW_NERVE(HostTypeNrvWait, Jiraira, Wait);
+    NEW_NERVE(HostTypeNrvStepped, Jiraira, Stepped);
+    NEW_NERVE(HostTypeNrvPreRecover, Jiraira, PreRecover);
+    NEW_NERVE(HostTypeNrvRecover, Jiraira, Recover);
+    NEW_NERVE(HostTypeNrvSteppedExplode, Jiraira, Explode);
+    NEW_NERVE(HostTypeNrvExplode, Jiraira, Explode);
+};  // namespace NrvJiraira
+
+Jiraira::Jiraira(const char* pName) : LiveActor(pName), _8C(nullptr), _90(500.0f) {
+}
+
+void Jiraira::init(const JMapInfoIter& rIter) {
+    if (MR::isValidInfo(rIter)) {
+        MR::initDefaultPos(this, rIter);
+        s32 arg1 = _90;
+        MR::getJMapInfoArg1NoInit(rIter, &arg1);
+        _90 = arg1;
+        MR::useStageSwitchWriteDead(this, rIter);
+    }
+    initModelManagerWithAnm("Jiraira", nullptr, false);
+    MR::connectToSceneCollisionEnemy(this);
+    initHitSensor(2);
+    f32 scaleY = mScale.y;
+    TVec3f offset;
+    offset.x = 0.0f;
+    offset.y = 30.0f;
+    offset.z = 0.0f;
+    MR::addHitSensorMapObjMoveCollision(this, "body", 16, scaleY * 100.0f, offset);
+    TVec3f offset2;
+    offset2.x = 0.0f;
+    offset2.y = 30.0f * scaleY;
+    offset2.z = 0.0f;
+    MR::addHitSensorEnemyAttack(this, "explode", 16, (_90 * scaleY), offset2);
+    MR::initCollisionPartsAutoEqualScaleOne(this, "Jiraira", getSensor("body"), MR::getJointMtx(this, "Jiraira"));
+    CollisionParts* colPart = MR::createCollisionPartsFromLiveActor(this, "Button", getSensor("body"), MR::getJointMtx(this, "Button"),
+                                                                    MR::CollisionScaleType_NotUsingScale);
+    _8C = colPart;
+    MR::validateCollisionParts(colPart);
+    initSound(6, false);
+    initEffectKeeper(0, nullptr, false);
+    initNerve(&NrvJiraira::HostTypeNrvWait::sInstance);
+    MR::invalidateClipping(this);
+    appear();
+}
+
+void Jiraira::appear() {
+    LiveActor::appear();
+    getSensor("explode")->invalidate();
+}
+
+void Jiraira::kill() {
+    LiveActor::kill();
+    if (MR::isValidSwitchDead(this)) {
+        MR::onSwitchDead(this);
+    }
+}
+
+void Jiraira::control() {
+    _8C->setMtx();
+}
+
+void Jiraira::exeWait() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Wait", nullptr);
+        MR::startBrk(this, "Wait");
+    }
+
+    if (MR::isOnPlayer(getSensor("body"))) {
+        setNerve(&NrvJiraira::HostTypeNrvStepped::sInstance);
+    }
+}
+
+void Jiraira::exeStepped() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Stepped", nullptr);
+        MR::startBrk(this, "Stepped");
+        MR::tryRumblePadMiddle(this, WPAD_CHAN0);
+        MR::startSound(this, "SE_OJ_JIRAIRA_STEPPED");
+    }
+
+    MR::startLevelSound(this, "SE_OJ_LV_JIRAIRA_CHARGE");
+
+    if (MR::isGreaterStep(this, ::hBeginExplodeTime)) {
+        setNerve(&NrvJiraira::HostTypeNrvSteppedExplode::sInstance);
+    }
+}
+
+void Jiraira::exeExplode() {
+    if (MR::isFirstStep(this)) {
+        MR::emitEffect(this, "Explosion");
+        MR::startSound(this, "SE_OJ_JIRAIRA_EXPLODE");
+        MR::startBck(this, "Down", nullptr);
+        MR::startBrk(this, "Down");
+        getSensor("explode")->validate();
+        MR::tryRumblePadAndCameraDistanceStrong(this, 800.0f, 1200.0f, 2000.0f);
+    }
+
+    if (MR::isStep(this, ::hExplodeTime)) {
+        getSensor("explode")->invalidate();
+    } else if (MR::isLessStep(this, ::hExplodeTime)) {
+        getSensor("explode")->mRadius = _90 * getNerveStep() / 8.0f;
+    }
+
+    if (MR::isGreaterStep(this, ::hPreRecoverTime)) {
+        setNerve(&NrvJiraira::HostTypeNrvPreRecover::sInstance);
+    }
+}
+
+void Jiraira::exePreRecover() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Down", 0);
+        MR::startBrk(this, "RecoveryLoop");
+    }
+
+    MR::startLevelSound(this, "SE_OJ_LV_JIRAIRA_RECOVERING");
+
+    if (MR::isGreaterStep(this, ::hExplodeInvalidTime)) {
+        setNerve(&NrvJiraira::HostTypeNrvRecover::sInstance);
+    }
+}
+
+void Jiraira::exeRecover() {
+    if (MR::isFirstStep(this)) {
+        MR::startBck(this, "Recovery", 0);
+        MR::startBrk(this, "Recovery");
+        MR::startSound(this, "SE_OJ_JIRAIRA_RECOVER");
+    }
+
+    if (MR::isBckStopped(this)) {
+        setNerve(&NrvJiraira::HostTypeNrvWait::sInstance);
+    }
+}
+
+void Jiraira::attackSensor(HitSensor* pSender, HitSensor* pReceiver) {
+    if (getSensor("explode") == pSender &&
+        !MR::isExistMapCollisionExceptActor(pSender->mPosition, pReceiver->mPosition - pSender->mPosition, pReceiver->mHost)) {
+        if (MR::isSensorPlayer(pReceiver)) {
+            MR::sendMsgEnemyAttackExplosion(pReceiver, pSender);
+        } else if (MR::isSensorEnemy(pReceiver)) {
+            if (!isNerve(&NrvJiraira::HostTypeNrvSteppedExplode::sInstance)) {
+                MR::sendMsgEnemyAttackExplosion(pReceiver, pSender);
+            }
+        } else if (MR::isSensorMapObj(pReceiver)) {
+            if (!isNerve(&NrvJiraira::HostTypeNrvSteppedExplode::sInstance)) {
+                MR::sendMsgEnemyAttackExplosion(pReceiver, pSender);
+            }
+        }
+    }
+}
+
+bool Jiraira::receiveMsgPlayerAttack(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (isNerve(&NrvJiraira::HostTypeNrvExplode::sInstance) || isNerve(&NrvJiraira::HostTypeNrvSteppedExplode::sInstance) ||
+        isNerve(&NrvJiraira::HostTypeNrvPreRecover::sInstance)) {
+        return false;
+    }
+
+    if (MR::isMsgStarPieceAttack(msg)) {
+        if (!isNerve(&NrvJiraira::HostTypeNrvStepped::sInstance)) {
+            setNerve(&NrvJiraira::HostTypeNrvStepped::sInstance);
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool Jiraira::receiveMsgEnemyAttack(u32 msg, HitSensor* pSender, HitSensor* pReceiver) {
+    if (isNerve(&NrvJiraira::HostTypeNrvExplode::sInstance) || isNerve(&NrvJiraira::HostTypeNrvSteppedExplode::sInstance)) {
+        return false;
+    }
+
+    if (MR::isMsgExplosionAttack(msg)) {
+        setNerve(&NrvJiraira::HostTypeNrvExplode::sInstance);
+        return true;
+    }
+
+    return false;
+}
+
+Jiraira::~Jiraira() {
+}

@@ -1,0 +1,263 @@
+#include "Game/Map/CollisionParts.hpp"
+#include "Game/Camera/CameraPolygonCodeUtil.hpp"
+#include "Game/LiveActor/HitSensor.hpp"
+#include "Game/LiveActor/LiveActor.hpp"
+#include "Game/Map/CollisionCategorizedKeeper.hpp"
+#include "Game/Map/CollisionDirector.hpp"
+#include "Game/Map/KCollision.hpp"
+#include "Game/Util/MathUtil.hpp"
+#include "Game/Util/MtxUtil.hpp"
+#include "Game/Util/SceneUtil.hpp"
+
+void FORCE_SCALE() {
+    TVec3f vec;
+    vec.scale(1.0f);
+}
+
+CollisionParts::CollisionParts() : _0(), mHitSensor(), _CC(), _CD(true), _CE(), _CF(), _D0(), _D4(), _D8(-1.0f), _DC(1.0f), mKeeperIndex(-1), mZone() {
+    mServer = new KCollisionServer();
+
+    mPrevBaseMatrix.identity();
+    mBaseMatrix.identity();
+    mMatrix.identity();
+    PSMTXInverse(mBaseMatrix.toMtxPtr(), mInvBaseMatrix.toMtxPtr());
+}
+
+void CollisionParts::init(const TPos3f& a1, HitSensor* pHitSensor, const void* pKclData, const void* pMapInfo, s32 keeperIndex, bool a6) {
+    mServer->init(const_cast< void* >(pKclData), pMapInfo);
+    mHitSensor = pHitSensor;
+
+    resetAllMtx(a1);
+
+    TVec3f scale;
+    mBaseMatrix.getScale(scale);
+
+    mZone = MR::getCollisionDirector()->getCategoryKeeper(keeperIndex)->getZone(MR::getCurrentPlacementZoneId());
+
+    MR::initCameraCodeCollection(pHitSensor->mHost->mName, mZone->mZoneID);
+    mServer->calcFarthestVertexDistance();
+    MR::termCameraCodeCollection();
+
+    updateBoundingSphereRange(scale);
+    mKeeperIndex = keeperIndex;
+}
+
+void CollisionParts::addToBelongZone() {
+    s32 zoneID = mZone->mZoneID;
+
+    MR::getCollisionDirector()->getCategoryKeeper(mKeeperIndex)->addToZone(this, zoneID);
+}
+
+void CollisionParts::removeFromBelongZone() {
+    s32 zoneID = mZone->mZoneID;
+
+    MR::getCollisionDirector()->getCategoryKeeper(mKeeperIndex)->removeFromZone(this, zoneID);
+}
+
+void CollisionParts::initWithAutoEqualScale(const TPos3f& a1, HitSensor* pHitSensor, const void* pKclData, const void* pMapInfo, s32 keeperIndex,
+                                            bool a6) {
+    _CF = true;
+    _D0 = false;
+
+    init(a1, pHitSensor, pKclData, pMapInfo, keeperIndex, a6);
+}
+
+void CollisionParts::initWithNotUsingScale(const TPos3f& a1, HitSensor* pHitSensor, const void* pKclData, const void* pMapInfo, s32 keeperIndex,
+                                           bool a6) {
+    _CF = false;
+    _D0 = true;
+
+    init(a1, pHitSensor, pKclData, pMapInfo, keeperIndex, a6);
+}
+
+void CollisionParts::resetAllMtx(const TPos3f& a1) {
+    bool reset = false;
+
+    if (_CD || _CE) {
+        reset = true;
+    }
+
+    if (!reset) {
+        return;
+    }
+
+    resetAllMtxPrivate(a1);
+}
+
+void CollisionParts::resetAllMtx() {
+    bool reset = false;
+
+    if (_CD || _CE) {
+        reset = true;
+    }
+
+    if (reset) {
+        TPos3f matrix(_0);
+        makeEqualScale(reinterpret_cast< MtxPtr >(&matrix));
+
+        resetAllMtxPrivate(matrix);
+    }
+}
+
+void CollisionParts::forceResetAllMtxAndSetUpdateMtxOneTime() {
+    TPos3f matrix(_0);
+    makeEqualScale(reinterpret_cast< MtxPtr >(&matrix));
+    resetAllMtxPrivate(matrix);
+
+    _CE = true;
+}
+
+void CollisionParts::resetAllMtxPrivate(const TPos3f& a1) {
+    mPrevBaseMatrix.setInline(a1);
+    mBaseMatrix.setInline(a1);
+    mMatrix.setInline(a1);
+    PSMTXInverse(reinterpret_cast< MtxPtr >(&mBaseMatrix), reinterpret_cast< MtxPtr >(&mInvBaseMatrix));
+}
+
+void CollisionParts::setMtx(const TPos3f& matrix) {
+    mMatrix.setInline(matrix);
+}
+
+void CollisionParts::setMtx() {
+    mMatrix.setInline(_0);
+}
+
+void CollisionParts::updateMtx() {
+    bool bVar1 = false;
+
+    if (_CD || _CE) {
+        bVar1 = true;
+    }
+
+    if (!bVar1) {
+        if (MR::isSameMtx(reinterpret_cast< MtxPtr >(&mMatrix), reinterpret_cast< MtxPtr >(&mBaseMatrix))) {
+            _D4++;
+        }
+    } else {
+        if (MR::isSameMtx(reinterpret_cast< MtxPtr >(&mMatrix), reinterpret_cast< MtxPtr >(&mBaseMatrix))) {
+            _D4++;
+        } else {
+            if (_CE) {
+                _D4 = 1;
+            } else {
+                _D4 = 0;
+            }
+
+            f32 dVar4 = makeEqualScale(reinterpret_cast< MtxPtr >(&mMatrix));
+            _E8 = dVar4;
+            f32 var = dVar4 - _DC;
+            _EC = dVar4;
+            _F0 = dVar4;
+
+            if (!MR::isNearZero(var)) {
+                updateBoundingSphereRangePrivate(dVar4);
+            }
+        }
+
+        _CE = false;
+
+        if (_D4 < 2) {
+            mPrevBaseMatrix.setInline(mBaseMatrix);
+            mBaseMatrix.setInline(mMatrix);
+            PSMTXInverse(reinterpret_cast< MtxPtr >(&mBaseMatrix), reinterpret_cast< MtxPtr >(&mInvBaseMatrix));
+        }
+    }
+}
+
+// Issues with assignments of scaleDiff
+f32 CollisionParts::makeEqualScale(MtxPtr matrix) {
+    TPos3f& mtx = *reinterpret_cast< TPos3f* >(matrix);
+
+    TVec3f scale;
+    mtx.getScale(scale);
+
+    TVec3f scaleDiff;
+    scaleDiff.x = scale.z - scale.x;
+    scaleDiff.y = scale.y - scale.z;
+    scaleDiff.z = scale.x - scale.y;
+
+    if (MR::isNearZero(scaleDiff.x) && MR::isNearZero(scaleDiff.y) && MR::isNearZero(scaleDiff.z)) {
+        return scale.x;
+    }
+
+    f32 uniformScale = 1.0f;
+    TVec3f invScale;
+
+    if (_D0) {
+        invScale.set(uniformScale / scale.x, uniformScale / scale.y, uniformScale / scale.z);
+        uniformScale = 1.0f;
+    } else if (_CF) {
+        uniformScale = (scale.x + scale.y + scale.z) / 3.0f;
+        invScale.set(uniformScale / scale.x, uniformScale / scale.y, uniformScale / scale.z);
+    }
+
+    mtx.mMtx[0][0] *= invScale.x;
+    mtx.mMtx[1][0] *= invScale.x;
+    mtx.mMtx[2][0] *= invScale.x;
+
+    mtx.mMtx[0][1] *= invScale.y;
+    mtx.mMtx[1][1] *= invScale.y;
+    mtx.mMtx[2][1] *= invScale.y;
+
+    mtx.mMtx[0][2] *= invScale.z;
+    mtx.mMtx[1][2] *= invScale.z;
+    mtx.mMtx[2][2] *= invScale.z;
+
+    return uniformScale;
+}
+
+void CollisionParts::updateBoundingSphereRange() {
+    TPos3f matrix(_0);
+    f32 scale = makeEqualScale(reinterpret_cast< MtxPtr >(&matrix));
+    updateBoundingSphereRangePrivate(scale);
+}
+
+void CollisionParts::updateBoundingSphereRange(TVec3f a1) {
+    f32 range = (a1.x + a1.y + a1.z) / 3.0f;
+    updateBoundingSphereRangePrivate(range);
+}
+
+void CollisionParts::updateBoundingSphereRangePrivate(f32 scale) {
+    _DC = scale;
+    _D8 = scale * mServer->mMaxVertexDistance;
+}
+
+const char* CollisionParts::getHostName() const {
+    if (mHitSensor == nullptr) {
+        return nullptr;
+    }
+
+    LiveActor* actor = mHitSensor->mHost;
+
+    if (actor == nullptr) {
+        return nullptr;
+    }
+
+    return actor->mName;
+}
+
+s32 CollisionParts::getPlacementZoneID() const {
+    return mZone->mZoneID;
+}
+
+// Instruction order
+void CollisionParts::projectToPlane(TVec3f* pProjected, const TVec3f& rPos, const TVec3f& rOrigin, const TVec3f& rNormal) {
+    TVec3f projected = rPos;
+
+    f32 distance = (rPos - rOrigin).dot(rNormal);
+
+    projected.add(-rNormal * distance);
+    pProjected->set(projected);
+}
+
+void CollisionParts::calcForceMovePower(TVec3f* a1, const TVec3f& a2) const {
+    TVec3f tStack88 = a2;
+    TMtx34f auStack76;
+    PSMTXInverse((MtxPtr)&mPrevBaseMatrix, reinterpret_cast< MtxPtr >(&auStack76));
+
+    auStack76.mult(tStack88, tStack88);
+    mBaseMatrix.mult(tStack88, tStack88);
+
+    tStack88.sub(a2);
+    *a1 = tStack88;
+}

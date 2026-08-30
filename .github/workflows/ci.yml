@@ -1,0 +1,65 @@
+# =============================================================================
+# CI — Linux (GCC) + Windows (MSVC) + Linux aarch64 cross-compile.
+#
+# Milestone M2: the same source builds and passes ctest on Linux and Windows,
+# with platform-specific code confined to src/platform/linux and
+# src/platform/windows (see docs/build.md).
+#
+# third_party/petari is vendored (not a submodule) per M1 decision; if you
+# later switch it to a submodule, enable `submodules: recursive` below.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux (GCC, x86-64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DPLATFORM=PC -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows:
+    name: Windows (MSVC, x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Visual Studio 2022 (MSVC) + CMake + Ninja are preinstalled.
+      - name: Configure
+        run: cmake -B build -DPLATFORM=PC
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  linux-aarch64-cross:
+    # Compile-only check for the Steam Deck / ARM64 Linux target (M2 optional).
+    name: Linux (cross, aarch64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install aarch64 toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++-aarch64-linux-gnu ninja-build
+
+      - name: Configure
+        run: cmake -B build-arm64 -DPLATFORM=PC -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/Toolchain-LinuxAArch64.cmake
+
+      - name: Build
+        run: cmake --build build-arm64

@@ -1,0 +1,33 @@
+PAQUETE DE ACTUALIZACION - galaxy-pc (M1+M2 + fixes MSVC)
+========================================================
+Extrae el contenido del zip SOBRE tu carpeta galaxy-pc (reemplazando
+archivos). Incluye: src/, cmake/, CMakeLists.txt, docs/, .github/, run.sh.
+
+IMPORTANTE: si tienes problemas, borra primero estas carpetas de tu copia y
+luego extrae encima:
+   galaxy-pc\src\compat\include      <- borrar y reemplazar completa
+   galaxy-pc\build                   <- borrar (recompila desde cero)
+
+Verifica que src\compat\include contiene estos 12 archivos (los fijos de
+sintaxis para MSVC):
+   Inline.hpp                                  <- fix NO_INLINE (__declspec)
+   JSystem\JGadget\linklist.hpp
+   JSystem\JKernel\JKRHeap.hpp
+   revolution\base\PPCWGPipe.h
+   revolution\gx.h                             <- fix C2039 (include con <>)
+   revolution\gx\GXRegs.h
+   revolution\gx\GXVert.h
+   revolution\os.h
+   revolution\os\OSBootInfo.h
+   revolution\os\OSTime.h
+   revolution\types.h
+   README.md
+
+Luego, en "Developer PowerShell for VS 2022":
+   cd galaxy-pc
+   cmake -B build -DPLATFORM=PC -G "Visual Studio 17 2022" -A x64
+   cmake --build build --config RelWithDebInfo
+   ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+Si aun da errores, copia el primer error (cmake --build ... 2>&1 |
+Select-Object -First 30) y envialo.

@@ -1,0 +1,91 @@
+#include "Game/MapObj/ChipCounter.hpp"
+#include "Game/LiveActor/Nerve.hpp"
+#include "Game/MapObj/ChipBase.hpp"
+#include "Game/MapObj/CollectCounter.hpp"
+#include "Game/NPC/TalkDirector.hpp"
+#include "Game/Util/LayoutUtil.hpp"
+#include "Game/Util/ObjUtil.hpp"
+
+namespace {
+    static const char* sChipPainName[] = {"Chip1", "Chip2", "Chip3", "Chip4", "Chip5"};
+    static s32 sChipPainCount = ARRAY_SIZE(sChipPainName);
+};  // namespace
+
+namespace NrvChipCounter {
+    NEW_NERVE(ChipCounterNrvHide, ChipCounter, Hide);
+};  // namespace NrvChipCounter
+
+ChipCounter::ChipCounter(const char* pName, s32 type) : LayoutActor(pName, true) {
+    mCollectCounter = 0;
+    mCount = 0;
+    mType = type;
+    _2C = -1;
+    _30 = 1.0f;
+}
+
+void ChipCounter::init(const JMapInfoIter& rIter) {
+    MR::connectToSceneLayout(this);
+
+    switch (mType) {
+    case ChipBase::Type_Blue:
+        initLayoutManager("BlueChipCounter", 2);
+        break;
+    case ChipBase::Type_Yellow:
+        initLayoutManager("YellowChipCounter", 2);
+        break;
+    }
+
+    initNerve(&NrvChipCounter::ChipCounterNrvHide::sInstance);
+
+    for (s32 i = 0; i < ::sChipPainCount; i++) {
+        MR::createAndAddPaneCtrl(this, ::sChipPainName[i], 2);
+        MR::startPaneAnim(this, ::sChipPainName[i], "ChipGet", 0);
+    }
+
+    MR::startAnim(this, "ShowHide", 1);
+    MR::setAnimFrameAndStop(this, _30 * 20.0f, 1);
+    mCollectCounter = new CollectCounter("集め数字");
+    mCollectCounter->initWithoutIter();
+    kill();
+}
+
+void ChipCounter::control() {
+    if (MR::isActiveTalkBalloonShort()) {
+        _30 -= 0.05f;
+
+        if (_30 < 0.0f) {
+            _30 = 0.0f;
+        }
+    } else {
+        _30 += 0.05f;
+
+        if (_30 > 1.0f) {
+            _30 = 1.0f;
+        }
+    }
+
+    MR::setAnimFrameAndStop(this, _30 * 20.0f, 1);
+}
+
+void ChipCounter::setCount(s32 count) {
+    mCollectCounter->setCount(count);
+    mCount = count;
+
+    for (s32 i = 0; i < ::sChipPainCount; i++) {
+        if (i < mCount - 1) {
+            MR::setPaneAnimFrameAndStop(this, ::sChipPainName[i], 1.0f, 0);
+            continue;
+        }
+
+        if (i == mCount - 1) {
+            if (i == ::sChipPainCount - 1) {
+                MR::setPaneAnimFrameAndStop(this, ::sChipPainName[i], 1.0f, 0);
+                continue;
+            }
+
+            MR::startPaneAnim(this, ::sChipPainName[i], "ChipGet", 0);
+        } else {
+            MR::setPaneAnimFrameAndStop(this, ::sChipPainName[i], 0.0f, 0);
+        }
+    }
+}
