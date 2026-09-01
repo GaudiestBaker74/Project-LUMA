@@ -5,11 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=src/platform/Renderer/vk_demo_shaders.h
 
-rm -f /tmp/gpc_tri_vert.spv /tmp/gpc_tri_frag.spv /tmp/gpc_tri_tex_vert.spv /tmp/gpc_tri_tex_frag.spv
+rm -f /tmp/gpc_*.spv
 glslangValidator -V tools/shaders/tri.vert -o /tmp/gpc_tri_vert.spv
 glslangValidator -V tools/shaders/tri.frag -o /tmp/gpc_tri_frag.spv
 glslangValidator -V tools/shaders/tri_tex.vert -o /tmp/gpc_tri_tex_vert.spv
 glslangValidator -V tools/shaders/tri_tex.frag -o /tmp/gpc_tri_tex_frag.spv
+glslangValidator -V tools/shaders/gx_vert.vert -o /tmp/gpc_gx_vert.spv
+glslangValidator -V tools/shaders/gx_frag.frag -o /tmp/gpc_gx_frag.spv
+glslangValidator -V tools/shaders/gx_tex_vert.vert -o /tmp/gpc_gx_tex_vert.spv
+glslangValidator -V tools/shaders/gx_tex_frag.frag -o /tmp/gpc_gx_tex_frag.spv
+glslangValidator -V tools/shaders/gx_tev_vert.vert -o /tmp/gpc_gx_tev_vert.spv
+glslangValidator -V tools/shaders/gx_tev_frag.frag -o /tmp/gpc_gx_tev_frag.spv
 
 python3 - "$OUT" <<'PY'
 import struct
@@ -31,7 +37,13 @@ hdr += '// Regenerate: tools/compile_shaders.sh  -  do not edit by hand.\n\n'
 hdr += spv_array('/tmp/gpc_tri_vert.spv', 'kTriangleVertSpv') + '\n\n'
 hdr += spv_array('/tmp/gpc_tri_frag.spv', 'kTriangleFragSpv') + '\n\n'
 hdr += spv_array('/tmp/gpc_tri_tex_vert.spv', 'kTriangleTexVertSpv') + '\n\n'
-hdr += spv_array('/tmp/gpc_tri_tex_frag.spv', 'kTriangleTexFragSpv') + '\n'
+hdr += spv_array('/tmp/gpc_tri_tex_frag.spv', 'kTriangleTexFragSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_vert.spv', 'kGxVertSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_frag.spv', 'kGxFragSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_tex_vert.spv', 'kGxTexVertSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_tex_frag.spv', 'kGxTexFragSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_tev_vert.spv', 'kGxTevVertSpv') + '\n\n'
+hdr += spv_array('/tmp/gpc_gx_tev_frag.spv', 'kGxTevFragSpv') + '\n'
 open(out, 'w').write(hdr)
 print('regenerated', out)
 PY

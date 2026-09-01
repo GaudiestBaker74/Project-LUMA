@@ -12,7 +12,13 @@
 //      `__attribute__` is unknown to MSVC entirely. So on MSVC the macro must
 //      expand to NOTHING (losing the noinline hint is harmless — it is an
 //      optimization only).
-//   3. Guarded with #ifndef so it never redefines the fallback that
+//   3. GCC/Clang also reject postfix attributes on function DEFINITIONS
+//      inside class templates ("attributes are not allowed on a
+//      function-definition"), and JGeometry/TVec.hpp uses NO_INLINE exactly
+//      that way (`void set(...) NO_INLINE { ... }`). So on the PC build the
+//      macro is empty on every toolchain; the hint is purely an optimization
+//      and does not affect ODR or semantics.
+//   4. Guarded with #ifndef so it never redefines the fallback that
 //      revolution/types.h may have already set (avoids C4005 and keeps the
 //      final definition consistent regardless of include order).
 //
@@ -22,11 +28,7 @@
 // Macro which is put after the function definition (only in the header) to prevent the function from being inlined.
 // Example: void someFunction(int someArg) const NO_INLINE;
 #if !defined(NO_INLINE)
-#if defined(_MSC_VER)
 #define NO_INLINE
-#else
-#define NO_INLINE __attribute__((noinline))
-#endif
 #endif
 
 // Macros which should be used when a function is both inlined and not inlined (so it's auto-inlined by the compiler).

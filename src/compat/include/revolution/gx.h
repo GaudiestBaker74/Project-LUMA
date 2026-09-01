@@ -42,11 +42,18 @@ extern "C" {
 #include <revolution/gx/GXTexture.h>
 #include <revolution/gx/GXTransform.h>
 #include <revolution/gx/GXTypes.h>
-#include <revolution/gx/GXVert.h>
 #include <revolution/types.h>
 
 #ifdef __cplusplus
 }
 #endif
+
+// GXVert.h is C++: its GXCompatFifo.h include defines C++ types (GXFifoPipe /
+// GXFifoWord) whose functions must keep C++ linkage (they are implemented in
+// compat/gx/GXCompat.cpp with C++ linkage). Including them inside the
+// extern "C" block above would give the free fifoWrite* helpers C linkage and
+// break the link (undefined _ZN... vs fifoWrite*). GXVert.h opens and closes
+// its own extern "C" around the macro-generated GX* writers.
+#include <revolution/gx/GXVert.h>
 
 #endif  // GX_H

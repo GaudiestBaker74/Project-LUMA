@@ -1,12 +1,12 @@
 // =============================================================================
-// galaxy-pc — PC entry point (Milestone 4.1: Platform::Renderer API).
+// galaxy-pc — PC entry point (Milestone 5.1: GX immediate vertices).
 //
-// M4.1 scope: the M3 demo (SDL3 window, Vulkan swapchain, fixed 60 Hz loop)
-// now runs through the closed Platform::Renderer API: a cached pipeline, a
-// vertex buffer, per-frame rotation pushed as a uniform (push constant) and
-// draw()/endPass()/endFrame(). The clear color and viewport still travel
-// through the compat/gx "first GX smell" (GXClearColor / GXSetViewport /
-// GXClear) exactly like the game boot will call them.
+// M5.1 scope: the M4 demo (SDL3 window, Vulkan swapchain, fixed 60 Hz loop,
+// Platform::Renderer) now drives its geometry through the real GX path:
+// GXInit -> GXSetVtxDesc/GXSetVtxAttrFmt -> GXBegin + immediate writers
+// (GXPosition3f32 / GXColor4u8) -> GXEnd. A rotating quad replaces the old
+// hardcoded triangle; the clear color and viewport still travel through
+// compat/gx (GXClearColor / GXSetViewport / GXClear) like the game boot.
 //
 // Usage:
 //   galaxy-pc [--help] [--version] [--log-level LVL] [--log-file PATH]
@@ -14,11 +14,12 @@
 //             [--no-vsync] [--fullscreen] [--frames N]
 // =============================================================================
 
+#include "compat/dvd/DVDCompat.h"
 #include "compat/gx/GXCompat.h"
+#include "compat/kpad/KPADCompat.h"
 #include "compat/os/OSCompat.h"
 #include "platform/Input/Input.h"
 #include "platform/Renderer/Renderer.h"
-#include "platform/Renderer/vk_demo_shaders.h"
 #include "platform/Window/Window.h"
 #include "platform/platform.h"
 
@@ -30,7 +31,7 @@
 
 namespace {
 
-constexpr const char* kVersion = "0.4.0 (Milestone 4)";
+constexpr const char* kVersion = "0.5.0 (Milestone 5)";
 
 struct Options {
     std::string logLevel;
@@ -60,8 +61,11 @@ void printHelp() {
         "  --no-vsync         disable vsync (VK_PRESENT_MODE_IMMEDIATE)\n"
         "  --fullscreen       start fullscreen (F11 toggles)\n"
         "  --frames N         run N frames then exit cleanly (0 = run forever)\n\n"
-        "M4 demo: SDL3 window + Vulkan (Platform::Renderer) + fixed 60 Hz loop\n"
-        "with a rotating triangle. Esc/close quits; F11 toggles fullscreen.\n",
+        "M5 demo: SDL3 window + Vulkan (Platform::Renderer) + fixed 60 Hz loop\n"
+        "with a rotating GX quad (immediate vertices). Esc/close quits; F11 toggles\n"
+        "fullscreen.\n"
+        "M7: the DVD layer mounts the assets tree (docs/assets.md); check your\n"
+        "extraction with build/src/tools/verify-assets.\n",
         kVersion);
 }
 
@@ -125,25 +129,56 @@ bool parseArgs(int argc, char** argv, Options& out) {
     return true;
 }
 
-// Demo triangle geometry (same as M3): pos(2f) + color(3f) = 20 bytes.
-struct DemoVertex {
-    float x, y;
-    float r, g, b;
+// M5.3 demo geometry: the quad lives in GX vertex arrays (GXSetArray) and is
+// referenced with 16-bit indices (GX_INDEX16); its texcoords are emitted
+// directly (GX_TEXCOORD0) and textured with a procedural RGB565 GX texture.
+// Rotation is applied on the CPU to the position array each frame, exactly
+// like a display object would transform its vertices.
+const float kQuadBase[4][2] = {
+    {-0.6f, -0.6f},
+    { 0.6f, -0.6f},
+    { 0.6f,  0.6f},
+    {-0.6f,  0.6f},
 };
 
-const DemoVertex kTriangleVertices[] = {
-    {  0.0f, -0.6f,   1.0f, 0.2f, 0.2f },
-    {  0.6f,  0.6f,   0.2f, 1.0f, 0.2f },
-    { -0.6f,  0.6f,   0.2f, 0.2f, 1.0f },
+alignas(16) float sQuadPos[4][3]; // filled each frame with the rotated corners
+// White vertex color: the textured shader outputs the texel color (modulate
+// with 1.0), so the procedural texture shows pure.
+const u8 sQuadColor[4][4] = {
+    {255, 255, 255, 255},
+    {255, 255, 255, 255},
+    {255, 255, 255, 255},
+    {255, 255, 255, 255},
 };
 
-// Column-major mat3 (std430: 3 columns x 16 bytes). Rotation by `angle`.
-void buildRotationMatrix(float angle, float out[12]) {
-    const float c = std::cos(angle);
-    const float s = std::sin(angle);
-    out[0] = c;  out[1] = s;  out[2] = 0.0f; out[3] = 0.0f;   // column 0
-    out[4] = -s; out[5] = c;  out[6] = 0.0f; out[7] = 0.0f;   // column 1
-    out[8] = 0.0f; out[9] = 0.0f; out[10] = 1.0f; out[11] = 0.0f; // column 2
+// --- procedural GX texture (RGB565, 16x16, GX tiled 4x4 blocks) --------------
+// Pattern: white 1px border + 4x4 checker of red/blue cells.
+constexpr u32 kTexSize = 16;
+
+// Writes a 16-bit BE RGB565 value for texel (tx,ty) into the tiled buffer.
+void texPut565(u8* tiled, u32 tx, u32 ty, u16 rgb565) {
+    const size_t block = (static_cast<size_t>(ty / 4) * (kTexSize / 4) + (tx / 4)) * 32;
+    u8* p = tiled + block + ((ty % 4) * 4 + (tx % 4)) * 2;
+    p[0] = static_cast<u8>(rgb565 >> 8);
+    p[1] = static_cast<u8>(rgb565 & 0xFF);
+}
+
+u8 sTexTiled[kTexSize * kTexSize * 2]; // 32 bytes per 4x4 block
+GXTexObj sDemoTexObj;
+
+void initDemoTexture() {
+    for (u32 y = 0; y < kTexSize; ++y) {
+        for (u32 x = 0; x < kTexSize; ++x) {
+            const bool border = (x == 0 || y == 0 || x == kTexSize - 1 || y == kTexSize - 1);
+            const bool redCell = ((x / 4 + y / 4) % 2) == 0;
+            const u16 c = border ? 0xFFFFu : (redCell ? 0xF800u : 0x001Fu);
+            texPut565(sTexTiled, x, y, c);
+        }
+    }
+    GXInitTexObj(&sDemoTexObj, sTexTiled, kTexSize, kTexSize, GX_TF_RGB565,
+                 GX_CLAMP, GX_CLAMP, GX_FALSE);
+    GXInitTexObjLOD(&sDemoTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE,
+                    GX_FALSE, GX_ANISO_1);
 }
 
 } // namespace
@@ -175,10 +210,11 @@ int main(int argc, char** argv) {
         Platform::Filesystem::setRootDir(opts.assetsDir);
     }
     compat::initOS();
+    compat::initDVD();  // M7: FST from the mounted assets root (no-op without assets)
 
     // --- window + renderer ---------------------------------------------------
     Platform::WindowConfig windowConfig;
-    windowConfig.title = "galaxy-pc — M4 (SDL3 + Vulkan)";
+    windowConfig.title = "galaxy-pc — M5 (SDL3 + Vulkan)";
     windowConfig.width = opts.width;
     windowConfig.height = opts.height;
     windowConfig.startFullscreen = opts.fullscreen;
@@ -196,32 +232,42 @@ int main(int argc, char** argv) {
     }
     Platform::Renderer& renderer = Platform::Renderer::instance();
 
-    // Demo pipeline (cached; requested once — later frames reuse the same
-    // PipelineHandle via getOrCreatePipeline).
-    Platform::PipelineDesc pipelineDesc;
-    pipelineDesc.vertexLayout.stride = sizeof(DemoVertex);
-    pipelineDesc.vertexLayout.attribs = {
-        {0, 0, Platform::VertexFormat::R32G32_SFLOAT},
-        {1, 8, Platform::VertexFormat::R32G32B32_SFLOAT},
-    };
-    pipelineDesc.vertSpv = kTriangleVertSpv;
-    pipelineDesc.vertSpvSize = sizeof(kTriangleVertSpv);
-    pipelineDesc.fragSpv = kTriangleFragSpv;
-    pipelineDesc.fragSpvSize = sizeof(kTriangleFragSpv);
-    pipelineDesc.colorFormat = renderer.passColorFormat();
-    Platform::PipelineHandle pipeline = renderer.getOrCreatePipeline(pipelineDesc);
-    if (!pipeline) {
-        PL_LOG_FATAL("main", "failed to create demo pipeline");
-        return 1;
-    }
+    // --- M5.3: configure the GX state machine (done once) -------------------
+    // Vertex descriptor: position (INDEX16) + color0 (INDEX8) in arrays +
+    // texcoord0 direct. The quad is textured with TEXMAP0.
+    GXInit(nullptr, 0);
+    GXSetVtxDesc(GX_VA_POS, GX_INDEX16);
+    GXSetVtxDesc(GX_VA_CLR0, GX_INDEX8);
+    GXSetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+    // Attribute formats on VTXFMT0: pos XYZ f32, color0 RGBA (u8x4), tex0 ST.
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+    GXSetArray(GX_VA_POS, sQuadPos, sizeof(sQuadPos[0]));
+    GXSetArray(GX_VA_CLR0, sQuadColor, sizeof(sQuadColor[0]));
+    initDemoTexture();
+    GXLoadTexObj(&sDemoTexObj, GX_TEXMAP0);
+    // Texgen: identity matrix — UVs pass through from the vertex stream.
+    GXSetTexCoordGen2(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY, GX_FALSE,
+                      GX_PTIDENTITY);
+    GXSetCullMode(GX_CULL_NONE);
+    GXSetBlendMode(GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 
-    Platform::BufferHandle vertexBuffer =
-        renderer.createBuffer(Platform::BufferUsage::Vertex, sizeof(kTriangleVertices),
-                              kTriangleVertices);
-    if (!vertexBuffer) {
-        PL_LOG_FATAL("main", "failed to create vertex buffer");
-        return 1;
-    }
+    // --- M5.4: TEV chain ----------------------------------------------------
+    // Stage 0: MODULATE — TEXMAP0 texel × vertex color (RASC).
+    GXSetTevOp(GX_TEVSTAGE0, GX_MODULATE);
+    // Stage 1: prev = lerp(prev, ONE, KONST) with K2 = (255,128,64): the
+    // checkerboard result is pulled toward the K constant — a chained stage
+    // exercising the K constant + register routing.
+    GXSetTevColorIn(GX_TEVSTAGE1, GX_CC_CPREV, GX_CC_ONE, GX_CC_KONST, GX_CC_ZERO);
+    GXSetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE,
+                    GX_TEVPREV);
+    GXSetTevAlphaIn(GX_TEVSTAGE1, GX_CA_APREV, GX_CA_ZERO, GX_CA_ZERO, GX_CA_APREV);
+    GXSetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE,
+                    GX_TEVPREV);
+    GXSetTevKColorSel(GX_TEVSTAGE1, GX_TEV_KCSEL_K2);
+    GXSetTevKColor(GX_KCOLOR2, GXColor{255, 128, 64, 255});
+    GXSetNumTevStages(2);
 
     // --- fixed-timestep game loop (60 Hz) ------------------------------------
     constexpr double kStepSeconds = 1.0 / 60.0;
@@ -236,6 +282,18 @@ int main(int argc, char** argv) {
     double fpsTimer = 0.0;
 
     Platform::Input input;
+    // M6: wire the compat input layer (KPAD/WPAD) to the raw device layer.
+    // Rumble requests from the game reach the SDL gamepad through `input`.
+    // (A capture-less lambda stored as a function pointer cannot capture
+    // `input`, so it goes through a file-static pointer set below.)
+    static Platform::Input* sRumbleInput = nullptr;
+    sRumbleInput = &input;
+    Platform::CompatInput::init();
+    Platform::CompatInput::setRumbleSink([](int gamepadIndex, bool on) {
+        if (sRumbleInput != nullptr) {
+            sRumbleInput->setRumble(gamepadIndex, on);
+        }
+    });
     bool running = true;
     int framesRendered = 0;
 
@@ -258,6 +316,7 @@ int main(int argc, char** argv) {
         if (dt > 0.25) {
             dt = 0.25; // clamp after pauses/hitches (avoid spiral of death)
         }
+        Platform::CompatInput::updateFrame(inputState, dt);
         accumulator += dt;
 
         while (accumulator >= kStepSeconds) {
@@ -280,24 +339,41 @@ int main(int argc, char** argv) {
             continue; // swapchain was recreated or is out of date
         }
 
-        // Pulsing clear color (wall time; the triangle rotation follows the
-        // fixed step).
+        // M5.7c: the scene renders into the EFB (offscreen render target, GX
+        // space 640x448) and GXCopyDisp blits it to the swapchain, like the
+        // console: draw -> copy -> present (docs/gx.md §J).
         const float pulse = 0.5f + 0.5f * static_cast<float>(std::sin(Platform::Timing::nowSeconds()));
         GXClearColor(GXColor{static_cast<u8>(0x30 + 0x60 * pulse),
                              static_cast<u8>(0x30 + 0x40 * (1.0f - pulse)),
                              0x40, 0xFF});
-        GXSetViewport(0.0f, 0.0f, static_cast<f32>(w), static_cast<f32>(h), 0.0f, 1.0f);
+        GXSetViewport(0.0f, 0.0f, 640.0f, 448.0f, 0.0f, 1.0f); // EFB space
         GXClear(GX_CLEAR_COLOR);
 
-        renderer.beginPass(); // clears with the GXClearColor stored above
-        renderer.bindPipeline(pipeline);
-        renderer.bindVertexBuffer(vertexBuffer, 0);
-        float rot[12];
-        buildRotationMatrix(static_cast<float>(angle), rot);
-        renderer.setUniforms(rot, sizeof(rot));
-        renderer.draw(3, 0);
+        renderer.beginPass(static_cast<Platform::RenderTargetHandle>(
+            Platform::CompatGx::getEfbRenderTarget()));
+
+        // Rotate the quad corners into the position array (CPU transform,
+        // like the game's display objects), then emit the quad by indices.
+        const float c = static_cast<float>(std::cos(angle));
+        const float s = static_cast<float>(std::sin(angle));
+        for (int i = 0; i < 4; ++i) {
+            sQuadPos[i][0] = kQuadBase[i][0] * c - kQuadBase[i][1] * s;
+            sQuadPos[i][1] = kQuadBase[i][0] * s + kQuadBase[i][1] * c;
+            sQuadPos[i][2] = 0.0f;
+        }
+        GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+        const float uv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+        for (int i = 0; i < 4; ++i) {
+            GXPosition1x16(static_cast<u16>(i));
+            GXColor1x8(static_cast<u8>(i));
+            GXTexCoord2f32(uv[i][0], uv[i][1]);
+        }
+        GXEnd();
+
         renderer.endPass();
+        GXCopyDisp(nullptr, GX_TRUE); // blit EFB -> swapchain (present)
         renderer.endFrame();
+        GXCompatEndFrame(); // reset the dynamic vertex buffer cursor
 
         ++framesRendered;
         if (opts.maxFrames > 0 && framesRendered >= opts.maxFrames) {
@@ -322,7 +398,10 @@ int main(int argc, char** argv) {
 
     // --- clean shutdown ------------------------------------------------------
     PL_LOG_INFO("main", "shutting down");
-    renderer.destroyBuffer(vertexBuffer);
+    GXCompatShutdown(); // release the GX dynamic vertex buffer
+    compat::shutdownDVD();  // stop the DVD async worker (drains/cancels reads)
+    Platform::CompatInput::shutdown();
+    input.shutdown();
     Platform::Renderer::shutdown();
     Platform::shutdown();
     return 0;

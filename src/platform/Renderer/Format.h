@@ -86,13 +86,14 @@ inline VkSamplerAddressMode addressModeToVk(Platform::SamplerAddressMode m) {
 //   GX_TF_Z24X8 / GX_Z24X8 -> D24_UNORM_S8_UINT (stencil byte unused)
 //   GX_TF_Z16          -> D16_UNORM
 //
-// M4.2 implements the Vulkan side (TextureFormat). The GX-side table lives in
-// compat/gx (M5): `textureFormatFromGx` below is the seam where the GX
-// texture format enum maps onto Platform::TextureFormat.
-// TODO(PC_PORT, M5): fill the GX->TextureFormat table when the GX texture
-// inventory is wired in (GXTexFmt/GXTexZ16 etc.).
+// M4.2 implements the Vulkan side (TextureFormat). The GX-side conversion
+// lives in compat/gx (M5.3): Bti.cpp decodes every GX texture format to
+// row-major RGBA8 on the CPU (hardware swizzle included), so compat/gx always
+// uploads R8G8B8A8_UNORM and this seam is not used by the texture path.
+// Kept for the depth-format mapping (GX Z24X8 -> D24_UNORM_S8_UINT) and any
+// future native-mapped formats (CMPR -> BC1, RGB565 -> R5G6B5...).
 inline Platform::TextureFormat textureFormatFromGx(uint8_t /*gxTexFmt*/) {
-    return Platform::TextureFormat::R8G8B8A8_UNORM; // safe default; refined in M5
+    return Platform::TextureFormat::R8G8B8A8_UNORM; // decode-on-CPU default
 }
 
 } // namespace Platform::RenderDetail

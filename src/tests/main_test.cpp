@@ -8,6 +8,7 @@
 
 #include "tests/test_runner.h"
 
+#include "compat/dvd/DVDCompat.h"
 #include "compat/os/OSCompat.h"
 #include "platform/platform.h"
 
@@ -25,6 +26,11 @@ int main(int argc, char** argv) {
     Platform::Log::setMinLevel(Platform::Log::Level::Warn);
 
     const int result = pc_test::runSuite(argc, argv);
+
+    // Stop the DVD async worker (started by the async tests, if any). Safe
+    // to call unconditionally: it is a no-op when the worker was never
+    // started.
+    compat::shutdownDVD();
 
     Platform::shutdown();
     return result;

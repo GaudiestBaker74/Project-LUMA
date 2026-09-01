@@ -63,6 +63,9 @@ Problemas que NO son asm PPC y que no aparecen en la decomp (PPC32/mwcc), pero r
 13. **No anidar un namespace cuyo nombre coincide con una clase del mismo ámbito.** `namespace Platform::Renderer::Detail {}` es ilegal si `class Renderer` existe en `namespace Platform` ("redeclared as different kind of entity"). Usar un nombre distinto (`Platform::RenderDetail`). Síntoma en GCC: errores en cadena (usos de `Detail::stringify`/`pickPhysicalDevice` sin declarar, `vector` no miembro de `std`) porque el namespace no se abrió.
 14. **El header público de un módulo de plataforma no puede usar tipos de volk/Vulkan NI en métodos privados** (el header no debe depender de volk: M4.1 usó `void*` para los handles, pero los helpers privados `recordBeginPass`/`setDebugName` los declaré con `VkImageView`/`VkObjectType` → `error: 'VkImageView' has not been declared` al incluir el header sin volk). Solución: firmas opacas (`void*`, `uint32_t`) y cast dentro del .cpp. Y si un helper libre del .cpp necesita los miembros privados, **no lo definas en un namespace anónimo**: el `friend struct X;` del header declara `Platform::X`, y el namespace anónimo crea OTRA entidad distinta (`Platform::{anon}::X`) → `reference to 'X' is ambiguous` y la friend no aplica. Forward-declara `struct X;` antes de la clase, haz `friend struct X;`, y define `Platform::X` en el .cpp en namespace nombrado.
 15. **`VK_KHR_swapchain` debe habilitarse en el device aunque "no lo uses directamente".** Si falta, `vkGetDeviceProcAddr` devuelve NULL para `vkCreateSwapchainKHR`/`vkGetSwapchainImagesKHR`/... y **volk los deja NULL** → crash en la primera llamada al swapchain. Síntoma: segfault en `recreateSwapchainInternal` tras crear el device (en M4.1 lo perdí al refactorizar; en M3 estaba).
+16. **Los enums GX de número de componentes comparten valores numéricos entre grupos** (en `GXEnum.h`: `GX_POS_XY=0`, `GX_NRM_XYZ=0`; `GX_POS_XYZ=1`, `GX_TEX_ST=1`). Un `switch (compCnt)` global con esos casos da "duplicate case value" en host (el compilador PPC lo toleraba por cómo se agrupaban). Solución: resolver por **grupo de atributo** (pos → `cnt+2`, tex → `cnt+1`, normal → 3 fijo, color → 4) en vez de switchear los valores crudos (ver `attrComponentCount` en `GXCompat.cpp`).
+17. **SDL3 invirtió el retorno de `SDL_Init` (y `SDL_InitSubSystem`): ahora devuelve `bool` — `true` = ÉXITO** (en SDL2 devolvía 0 en éxito). `if (SDL_Init(...) != 0)` trata el éxito como error y hace SKIP/fatal "sin subsistema de vídeo" incluso con display disponible; el error de `SDL_GetError()` además sale vacío porque no hubo error. Síntoma: código que "nunca inicializa SDL" en Linux mientras la demo (que usa `if (!SDL_Init(...))`) funciona. Regla: usar `if (!SDL_Init(...))` = "si falló" (patrón del módulo Window).
+18. **Indexar un array de `sampler2D` con un índice no constante requiere la feature `shaderSampledImageArrayDynamicIndexing`** (core en Vulkan 1.2, pero hay que habilitarla en el device). El shader TEV (M5.4) quería `texture(uTex[texmap], uv)` con `texmap` leído del UBO → VUID/uso inválido si la feature no está habilitada, y el renderer no la activa. Solución: **if-chain de índice estático** (`if (texmap == 0) texture(uTex[0], ...) else if (texmap == 1) ...`) — `texmap` viene del UBO (dato uniforme), el branch es uniforme por draw y cada ruta muestrea un índice constante. Los arrays de datos normales (p. ej. `vec2 vUV[8]`) sí permiten indexado dinámico sin feature.
 
 ## 4. Endianness — reglas
 
@@ -72,6 +75,10 @@ Problemas que NO son asm PPC y que no aparecen en la decomp (PPC32/mwcc), pero r
 - Utilidad `tools/verify-assets` revisa la integridad de los assets extraídos (no su contenido legal — solo estructura/sumás de cabeceras).
 
 ## 5. Input — decisión de diseño (M6)
+
+*Implementado en M6: `src/platform/input/` + `src/compat/kpad|wpad`; mapeos
+efectivos y formato `config/input.ini` en `docs/input.md` §4. La tabla de abajo
+es la propuesta de diseño original (los mapeos finales son configurables).*
 
 Mapeo Wiimote → PC (propuesta inicial, refinable con el usuario):
 

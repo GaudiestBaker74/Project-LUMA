@@ -6,6 +6,25 @@
 > debug labels), samplers cacheados, render targets (color + profundidad Z24X8→
 > D24_UNORM_S8_UINT), muestreo en fragment shader (array de combined image samplers por
 > pipeline, `bindTexture`). M4.3: frame stats — GPU timestamps (query pool, auto-disable),
+> CPU render time y `VK_EXT_memory_budget` (log FPS con vram). M5.2: **buffer dinámico** —
+> `createDynamicBuffer`/`ensureBufferCapacity`/`updateDynamicBuffer` (host-visible,
+> reutilizado entre frames, crecimiento con retiro de la asignación vieja hasta
+> `endFrame`), que reemplaza los buffers temporales por-primitiva de compat/gx.
+> M5.3: los shaders GX texturizados (`kGxTexVertSpv/kGxTexFragSpv`) usan el path de
+> textura de M4.2 (set0/binding0, `bindTexture`) con `textureCount=1`.
+> M5.4: **UBO dinámico por draw para el TEV** — `PipelineDesc.fragmentUbo` añade un
+> set 1 con un `UNIFORM_BUFFER_DYNAMIC` (rango = stride del arena); el estado TEV se
+> sube con `uploadFragmentUbo` a un **arena host-visible de 1 MiB** (stride 2048,
+> un región por draw, offset dinámico en el bind; cursor reseteado en `endFrame`
+> tras el fence) y las 8 texturas se enlazan con `bindFragmentTextures`
+> (batch `vkUpdateDescriptorSets` + bind del set 0 del pipeline).
+> M5.5: **estado de pixel engine en `PipelineDesc`** — cull mode, blend
+> (factores/op con espejo alfa; logic op en `VkPipelineColorBlendStateCreateInfo`,
+> que reemplaza el blending en Vulkan), depth test/write/compare +
+> `depthFormat`/`passDepthFormat()` (pipeline sin depth → depth forzado off;
+> `renderingInfo.depthAttachmentFormat` solo si hay depth), colorWrite/alphaWrite,
+> y dstAlpha constante (`blendConstants[3]`). El fragment shader TEV evalúa el
+> alpha compare y el fog (Dolphin WriteAlphaTest/WriteFog) por píxel.
 > CPU time del render path y `VK_EXT_memory_budget` (opcional), logueados cada segundo
 > (`cpu-render/gpu/vram`). El EFB real (render target 640×448/576 + `GXCopyDisp`) se conecta
 > en M5 con el GX.
@@ -76,7 +95,7 @@ public:
 Observaciones:
 
 - **Sin abstracción de "backend genérico"** de momento: `renderer.h` ES la API; el único backend es `vulkan/`. Si mañana llega D3D12, se introduce la interfaz virtual en ese momento (YAGNI ahora).
-- Los **uniforms** son "push/UBO por draw": el compat GX agrupa matrices/colores/constantes TEV en un bloque pequeño por draw.
+- Los **uniforms** son "push/UBO por draw": el compat GX agrupa matrices/colores/constantes TEV en un bloque pequeño por draw. El MVP es push constant (vertex); el estado TEV + pixel engine (1296 B std140, `TevUboData` — TEV + fog/alpha compare) va en un UBO dinámico por draw (`uploadFragmentUbo` sobre el arena de 1 MiB, `UNIFORM_BUFFER_DYNAMIC` en set 1 con offset dinámico por draw). El arena se resetea en `endFrame` tras el fence (one frame in flight); si se agota, `uploadFragmentUbo` devuelve `false` y `flushDraw` descarta el draw.
 - Los **recursos se nombran** (debug labels) siempre que el device tenga `VK_EXT_debug_utils`.
 - Los **render targets** son opacos: el renderer gestiona la conversión del formato GX de profundidad (Z24X8) a un formato Vulkan.
 
@@ -120,5 +139,5 @@ Detalles:
 
 - M3: device + swapchain + clear + triángulo (smoke test de la pila Vulkan).
 - M4: API `renderer.h` cerrada + buffers/uniforms/viewport + pasadas con caché de pipelines básica + debug labels + frame timing.
-- M5: generación de shaders TEV + conversión de texturas + display lists (a través de compat/gx).
+- M5.2: buffer dinámico (host-visible, crecimiento con retiro diferido al `endFrame`). M5.x: generación de shaders TEV + conversión de texturas + display lists (a través de compat/gx).
 - M9+: copy EFB→present con filtros, dithering opcional, y (post-M10) resolución interna variable.

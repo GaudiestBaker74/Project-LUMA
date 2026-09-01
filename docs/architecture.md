@@ -214,11 +214,18 @@ Categorización completa y estrategia de emulación en **`docs/gx.md`**. Resumen
 
 → `compat/vi` sobre `Platform::Video`: el "retrace" se convierte en la sincronización de presentación (vsync); `VIGetTvFormat` devuelve una constante de configuración (NTSC 60 Hz por defecto, PAL opcional); los callbacks de retrace se disparan antes/después de presentar.
 
-### 6.4 DVD (≈ 15 usos)
+### 6.4 DVD (≈ 15 usos) ✅ (M7)
 
 `DVDReadPrio` (15), `DVDConvertPathToEntrynum` (11), `DVDReadAsyncPrio` (7), `DVDOpen/DVDFastOpen/DVDClose`, `DVDToAram`, `DVDReadDir`…
 
-→ `compat/dvd` sobre **VFS** (`Platform::Filesystem`): paths estilo `/StageData/...` se resuelven contra el árbol de assets extraído por el usuario. `DVDReadAsyncPrio` → lectura en hilo de carga (ya existe `FileLoaderThread` en el juego; se conecta con la cola de mensajes del compat OS).
+→ **implementado** (`src/compat/dvd/DVD.cpp`, M7) sobre **VFS**
+(`Platform::Filesystem`): paths estilo `/StageData/...` se resuelven contra
+el árbol de assets extraído por el usuario (docs/assets.md). **FST en
+memoria por escaneo** (entrynums estables, O(1)); `DVDReadPrio` síncrona;
+`DVDReadAsyncPrio` en **hilo worker** con cola por prioridad y callbacks en
+ese hilo — la conexión con `FileLoaderThread` del juego (colas del compat
+OS) queda para cuando compile game code de carga. `DVDLow*`/`__DVD*` no se
+portan (el juego no los llama).
 
 ### 6.5 Input Wii (≈ 20 usos)
 

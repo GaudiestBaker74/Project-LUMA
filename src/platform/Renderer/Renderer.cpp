@@ -25,6 +25,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
+#include <algorithm>
 #include <cstring>
 #include <unordered_map>
 #include <vector>
@@ -55,10 +56,80 @@ constexpr const char* kValidationLayer = "VK_LAYER_KHRONOS_validation";
 // compat/gx per draw). 128 bytes is the guaranteed minimum for a single stage.
 constexpr uint32_t kPushConstantSize = 128;
 
+// M5.4/M5.5 (TEV): per-draw fragment-UBO region and the per-frame arena size.
+// The TEV UBO (compat/gx/GXTevInternal.h) is 1296 B; regions are rounded up
+// to the dynamic-offset alignment.
+constexpr uint64_t kTevUboRegionBytes = 2048;
+constexpr uint64_t kTevUboArenaBytes = 1 << 20; // 1 MiB
+
+// --- fixed-function state -> Vulkan mappings (M5.5) --------------------------
+// The Platform enums are Vulkan-semantic; compat/gx maps the GX enums onto
+// them (e.g. GX_BM_SUBTRACT, which computes dst − src, maps to
+// BlendOp::ReverseSubtract).
+
+VkCullModeFlags cullModeToVk(CullMode m) {
+    switch (m) {
+        case CullMode::None:         return VK_CULL_MODE_NONE;
+        case CullMode::Back:         return VK_CULL_MODE_BACK_BIT;
+        case CullMode::Front:        return VK_CULL_MODE_FRONT_BIT;
+        case CullMode::FrontAndBack: return VK_CULL_MODE_FRONT_AND_BACK;
+    }
+    return VK_CULL_MODE_NONE;
+}
+
+VkCompareOp compareOpToVk(CompareOp op) {
+    switch (op) {
+        case CompareOp::Never:        return VK_COMPARE_OP_NEVER;
+        case CompareOp::Less:         return VK_COMPARE_OP_LESS;
+        case CompareOp::Equal:        return VK_COMPARE_OP_EQUAL;
+        case CompareOp::LessEqual:    return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case CompareOp::Greater:      return VK_COMPARE_OP_GREATER;
+        case CompareOp::NotEqual:     return VK_COMPARE_OP_NOT_EQUAL;
+        case CompareOp::GreaterEqual: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case CompareOp::Always:       return VK_COMPARE_OP_ALWAYS;
+    }
+    return VK_COMPARE_OP_ALWAYS;
+}
+
+VkBlendOp blendOpToVk(BlendOp op) {
+    switch (op) {
+        case BlendOp::Add:             return VK_BLEND_OP_ADD;
+        case BlendOp::Subtract:        return VK_BLEND_OP_SUBTRACT;
+        case BlendOp::ReverseSubtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
+    }
+    return VK_BLEND_OP_ADD;
+}
+
+// `dstAlphaConst`: GXSetDstAlpha enabled — the DSTALPHA/INVDSTALPHA factors
+// then read the constant alpha (cb.blendConstants[3]) instead of the
+// framebuffer alpha.
+VkBlendFactor blendFactorToVk(BlendFactor f, bool dstAlphaConst) {
+    switch (f) {
+        case BlendFactor::Zero:                return VK_BLEND_FACTOR_ZERO;
+        case BlendFactor::One:                 return VK_BLEND_FACTOR_ONE;
+        case BlendFactor::SrcColor:            return VK_BLEND_FACTOR_SRC_COLOR;
+        case BlendFactor::OneMinusSrcColor:    return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+        case BlendFactor::SrcAlpha:            return VK_BLEND_FACTOR_SRC_ALPHA;
+        case BlendFactor::OneMinusSrcAlpha:    return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        case BlendFactor::DstAlpha:
+            return dstAlphaConst ? VK_BLEND_FACTOR_CONSTANT_ALPHA : VK_BLEND_FACTOR_DST_ALPHA;
+        case BlendFactor::OneMinusDstAlpha:
+            return dstAlphaConst ? VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA
+                                 : VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+        case BlendFactor::ConstantAlpha:         return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+        case BlendFactor::OneMinusConstantAlpha: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
+    }
+    return VK_BLEND_FACTOR_ONE;
+}
+
 struct GpuBuffer {
     VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkDeviceSize size = 0;
+    // M5.2 dynamic buffers: persistent host mapping + allocation capacity
+    // (capacity may exceed `size` after growth).
+    void* mapped = nullptr;
+    VkDeviceSize capacity = 0;
 };
 
 struct GpuTexture {
@@ -119,11 +190,23 @@ uint64_t hashPipelineDesc(const PipelineDesc& d) {
         mix(&a, sizeof(a));
     }
     mix(&d.blendEnable, sizeof(d.blendEnable));
+    mix(&d.srcBlendFactor, sizeof(d.srcBlendFactor));
+    mix(&d.dstBlendFactor, sizeof(d.dstBlendFactor));
+    mix(&d.blendOp, sizeof(d.blendOp));
+    mix(&d.logicOpEnable, sizeof(d.logicOpEnable));
+    mix(&d.logicOp, sizeof(d.logicOp));
+    mix(&d.dstAlphaEnable, sizeof(d.dstAlphaEnable));
+    mix(&d.dstAlphaValue, sizeof(d.dstAlphaValue));
     mix(&d.depthTest, sizeof(d.depthTest));
     mix(&d.depthWrite, sizeof(d.depthWrite));
-    mix(&d.cullBack, sizeof(d.cullBack));
+    mix(&d.depthCompare, sizeof(d.depthCompare));
+    mix(&d.cullMode, sizeof(d.cullMode));
+    mix(&d.colorWrite, sizeof(d.colorWrite));
+    mix(&d.alphaWrite, sizeof(d.alphaWrite));
     mix(&d.colorFormat, sizeof(d.colorFormat));
+    mix(&d.depthFormat, sizeof(d.depthFormat));
     mix(&d.textureCount, sizeof(d.textureCount));
+    mix(&d.fragmentUbo, sizeof(d.fragmentUbo));
     mix(&d.vertSpvSize, sizeof(d.vertSpvSize));
     mix(&d.fragSpvSize, sizeof(d.fragSpvSize));
     // A few words of each shader pin the version in the hash.
@@ -169,11 +252,23 @@ bool PipelineDesc::operator==(const PipelineDesc& o) const {
            vertexLayout.stride == o.vertexLayout.stride &&
            vertexLayout.attribs == o.vertexLayout.attribs &&
            blendEnable == o.blendEnable &&
+           srcBlendFactor == o.srcBlendFactor &&
+           dstBlendFactor == o.dstBlendFactor &&
+           blendOp == o.blendOp &&
+           logicOpEnable == o.logicOpEnable &&
+           logicOp == o.logicOp &&
+           dstAlphaEnable == o.dstAlphaEnable &&
+           dstAlphaValue == o.dstAlphaValue &&
            depthTest == o.depthTest &&
            depthWrite == o.depthWrite &&
-           cullBack == o.cullBack &&
+           depthCompare == o.depthCompare &&
+           cullMode == o.cullMode &&
+           colorWrite == o.colorWrite &&
+           alphaWrite == o.alphaWrite &&
            colorFormat == o.colorFormat &&
+           depthFormat == o.depthFormat &&
            textureCount == o.textureCount &&
+           fragmentUbo == o.fragmentUbo &&
            vertSpv == o.vertSpv && vertSpvSize == o.vertSpvSize &&
            fragSpv == o.fragSpv && fragSpvSize == o.fragSpvSize;
 }
@@ -382,16 +477,62 @@ bool Renderer::init(SDL_Window* window, const RendererConfig& config) {
         }
     }
 
-    // --- descriptor pool (textured pipelines; M4.2) --------------------------
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSize.descriptorCount = 512;
+    // --- descriptor pool (textured pipelines M4.2 + TEV UBO M5.4) ------------
+    VkDescriptorPoolSize poolSizes[2]{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[0].descriptorCount = 512;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    poolSizes[1].descriptorCount = 64;
     VkDescriptorPoolCreateInfo dpci{};
     dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpci.maxSets = 128;
-    dpci.poolSizeCount = 1;
-    dpci.pPoolSizes = &poolSize;
+    dpci.poolSizeCount = 2;
+    dpci.pPoolSizes = poolSizes;
     vkCreateDescriptorPool(VKDEV, &dpci, nullptr, reinterpret_cast<VkDescriptorPool*>(&r.mDescriptorPool));
+
+    // --- M5.4: per-frame fragment-UBO arena (host-visible, dynamic offsets) --
+    // One region per draw; endFrame() resets the cursor after the frame fence.
+    {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(VKPHYS, &props);
+        r.mUboAlign = props.limits.minUniformBufferOffsetAlignment;
+        if (r.mUboAlign < 256) {
+            r.mUboAlign = 256;
+        }
+        // The TEV UBO is 1232 B; round each region up to the alignment.
+        r.mUboStride = ((kTevUboRegionBytes + r.mUboAlign - 1) / r.mUboAlign) * r.mUboAlign;
+        r.mUboSize = kTevUboArenaBytes;
+
+        VkBufferCreateInfo ubci{};
+        ubci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        ubci.size = r.mUboSize;
+        ubci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        VkBuffer uboBuf = VK_NULL_HANDLE;
+        vkCreateBuffer(VKDEV, &ubci, nullptr, &uboBuf);
+        VkMemoryRequirements uboReq;
+        vkGetBufferMemoryRequirements(VKDEV, uboBuf, &uboReq);
+        const uint32_t uboMt = findMemoryType(VKPHYS, uboReq.memoryTypeBits,
+                                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VkMemoryAllocateInfo umai{};
+        umai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        umai.allocationSize = uboReq.size;
+        umai.memoryTypeIndex = uboMt;
+        VkDeviceMemory uboMem = VK_NULL_HANDLE;
+        if (uboMt != UINT32_MAX &&
+            vkAllocateMemory(VKDEV, &umai, nullptr, &uboMem) == VK_SUCCESS &&
+            vkBindBufferMemory(VKDEV, uboBuf, uboMem, 0) == VK_SUCCESS) {
+            r.mUboBuffer = uboBuf;
+            r.mUboMemory = uboMem;
+            vkMapMemory(VKDEV, uboMem, 0, r.mUboSize, 0,
+                        reinterpret_cast<void**>(&r.mUboMapped));
+        } else {
+            PL_LOG_ERROR("renderer", "fragment UBO arena allocation failed");
+            if (uboBuf) vkDestroyBuffer(VKDEV, uboBuf, nullptr);
+            if (uboMem) vkFreeMemory(VKDEV, uboMem, nullptr);
+            r.mUboBuffer = r.mUboMemory = nullptr;
+        }
+    }
 
     // --- swapchain (format decides the pass color format) --------------------
     r.recreateSwapchainInternal();
@@ -415,6 +556,9 @@ void Renderer::shutdown() {
         if (entry.descriptorSetLayout) {
             vkDestroyDescriptorSetLayout(VKDEV, reinterpret_cast<VkDescriptorSetLayout>(entry.descriptorSetLayout), nullptr);
         }
+        if (entry.uboSetLayout) {
+            vkDestroyDescriptorSetLayout(VKDEV, reinterpret_cast<VkDescriptorSetLayout>(entry.uboSetLayout), nullptr);
+        }
         if (entry.layout) vkDestroyPipelineLayout(VKDEV, reinterpret_cast<VkPipelineLayout>(entry.layout), nullptr);
     }
     r.mPipelineCache.clear();
@@ -430,6 +574,18 @@ void Renderer::shutdown() {
     if (r.mDescriptorPool) {
         vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(r.mDescriptorPool), nullptr);
         r.mDescriptorPool = nullptr;
+    }
+    if (r.mUboMapped) {
+        vkUnmapMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(r.mUboMemory));
+        r.mUboMapped = nullptr;
+    }
+    if (r.mUboMemory) {
+        vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(r.mUboMemory), nullptr);
+        r.mUboMemory = nullptr;
+    }
+    if (r.mUboBuffer) {
+        vkDestroyBuffer(VKDEV, reinterpret_cast<VkBuffer>(r.mUboBuffer), nullptr);
+        r.mUboBuffer = nullptr;
     }
     if (r.mCmd) {
         vkFreeCommandBuffers(VKDEV, reinterpret_cast<VkCommandPool>(r.mCommandPool), 1,
@@ -452,6 +608,11 @@ void Renderer::shutdown() {
         vkDestroyQueryPool(VKDEV, reinterpret_cast<VkQueryPool>(r.mQueryPool), nullptr);
         r.mQueryPool = nullptr;
     }
+    for (const RetiredBuffer& rb : r.mRetiredBuffers) {
+        vkDestroyBuffer(VKDEV, reinterpret_cast<VkBuffer>(rb.buffer), nullptr);
+        vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(rb.memory), nullptr);
+    }
+    r.mRetiredBuffers.clear();
     r.destroySwapchainInternal();
     vkDestroyDevice(VKDEV, nullptr);
     r.mDevice = nullptr;
@@ -615,6 +776,8 @@ bool Renderer::beginFrame() {
     if (acquire == VK_SUBOPTIMAL_KHR) {
         mSwapchainOutOfDate = true;
     }
+    mFrameRecording = true;
+    mFrameAcquireConsumed = false; // flushFrame() consumes it if called
 
     // Begin recording (persistent command buffer, reset each frame).
     vkResetCommandPool(VKDEV, reinterpret_cast<VkCommandPool>(mCommandPool), 0);
@@ -746,6 +909,25 @@ void Renderer::beginPass(RenderTargetHandle target, const ClearValue& clear) {
     if (!rt) {
         return;
     }
+    // The RT color image may be left in TRANSFER_SRC_OPTIMAL by a previous
+    // blitPassToSwapchain/readRenderTarget. The pass clears the whole image
+    // (LOAD_OP_CLEAR), so transition UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
+    // (contents discarded) instead of tracking the last layout.
+    VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
+    VkImageMemoryBarrier toColor{};
+    toColor.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toColor.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    toColor.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    toColor.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toColor.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toColor.image = rt->color.image;
+    toColor.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    toColor.srcAccessMask = 0;
+    toColor.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &toColor);
+
     mPassTarget = target;
     recordBeginPass(rt->color.view, rt->hasDepth ? rt->depth.view : VK_NULL_HANDLE,
                     rt->hasDepth, rt->color.width, rt->color.height, clear);
@@ -797,18 +979,23 @@ void Renderer::endFrame() {
     // Semaphore owned by this swapchain image (never reused while the previous
     // present of that image is still in flight).
     VkSemaphore renderFinished = reinterpret_cast<VkSemaphore>(mRenderFinished[mImageIndex]);
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
     VkSubmitInfo submit{};
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.waitSemaphoreCount = 1;
-    submit.pWaitSemaphores = &imageAvailable;
-    submit.pWaitDstStageMask = &waitStage;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cmd;
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &renderFinished;
+    if (!mFrameAcquireConsumed) {
+        // flushFrame() (M5.7c) already waited on the acquire semaphore; only
+        // the first submission of the frame may wait on it.
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        submit.waitSemaphoreCount = 1;
+        submit.pWaitSemaphores = &imageAvailable;
+        submit.pWaitDstStageMask = &waitStage;
+    }
     vkQueueSubmit(VKGQ, 1, &submit, reinterpret_cast<VkFence>(mFence));
+    mFrameRecording = false;
 
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -830,6 +1017,18 @@ void Renderer::endFrame() {
         vkDestroyImageView(VKDEV, reinterpret_cast<VkImageView>(mPassImageView), nullptr);
         mPassImageView = nullptr;
     }
+
+    // M5.4: the fragment-UBO arena is single-buffered; safe to rewind now that
+    // the fence guarantees the GPU finished reading every region.
+    mUboCursor = 0;
+
+    // M5.2: destroy dynamic-buffer allocations retired during this frame (the
+    // fence above guarantees no command buffer references them anymore).
+    for (const RetiredBuffer& rb : mRetiredBuffers) {
+        vkDestroyBuffer(VKDEV, reinterpret_cast<VkBuffer>(rb.buffer), nullptr);
+        vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(rb.memory), nullptr);
+    }
+    mRetiredBuffers.clear();
 
     // --- frame statistics (M4.3) -------------------------------------------
     if (mCpuPhaseStart > 0.0) {
@@ -898,6 +1097,14 @@ VertexFormat Renderer::passColorFormat() const {
     }
 }
 
+TextureFormat Renderer::passDepthFormat() const {
+    if (mPassTarget == nullptr) {
+        return TextureFormat::Undefined;  // swapchain pass: no depth attachment
+    }
+    const GpuRenderTarget* rt = reinterpret_cast<const GpuRenderTarget*>(mPassTarget);
+    return rt->hasDepth ? rt->depth.format : TextureFormat::Undefined;
+}
+
 // --- pass state -------------------------------------------------------------
 
 void Renderer::setViewport(float x, float y, float w, float h) {
@@ -954,6 +1161,109 @@ BufferHandle Renderer::createBuffer(BufferUsage usage, uint64_t size, const void
 
     auto* out = new GpuBuffer{buffer, memory, size};
     return reinterpret_cast<BufferHandle>(out);
+}
+
+// --- dynamic buffer (M5.2) ---------------------------------------------------
+
+BufferHandle Renderer::createDynamicBuffer(uint64_t initialSize) {
+    const uint64_t size = std::max<uint64_t>(initialSize, 1024);
+
+    VkBufferCreateInfo bci{};
+    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.size = size;
+    bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    if (vkCreateBuffer(VKDEV, &bci, nullptr, &buffer) != VK_SUCCESS) {
+        PL_LOG_ERROR("renderer", "vkCreateBuffer (dynamic) failed (size %llu)",
+                     static_cast<unsigned long long>(size));
+        return nullptr;
+    }
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(VKDEV, buffer, &memReq);
+    VkDeviceMemory memory = RendererAccess::allocateMemory(
+        memReq.size, memReq.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (!memory) {
+        PL_LOG_ERROR("renderer", "no host-visible+coherent memory for dynamic buffer");
+        vkDestroyBuffer(VKDEV, buffer, nullptr);
+        return nullptr;
+    }
+    vkBindBufferMemory(VKDEV, buffer, memory, 0);
+
+    void* mapped = nullptr;
+    vkMapMemory(VKDEV, memory, 0, VK_WHOLE_SIZE, 0, &mapped);
+
+    auto* out = new GpuBuffer{buffer, memory, size, mapped, size};
+    return reinterpret_cast<BufferHandle>(out);
+}
+
+bool Renderer::ensureBufferCapacity(BufferHandle handle, uint64_t minBytes) {
+    auto* gpu = reinterpret_cast<GpuBuffer*>(handle);
+    if (!gpu || !gpu->mapped) {
+        return false;
+    }
+    if (minBytes <= gpu->capacity) {
+        return true;
+    }
+    // Grow: keep the old allocation alive until the frame fence (draws already
+    // recorded this frame reference it) — it goes to the retire queue and is
+    // destroyed at the next endFrame().
+    const uint64_t newSize = std::max(minBytes, gpu->capacity * 2);
+
+    VkBufferCreateInfo bci{};
+    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.size = newSize;
+    bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkBuffer newBuffer = VK_NULL_HANDLE;
+    if (vkCreateBuffer(VKDEV, &bci, nullptr, &newBuffer) != VK_SUCCESS) {
+        PL_LOG_ERROR("renderer", "vkCreateBuffer (dynamic grow) failed (size %llu)",
+                     static_cast<unsigned long long>(newSize));
+        return false;
+    }
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(VKDEV, newBuffer, &memReq);
+    VkDeviceMemory newMemory = RendererAccess::allocateMemory(
+        memReq.size, memReq.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (!newMemory) {
+        PL_LOG_ERROR("renderer", "no host-visible+coherent memory for dynamic grow");
+        vkDestroyBuffer(VKDEV, newBuffer, nullptr);
+        return false;
+    }
+    vkBindBufferMemory(VKDEV, newBuffer, newMemory, 0);
+    void* newMapped = nullptr;
+    vkMapMemory(VKDEV, newMemory, 0, VK_WHOLE_SIZE, 0, &newMapped);
+
+    // Preserve existing contents (host memory to host memory).
+    std::memcpy(newMapped, gpu->mapped, static_cast<size_t>(std::min(gpu->size, newSize)));
+
+    mRetiredBuffers.push_back({gpu->buffer, gpu->memory});
+    gpu->buffer = newBuffer;
+    gpu->memory = newMemory;
+    gpu->mapped = newMapped;
+    gpu->size = newSize;
+    gpu->capacity = newSize;
+    return true;
+}
+
+bool Renderer::updateDynamicBuffer(BufferHandle handle, uint64_t offset, uint64_t size,
+                                   const void* data) {
+    auto* gpu = reinterpret_cast<GpuBuffer*>(handle);
+    if (!gpu || !gpu->mapped || !data) {
+        return false;
+    }
+    if (offset + size > gpu->capacity) {
+        PL_LOG_ERROR("renderer", "updateDynamicBuffer out of bounds (off %llu size %llu cap %llu)",
+                     static_cast<unsigned long long>(offset),
+                     static_cast<unsigned long long>(size),
+                     static_cast<unsigned long long>(gpu->capacity));
+        return false;
+    }
+    std::memcpy(static_cast<uint8_t*>(gpu->mapped) + offset, data, static_cast<size_t>(size));
+    return true;
 }
 
 void Renderer::destroyBuffer(BufferHandle buffer) {
@@ -1216,6 +1526,70 @@ void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandl
                             0, 1, &set, 0, nullptr);
 }
 
+void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandle* sam,
+                                    uint32_t count) {
+    if (!mBoundEntry || !mBoundEntry->descriptorSet) {
+        PL_LOG_ERROR("renderer", "bindFragmentTextures: no textured pipeline bound");
+        return;
+    }
+    if (count > mBoundEntry->desc.textureCount || !tex || !sam) {
+        PL_LOG_ERROR("renderer", "bindFragmentTextures: %u out of range (textureCount %u)",
+                     count, mBoundEntry->desc.textureCount);
+        return;
+    }
+    VkWriteDescriptorSet writes[8]{};
+    VkDescriptorImageInfo images[8]{};
+    for (uint32_t i = 0; i < count; ++i) {
+        auto* t = reinterpret_cast<GpuTexture*>(tex[i]);
+        images[i].sampler = reinterpret_cast<VkSampler>(sam[i]);
+        images[i].imageView = t->view;
+        images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
+        writes[i].dstBinding = 0;
+        writes[i].dstArrayElement = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[i].pImageInfo = &images[i];
+    }
+    vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
+
+    VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
+    vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                            0, 1, &set, 0, nullptr);
+}
+
+bool Renderer::uploadFragmentUbo(const void* data, uint32_t size) {
+    if (!mBoundEntry || !mBoundEntry->uboSet) {
+        PL_LOG_ERROR("renderer", "uploadFragmentUbo: no fragmentUbo pipeline bound");
+        return false;
+    }
+    if (!mUboMapped) {
+        PL_LOG_ERROR("renderer", "uploadFragmentUbo: UBO arena unavailable");
+        return false;
+    }
+    if (size > mUboStride) {
+        PL_LOG_ERROR("renderer", "uploadFragmentUbo: %u bytes exceed region %llu",
+                     size, static_cast<unsigned long long>(mUboStride));
+        return false;
+    }
+    if (mUboCursor + mUboStride > mUboSize) {
+        PL_LOG_ERROR("renderer", "uploadFragmentUbo: UBO arena exhausted (%llu B/frame) — "
+                                 "draw dropped", static_cast<unsigned long long>(mUboSize));
+        return false;
+    }
+    const uint32_t dynamicOffset = static_cast<uint32_t>(mUboCursor);
+    std::memcpy(mUboMapped + mUboCursor, data, size);
+    mUboCursor += mUboStride;
+
+    VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->uboSet);
+    vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                            1, 1, &set, 1, &dynamicOffset);
+    return true;
+}
+
 RenderTargetHandle Renderer::createRenderTarget(const RenderTargetDesc& desc) {
     auto* rt = new GpuRenderTarget();
     rt->hasDepth = desc.hasDepth;
@@ -1357,6 +1731,259 @@ void Renderer::destroyRenderTarget(RenderTargetHandle target) {
     delete rt;
 }
 
+// --- M5.7c: EFB copy / present ------------------------------------------------
+
+bool Renderer::blitPassToSwapchain() {
+    if (!isInitialized() || !mCmd || mPassTarget == nullptr) {
+        // No offscreen pass to blit (the last pass was the swapchain itself):
+        // the swap image is already PRESENT_SRC after endPass().
+        return false;
+    }
+    VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
+    const auto* rt = reinterpret_cast<const GpuRenderTarget*>(mPassTarget);
+    const VkImage efbImage = rt->color.image;
+    const int32_t efbW = static_cast<int32_t>(rt->color.width);
+    const int32_t efbH = static_cast<int32_t>(rt->color.height);
+
+    std::vector<VkImage> images(mImageCount);
+    vkGetSwapchainImagesKHR(VKDEV, VKSWAP, &mImageCount, images.data());
+    const VkImage swapImage = images[mImageIndex];
+
+    // EFB: COLOR_ATTACHMENT_OPTIMAL -> TRANSFER_SRC_OPTIMAL.
+    VkImageMemoryBarrier efbBarrier{};
+    efbBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    efbBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    efbBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    efbBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    efbBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    efbBarrier.image = efbImage;
+    efbBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    efbBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    efbBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+    // Swapchain: UNDEFINED -> TRANSFER_DST_OPTIMAL (the blit overwrites the
+    // whole image; contents are discarded).
+    VkImageMemoryBarrier swapBarrier{};
+    swapBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    swapBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    swapBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    swapBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swapBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swapBarrier.image = swapImage;
+    swapBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    swapBarrier.srcAccessMask = 0;
+    swapBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    VkImageMemoryBarrier barriers[2] = {efbBarrier, swapBarrier};
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+                         nullptr, 2, barriers);
+
+    // Scale the EFB to the window (the GX XFB was 640x448/576; the window is
+    // any size). LINEAR filter = the XFB vertical filter, simplified.
+    VkImageBlit region{};
+    region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.srcOffsets[0] = {0, 0, 0};
+    region.srcOffsets[1] = {efbW, efbH, 1};
+    region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.dstOffsets[0] = {0, 0, 0};
+    region.dstOffsets[1] = {static_cast<int32_t>(mExtentW), static_cast<int32_t>(mExtentH), 1};
+    vkCmdBlitImage(cmd, efbImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   swapImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region,
+                   VK_FILTER_LINEAR);
+
+    // Swapchain: TRANSFER_DST_OPTIMAL -> PRESENT_SRC_KHR (endFrame submits).
+    VkImageMemoryBarrier toPresent{};
+    toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toPresent.image = swapImage;
+    toPresent.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    toPresent.dstAccessMask = 0;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &toPresent);
+
+    mPassTarget = nullptr; // the blit consumed the pass
+    return true;
+}
+
+bool Renderer::flushFrame() {
+    if (!isInitialized() || !mCmd || !mFrameRecording) {
+        return false; // no frame open (or renderer down): nothing to flush
+    }
+    // The pass (if any) was already ended by the caller (GXCopyTex between
+    // passes); a mid-pass flush is not supported — see docs/gx.md §J.
+    VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
+    vkEndCommandBuffer(cmd);
+
+    // First submission of the frame: wait on the acquire semaphore (later
+    // endFrame() submissions skip it via mFrameAcquireConsumed).
+    VkSemaphore imageAvailable = reinterpret_cast<VkSemaphore>(mImageAvailable);
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.waitSemaphoreCount = 1;
+    submit.pWaitSemaphores = &imageAvailable;
+    submit.pWaitDstStageMask = &waitStage;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cmd;
+    vkQueueSubmit(VKGQ, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(VKGQ); // synchronous: readbacks right after see the content
+    mFrameAcquireConsumed = true;
+
+    // Reopen a fresh command buffer for the rest of the frame (the blit in
+    // GXCopyDisp + the present at endFrame()). The previous recording is
+    // complete (queue idle above), so the buffer can be reset and re-begun.
+    vkResetCommandBuffer(cmd, 0);
+    VkCommandBufferBeginInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+    if (mHasTimestamps && mQueryPool) {
+        vkCmdResetQueryPool(cmd, reinterpret_cast<VkQueryPool>(mQueryPool), 0, 2);
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                            reinterpret_cast<VkQueryPool>(mQueryPool), 0);
+    }
+    return true;
+}
+
+bool Renderer::readRenderTarget(RenderTargetHandle target, uint32_t x, uint32_t y,
+                                uint32_t w, uint32_t h, void* outRgba8) {
+    if (!isInitialized() || !target || !outRgba8 || w == 0 || h == 0) {
+        return false;
+    }
+    const auto* rt = reinterpret_cast<const GpuRenderTarget*>(target);
+    if (x >= rt->color.width || y >= rt->color.height) {
+        return false;
+    }
+    w = std::min(w, rt->color.width - x);
+    h = std::min(h, rt->color.height - y);
+    const VkDeviceSize rowBytes = static_cast<VkDeviceSize>(w) * 4;
+    const VkDeviceSize bufBytes = rowBytes * h;
+
+    // Staging buffer: host-visible+coherent, persistently mapped (createBuffer
+    // only maps when initialData is given, so build it directly here).
+    VkBuffer staging = VK_NULL_HANDLE;
+    VkBufferCreateInfo bci{};
+    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.size = bufBytes;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(VKDEV, &bci, nullptr, &staging) != VK_SUCCESS) {
+        return false;
+    }
+    VkMemoryRequirements stageReq;
+    vkGetBufferMemoryRequirements(VKDEV, staging, &stageReq);
+    VkDeviceMemory stageMem = RendererAccess::allocateMemory(
+        stageReq.size, stageReq.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (!stageMem) {
+        vkDestroyBuffer(VKDEV, staging, nullptr);
+        return false;
+    }
+    vkBindBufferMemory(VKDEV, staging, stageMem, 0);
+    void* mapped = nullptr;
+    if (vkMapMemory(VKDEV, stageMem, 0, bufBytes, 0, &mapped) != VK_SUCCESS) {
+        vkFreeMemory(VKDEV, stageMem, nullptr);
+        vkDestroyBuffer(VKDEV, staging, nullptr);
+        return false;
+    }
+
+    // One-shot command buffer from the frame pool. Safe to run while the frame
+    // command buffer is open: it is submitted + queue-waited below before this
+    // function returns, so it never overlaps the frame's execution.
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo ai{};
+    ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    ai.commandPool = reinterpret_cast<VkCommandPool>(mCommandPool);
+    ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = 1;
+    vkAllocateCommandBuffers(VKDEV, &ai, &cmd);
+    VkCommandBufferBeginInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+
+    // The RT color is in COLOR_ATTACHMENT_OPTIMAL (created so, restored by
+    // beginPass/readRenderTarget). If a pass is currently open on it, the
+    // recorded-but-unsubmitted draws are not visible to this readback (the
+    // frame submits after the readback) — see docs/gx.md §J.
+    VkImageMemoryBarrier toSrc{};
+    toSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toSrc.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toSrc.image = rt->color.image;
+    toSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    toSrc.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    toSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &toSrc);
+
+    VkBufferImageCopy copy{};
+    copy.bufferOffset = 0;
+    copy.bufferRowLength = 0;   // tightly packed
+    copy.bufferImageHeight = 0;
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageOffset = {static_cast<int32_t>(x), static_cast<int32_t>(y), 0};
+    copy.imageExtent = {w, h, 1};
+    vkCmdCopyImageToBuffer(cmd, rt->color.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           staging, 1, &copy);
+
+    VkImageMemoryBarrier backToColor{};
+    backToColor.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    backToColor.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    backToColor.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    backToColor.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    backToColor.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    backToColor.image = rt->color.image;
+    backToColor.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    backToColor.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    backToColor.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &backToColor);
+
+    vkEndCommandBuffer(cmd);
+    VkSubmitInfo si{};
+    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &cmd;
+    vkQueueSubmit(VKGQ, 1, &si, VK_NULL_HANDLE);
+    vkQueueWaitIdle(VKGQ);
+    vkFreeCommandBuffers(VKDEV, reinterpret_cast<VkCommandPool>(mCommandPool), 1, &cmd);
+
+    // Convert the raw attachment bytes to R8G8B8A8 (the copy is tightly
+    // packed; the attachment may be BGRA).
+    const uint8_t* raw = static_cast<const uint8_t*>(mapped);
+    uint8_t* out = static_cast<uint8_t*>(outRgba8);
+    if (rt->color.format == TextureFormat::B8G8R8A8_UNORM) {
+        for (VkDeviceSize r = 0; r < h; ++r) {
+            const uint8_t* srcRow = raw + r * rowBytes;
+            uint8_t* dstRow = out + r * rowBytes;
+            for (VkDeviceSize i = 0; i < rowBytes; i += 4) {
+                dstRow[i + 0] = srcRow[i + 2];
+                dstRow[i + 1] = srcRow[i + 1];
+                dstRow[i + 2] = srcRow[i + 0];
+                dstRow[i + 3] = srcRow[i + 3];
+            }
+        }
+    } else {
+        std::memcpy(out, raw, static_cast<size_t>(bufBytes));
+    }
+
+    vkUnmapMemory(VKDEV, stageMem);
+    vkFreeMemory(VKDEV, stageMem, nullptr);
+    vkDestroyBuffer(VKDEV, staging, nullptr);
+    return true;
+}
+
 // --- pipeline cache ----------------------------------------------------------
 
 PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
@@ -1394,14 +2021,54 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
         vkAllocateDescriptorSets(VKDEV, &dsai, &descriptorSet);
     }
 
+    // M5.4 (TEV): set 1 = per-draw fragment UBO (dynamic). One descriptor per
+    // fragmentUbo pipeline, bound to the whole arena; uploadFragmentUbo picks
+    // a region via the dynamic offset.
+    VkDescriptorSetLayout uboSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet uboSet = VK_NULL_HANDLE;
+    if (desc.fragmentUbo) {
+        VkDescriptorSetLayoutBinding uboBinding{};
+        uboBinding.binding = 0;
+        uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        uboBinding.descriptorCount = 1;
+        uboBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo dsci{};
+        dsci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        dsci.bindingCount = 1;
+        dsci.pBindings = &uboBinding;
+        vkCreateDescriptorSetLayout(VKDEV, &dsci, nullptr, &uboSetLayout);
+
+        VkDescriptorSetAllocateInfo dsai{};
+        dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsai.descriptorPool = reinterpret_cast<VkDescriptorPool>(mDescriptorPool);
+        dsai.descriptorSetCount = 1;
+        dsai.pSetLayouts = &uboSetLayout;
+        if (vkAllocateDescriptorSets(VKDEV, &dsai, &uboSet) == VK_SUCCESS) {
+            VkDescriptorBufferInfo bufInfo{};
+            bufInfo.buffer = reinterpret_cast<VkBuffer>(mUboBuffer);
+            bufInfo.offset = 0;
+            bufInfo.range = mUboStride;
+            VkWriteDescriptorSet uboWrite{};
+            uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            uboWrite.dstSet = uboSet;
+            uboWrite.dstBinding = 0;
+            uboWrite.descriptorCount = 1;
+            uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            uboWrite.pBufferInfo = &bufInfo;
+            vkUpdateDescriptorSets(VKDEV, 1, &uboWrite, 0, nullptr);
+        }
+    }
+
+    VkDescriptorSetLayout layouts[2]{descriptorSetLayout, uboSetLayout};
+    uint32_t layoutCount = 0;
+    if (descriptorSetLayout) layouts[layoutCount++] = descriptorSetLayout;
+    if (uboSetLayout) layouts[layoutCount++] = uboSetLayout;
     VkPipelineLayoutCreateInfo plci{};
     plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     plci.pushConstantRangeCount = 1;
     plci.pPushConstantRanges = &pushRange;
-    if (descriptorSetLayout) {
-        plci.setLayoutCount = 1;
-        plci.pSetLayouts = &descriptorSetLayout;
-    }
+    plci.setLayoutCount = layoutCount;
+    plci.pSetLayouts = layouts;
     VkPipelineLayout layout = VK_NULL_HANDLE;
     vkCreatePipelineLayout(VKDEV, &plci, nullptr, &layout);
 
@@ -1462,7 +2129,13 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
                       ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
                       : desc.topology == PrimitiveTopology::TriangleStrip
                             ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
-                            : VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+                            : desc.topology == PrimitiveTopology::TriangleFan
+                                  ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN
+                                  : desc.topology == PrimitiveTopology::LineList
+                                        ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+                                        : desc.topology == PrimitiveTopology::LineStrip
+                                              ? VK_PRIMITIVE_TOPOLOGY_LINE_STRIP
+                                              : VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
     VkPipelineViewportStateCreateInfo vp{};
     vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -1472,7 +2145,7 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     VkPipelineRasterizationStateCreateInfo rs{};
     rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rs.polygonMode = VK_POLYGON_MODE_FILL;
-    rs.cullMode = desc.cullBack ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+    rs.cullMode = cullModeToVk(desc.cullMode);
     rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rs.lineWidth = 1.0f;
 
@@ -1481,27 +2154,45 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineColorBlendAttachmentState blend{};
-    blend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    if (desc.blendEnable) {
-        blend.blendEnable = VK_TRUE;
-        blend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        blend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        blend.colorBlendOp = VK_BLEND_OP_ADD;
-        blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        blend.alphaBlendOp = VK_BLEND_OP_ADD;
+    blend.colorWriteMask = 0;
+    if (desc.colorWrite) {
+        blend.colorWriteMask |= VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                VK_COLOR_COMPONENT_B_BIT;
+    }
+    if (desc.alphaWrite) {
+        blend.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
     }
     VkPipelineColorBlendStateCreateInfo cb{};
     cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     cb.attachmentCount = 1;
     cb.pAttachments = &blend;
+    cb.blendConstants[3] = desc.dstAlphaValue; // CONSTANT_ALPHA factor value
+    if (desc.logicOpEnable) {
+        // Logic op replaces blending (Vulkan: blending is disabled when the
+        // logic op is enabled). GXLogicOp values are 1:1 with VkLogicOp.
+        cb.logicOpEnable = VK_TRUE;
+        cb.logicOp = static_cast<VkLogicOp>(desc.logicOp);
+    } else if (desc.blendEnable) {
+        const bool dstAlphaConst = desc.dstAlphaEnable;
+        blend.blendEnable = VK_TRUE;
+        // GX applies the same factor to all four channels (no separate alpha
+        // factors), so the alpha slot mirrors the color slot.
+        blend.srcColorBlendFactor = blendFactorToVk(desc.srcBlendFactor, dstAlphaConst);
+        blend.dstColorBlendFactor = blendFactorToVk(desc.dstBlendFactor, dstAlphaConst);
+        blend.colorBlendOp = blendOpToVk(desc.blendOp);
+        blend.srcAlphaBlendFactor = blend.srcColorBlendFactor;
+        blend.dstAlphaBlendFactor = blend.dstColorBlendFactor;
+        blend.alphaBlendOp = blend.colorBlendOp;
+    }
 
+    // A pipeline that renders into a pass without a depth attachment cannot
+    // depth test/write — force the state off so it matches the pass.
+    const bool hasDepthAtt = desc.depthFormat != TextureFormat::Undefined;
     VkPipelineDepthStencilStateCreateInfo ds{};
     ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    ds.depthTestEnable = desc.depthTest ? VK_TRUE : VK_FALSE;
-    ds.depthWriteEnable = desc.depthWrite ? VK_TRUE : VK_FALSE;
-    ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    ds.depthTestEnable = (desc.depthTest && hasDepthAtt) ? VK_TRUE : VK_FALSE;
+    ds.depthWriteEnable = (desc.depthWrite && hasDepthAtt) ? VK_TRUE : VK_FALSE;
+    ds.depthCompareOp = compareOpToVk(desc.depthCompare);
 
     VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dyn{};
@@ -1509,12 +2200,16 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     dyn.dynamicStateCount = 2;
     dyn.pDynamicStates = dynamicStates;
 
-    // Dynamic rendering: declare the color attachment format.
+    // Dynamic rendering: declare the color (+ optional depth) attachment
+    // formats; they must match the current pass.
     const VkFormat colorFormat = colorFormatToVk(desc.colorFormat);
     VkPipelineRenderingCreateInfo renderingInfo{};
     renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     renderingInfo.colorAttachmentCount = 1;
     renderingInfo.pColorAttachmentFormats = &colorFormat;
+    if (hasDepthAtt) {
+        renderingInfo.depthAttachmentFormat = textureFormatToVk(desc.depthFormat);
+    }
 
     VkGraphicsPipelineCreateInfo pci{};
     pci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1540,13 +2235,16 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     if (result != VK_SUCCESS) {
         PL_LOG_ERROR("renderer", "vkCreateGraphicsPipelines failed (%d)", static_cast<int>(result));
         if (descriptorSetLayout) vkDestroyDescriptorSetLayout(VKDEV, descriptorSetLayout, nullptr);
+        if (uboSetLayout) vkDestroyDescriptorSetLayout(VKDEV, uboSetLayout, nullptr);
         vkDestroyPipelineLayout(VKDEV, layout, nullptr);
         return nullptr;
     }
 
     PipelineCacheEntry entry{desc, reinterpret_cast<void*>(pipeline), reinterpret_cast<void*>(layout),
                              reinterpret_cast<void*>(descriptorSetLayout),
-                             reinterpret_cast<void*>(descriptorSet)};
+                             reinterpret_cast<void*>(descriptorSet),
+                             reinterpret_cast<void*>(uboSetLayout),
+                             reinterpret_cast<void*>(uboSet)};
     mPipelineCache[hash] = entry;
     mPipelineByHandle[reinterpret_cast<void*>(pipeline)] = &mPipelineCache[hash];
     return reinterpret_cast<PipelineHandle>(pipeline);
