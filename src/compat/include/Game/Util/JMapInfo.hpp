@@ -1,0 +1,181 @@
+// =============================================================================
+// PC_PORT PATCH — override de include/Game/Util/JMapInfo.hpp (esta carpeta va
+// PRIMERA en el include path; ver compat/include/README.md).
+//
+// El vendered declara `class JMapInfoIter;` al principio y la DEFINE al final
+// del fichero, pero su member-template `JMapInfo::findElement` la devuelve POR
+// VALOR antes de que la clase esté completa. Metrowerks lo toleraba;
+// GCC/Clang/MSVC exigen el tipo completo en la definición del template.
+//
+// Cambio (semántica idéntica): la clase JMapInfoIter se declara antes de
+// `class JMapInfo` y sus cuerpos inline (que usan JMapInfo) se definen al
+// final del fichero, donde JMapInfo ya está completo.
+// =============================================================================
+#pragma once
+
+#include <cstring>
+#include <revolution.h>
+
+#define JMAP_VALUE_TYPE_LONG 0
+#define JMAP_VALUE_TYPE_STRING 1
+#define JMAP_VALUE_TYPE_FLOAT 2
+#define JMAP_VALUE_TYPE_LONG_2 3
+#define JMAP_VALUE_TYPE_SHORT 4
+#define JMAP_VALUE_TYPE_BYTE 5
+#define JMAP_VALUE_TYPE_STRING_PTR 6
+#define JMAP_VALUE_TYPE_NULL 7
+
+class JMapInfoIter;
+
+struct JMapItem {
+    u32 mHash;      // 0x0
+    u32 mMask;      // 0x4
+    u16 mOffsData;  // 0x8
+    u8 mShift;      // 0xA
+    u8 mType;       // 0xB
+};
+
+struct JMapData {
+    s32 mNumEntries;          // 0x0
+    s32 mNumFields;           // 0x4
+    s32 mDataOffset;          // 0x8
+    u32 mEntrySize;           // 0xC
+    const JMapItem mItems[];  // 0x10
+};
+
+template < typename T >
+inline bool compareValues(const T a, const T b) {
+    return a == b;
+}
+
+template <>
+inline bool compareValues< const char* >(const char* a, const char* b) {
+    return strcmp(a, b) == 0;
+}
+
+inline const char* getEntryAddress(const JMapData* pData, s32 dataOffset, int entryIndex) {
+    return reinterpret_cast< const char* >(pData) + dataOffset + entryIndex * pData->mEntrySize;
+}
+
+class JMapInfo;
+
+class JMapInfoIter {
+public:
+    JMapInfoIter();
+    JMapInfoIter(const JMapInfo* pInfo, s32 index);
+
+    bool operator==(const JMapInfoIter& rIter) const;
+    bool operator!=(const JMapInfoIter& rIter) const;
+    bool isValid() const;
+
+    template < typename T >
+    bool getValue(const char* pKey, T* pValueOut) const;
+
+    /* 0x00 */ const JMapInfo* mInfo;
+    /* 0x04 */ s32 mIndex;
+};
+
+class JMapInfo {
+public:
+    JMapInfo();
+    ~JMapInfo();
+
+    inline bool operator==(const JMapInfo& rInfo) const {
+        return mData == rInfo.mData;
+    }
+
+    inline bool dataExists() const {
+        return !!mData;
+    }
+
+    inline int getNumEntries() const {
+        return dataExists() ? mData->mNumEntries : 0;
+    }
+
+    inline int getNumFields() const {
+        return dataExists() ? mData->mNumFields : 0;
+    }
+
+    bool attach(const void*);
+    void setName(const char*);
+    const char* getName() const;
+    s32 searchItemInfo(const char*) const;
+    s32 getValueType(const char*) const;
+    bool getValueFast(int, int, const char**) const;
+    bool getValueFast(int, int, u32*) const;
+    bool getValueFast(int, int, s32*) const;
+    bool getValueFast(int entryIndex, int itemIndex, f32* pValueOut) const {
+        const JMapItem* pItem = &mData->mItems[itemIndex];
+        const char* pValue = getEntryAddress(mData, mData->mDataOffset, entryIndex) + pItem->mOffsData;
+        *pValueOut = *reinterpret_cast< const f32* >(pValue);
+        return true;
+    }
+    bool getValueFast(int entryIndex, int itemIndex, bool* pValueOut) const {
+        const JMapItem* pItem = &mData->mItems[itemIndex];
+        const char* pValue = getEntryAddress(mData, mData->mDataOffset, entryIndex) + pItem->mOffsData;
+        *pValueOut = (*reinterpret_cast< const u32* >(pValue) & pItem->mMask) != 0;
+        return true;
+    }
+
+    JMapInfoIter findElementBinary(const char*, const char*) const;
+
+    template < typename T >
+    const bool getValue(int entryIndex, const char* pKey, T* pValueOut) const {
+        s32 itemIndex = searchItemInfo(pKey);
+        if (itemIndex < 0) {
+            return false;
+        }
+        return getValueFast(entryIndex, itemIndex, pValueOut);
+    }
+
+    template < typename T >
+    JMapInfoIter findElement(const char* pKey, T searchValue, int startIndex) const {
+        int entryIndex = startIndex;
+        T value;
+        while (entryIndex < getNumEntries()) {
+            getValue< T >(entryIndex, pKey, &value);
+            if (compareValues< T >(value, searchValue)) {
+                return JMapInfoIter(this, entryIndex);
+            }
+            entryIndex++;
+        }
+        return end();
+    }
+
+    inline JMapInfoIter end() const;
+
+    /* 0x00 */ const JMapData* mData;
+    /* 0x04 */ const char* mName;
+};
+
+
+inline JMapInfoIter::JMapInfoIter() : mInfo(), mIndex(-1) {
+}
+
+inline JMapInfoIter::JMapInfoIter(const JMapInfo* pInfo, s32 index) : mInfo(pInfo), mIndex(index) {
+}
+
+inline bool JMapInfoIter::operator==(const JMapInfoIter& rIter) const {
+    return mIndex == rIter.mIndex && mInfo != nullptr && rIter.mInfo != nullptr && *mInfo == *rIter.mInfo;
+}
+
+inline bool JMapInfoIter::operator!=(const JMapInfoIter& rIter) const {
+    return !(*this == rIter);
+}
+
+inline bool JMapInfoIter::isValid() const {
+    return mInfo && mIndex >= 0 && mIndex < mInfo->getNumEntries();
+}
+
+template < typename T >
+inline bool JMapInfoIter::getValue(const char* pKey, T* pValueOut) const {
+    return mInfo->getValue(mIndex, pKey, pValueOut);
+}
+
+JMapInfoIter JMapInfo::end() const {
+    return JMapInfoIter(this, getNumEntries());
+}
+
+namespace MR {
+    JMapInfoIter findJMapInfoElementNoCase(const JMapInfo*, const char*, const char*, int);
+};  // namespace MR
