@@ -47,3 +47,38 @@ void* __memcpy(void* dst, const void* src, int size) {
     // PPC memcpy intrinsic (dolphin's __memcpy has the same signature).
     return std::memcpy(dst, src, static_cast<std::size_t>(size));
 }
+
+// --- Metrowerks runtime conversion helpers (compat/include/runtime.h) -------
+// The DOL runtime provided these in asm; the decompiled code calls them by
+// name (e.g. MainLoopFramework::waitDrawDoneAndSetAlarm converts the GX
+// watchdog interval with __cvt_dbl_usll). C linkage — matches the extern "C"
+// declarations in the runtime.h shim. Semantics: truncation toward zero with
+// saturation (NaN -> 0), the behaviour MSL documents for the out-of-range
+// cases the hardware leaves undefined.
+#include <runtime.h>
+
+extern "C" unsigned long long __cvt_dbl_usll(double value) {
+    if (value != value) { // NaN
+        return 0;
+    }
+    if (value <= 0.0) {
+        return 0;
+    }
+    if (value >= 18446744073709551616.0) { // 2^64
+        return 0xFFFFFFFFFFFFFFFFULL;
+    }
+    return static_cast<unsigned long long>(value);
+}
+
+extern "C" unsigned int __cvt_fp2unsigned(double value) {
+    if (value != value) { // NaN
+        return 0;
+    }
+    if (value <= 0.0) {
+        return 0;
+    }
+    if (value >= 4294967296.0) { // 2^32
+        return 0xFFFFFFFFu;
+    }
+    return static_cast<unsigned int>(value);
+}

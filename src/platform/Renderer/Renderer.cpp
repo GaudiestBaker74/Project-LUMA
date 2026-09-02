@@ -145,6 +145,11 @@ struct GpuRenderTarget {
     GpuTexture color;
     GpuTexture depth; // only if desc.hasDepth
     bool hasDepth = false;
+    // Current layout of the color image, tracked across passes/blits/readbacks
+    // (validation requires barrier oldLayout to match the real layout; the
+    // image is left in TRANSFER_SRC_OPTIMAL by blitPassToSwapchain and in
+    // COLOR_ATTACHMENT_OPTIMAL by beginPass/readRenderTarget).
+    VkImageLayout colorLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 };
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugMessengerCallback(
@@ -243,6 +248,22 @@ struct RendererAccess {
         VkDeviceMemory mem = VK_NULL_HANDLE;
         vkAllocateMemory(VKDEV, &mai, nullptr, &mem);
         return mem;
+    }
+
+    // M9.4: immediate destruction of a retired render target's GPU resources
+    // (only called once the frame fence guarantees no submitted command
+    // buffer references them — see Renderer::destroyRenderTarget).
+    static void destroyRenderTargetNow(void* target) {
+        auto* rt = reinterpret_cast<GpuRenderTarget*>(target);
+        if (rt->hasDepth) {
+            vkDestroyImageView(VKDEV, rt->depth.view, nullptr);
+            vkDestroyImage(VKDEV, rt->depth.image, nullptr);
+            vkFreeMemory(VKDEV, rt->depth.memory, nullptr);
+        }
+        vkDestroyImageView(VKDEV, rt->color.view, nullptr);
+        vkDestroyImage(VKDEV, rt->color.image, nullptr);
+        vkFreeMemory(VKDEV, rt->color.memory, nullptr);
+        delete rt;
     }
 };
 
@@ -613,6 +634,11 @@ void Renderer::shutdown() {
         vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(rb.memory), nullptr);
     }
     r.mRetiredBuffers.clear();
+    // M9.4: retired render targets (the device wait above covers them).
+    for (void* rt : r.mRetiredRenderTargets) {
+        RendererAccess::destroyRenderTargetNow(rt);
+    }
+    r.mRetiredRenderTargets.clear();
     r.destroySwapchainInternal();
     vkDestroyDevice(VKDEV, nullptr);
     r.mDevice = nullptr;
@@ -706,7 +732,12 @@ void Renderer::recreateSwapchainInternal() {
     sci.imageColorSpace = surfaceFormat.colorSpace;
     sci.imageExtent = {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
     sci.imageArrayLayers = 1;
+    // The EFB→screen blit (blitPassToSwapchain) needs TRANSFER_DST on the
+    // swapchain images. Honour the reported surface capabilities.
     sci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+        sci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
     sci.imageSharingMode = (mGraphicsFamily == mPresentFamily) ? VK_SHARING_MODE_EXCLUSIVE
                                                                : VK_SHARING_MODE_CONCURRENT;
     sci.queueFamilyIndexCount = (mGraphicsFamily == mPresentFamily) ? 0 : 2;
@@ -778,6 +809,7 @@ bool Renderer::beginFrame() {
     }
     mFrameRecording = true;
     mFrameAcquireConsumed = false; // flushFrame() consumes it if called
+    mSwapPresentReady = false;     // fresh swap image: nothing presented yet
 
     // Begin recording (persistent command buffer, reset each frame).
     vkResetCommandPool(VKDEV, reinterpret_cast<VkCommandPool>(mCommandPool), 0);
@@ -927,6 +959,7 @@ void Renderer::beginPass(RenderTargetHandle target, const ClearValue& clear) {
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &toColor);
+    rt->colorLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     mPassTarget = target;
     recordBeginPass(rt->color.view, rt->hasDepth ? rt->depth.view : VK_NULL_HANDLE,
@@ -958,6 +991,7 @@ void Renderer::endPass() {
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &toPresent);
+        mSwapPresentReady = true;
     }
     // Render target: leave the color in COLOR_ATTACHMENT_OPTIMAL (readback /
     // sampling transitions are done by the caller — M5's GXCopyDisp blit).
@@ -969,6 +1003,27 @@ void Renderer::endFrame() {
         endPass();
     }
     VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
+    if (!mSwapPresentReady) {
+        // Empty/aborted frame (e.g. a scene transition where the game opened
+        // no pass or never blitted): present still happens, so transition the
+        // untouched swap image UNDEFINED -> PRESENT_SRC (contents discarded).
+        std::vector<VkImage> images(mImageCount);
+        vkGetSwapchainImagesKHR(VKDEV, VKSWAP, &mImageCount, images.data());
+        VkImageMemoryBarrier toPresent{};
+        toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toPresent.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresent.image = images[mImageIndex];
+        toPresent.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toPresent.srcAccessMask = 0;
+        toPresent.dstAccessMask = 0;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
+                             0, nullptr, 1, &toPresent);
+        mSwapPresentReady = true;
+    }
     if (mHasTimestamps && mQueryPool) {
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                             reinterpret_cast<VkQueryPool>(mQueryPool), 1);
@@ -986,10 +1041,12 @@ void Renderer::endFrame() {
     submit.pCommandBuffers = &cmd;
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &renderFinished;
+    // NOTE: waitStage must outlive vkQueueSubmit — declaring it inside the if
+    // block left pWaitDstStageMask dangling (UB, caught by validation layers).
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     if (!mFrameAcquireConsumed) {
         // flushFrame() (M5.7c) already waited on the acquire semaphore; only
         // the first submission of the frame may wait on it.
-        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         submit.waitSemaphoreCount = 1;
         submit.pWaitSemaphores = &imageAvailable;
         submit.pWaitDstStageMask = &waitStage;
@@ -1029,6 +1086,13 @@ void Renderer::endFrame() {
         vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(rb.memory), nullptr);
     }
     mRetiredBuffers.clear();
+
+    // M9.4: destroy render targets retired during this frame (same fence
+    // guarantee — see destroyRenderTarget).
+    for (void* rt : mRetiredRenderTargets) {
+        RendererAccess::destroyRenderTargetNow(rt);
+    }
+    mRetiredRenderTargets.clear();
 
     // --- frame statistics (M4.3) -------------------------------------------
     if (mCpuPhaseStart > 0.0) {
@@ -1108,11 +1172,20 @@ TextureFormat Renderer::passDepthFormat() const {
 // --- pass state -------------------------------------------------------------
 
 void Renderer::setViewport(float x, float y, float w, float h) {
+    if (!mFrameRecording) {
+        // vkCmdSetViewport requires a recording command buffer. Calls outside
+        // a host frame (e.g. GXSetViewport before beginRender) are dropped
+        // here; GXCompat mirrors them and re-applies in flushDraw.
+        return;
+    }
     VkViewport vp{x, y, w, h, 0.0f, 1.0f};
     vkCmdSetViewport(reinterpret_cast<VkCommandBuffer>(mCmd), 0, 1, &vp);
 }
 
 void Renderer::setScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    if (!mFrameRecording) {
+        return; // see setViewport
+    }
     VkRect2D scissor{{static_cast<int32_t>(x), static_cast<int32_t>(y)}, {w, h}};
     vkCmdSetScissor(reinterpret_cast<VkCommandBuffer>(mCmd), 0, 1, &scissor);
 }
@@ -1695,7 +1768,11 @@ RenderTargetHandle Renderer::createRenderTarget(const RenderTargetDesc& desc) {
         toDepth.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toDepth.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toDepth.image = depthImage;
-        toDepth.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+        // Combined depth/stencil format without separateDepthStencilLayouts:
+        // the barrier must cover BOTH aspects
+        // (VUID-VkImageMemoryBarrier-image-03320). The image VIEW above may
+        // still expose only the depth aspect (valid for attachments).
+        toDepth.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
         toDepth.srcAccessMask = 0;
         toDepth.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -1719,16 +1796,11 @@ void Renderer::destroyRenderTarget(RenderTargetHandle target) {
     if (!target) {
         return;
     }
-    auto* rt = reinterpret_cast<GpuRenderTarget*>(target);
-    if (rt->hasDepth) {
-        vkDestroyImageView(VKDEV, rt->depth.view, nullptr);
-        vkDestroyImage(VKDEV, rt->depth.image, nullptr);
-        vkFreeMemory(VKDEV, rt->depth.memory, nullptr);
-    }
-    vkDestroyImageView(VKDEV, rt->color.view, nullptr);
-    vkDestroyImage(VKDEV, rt->color.image, nullptr);
-    vkFreeMemory(VKDEV, rt->color.memory, nullptr);
-    delete rt;
+    // M9.4: deferred destruction — the target may still be referenced by the
+    // frame being recorded (blitPassToSwapchain reads it through mPassTarget
+    // even after endPass) and by already-submitted frames. The retire queue
+    // is flushed in endFrame() after the frame fence, and at shutdown.
+    mRetiredRenderTargets.push_back(target);
 }
 
 // --- M5.7c: EFB copy / present ------------------------------------------------
@@ -1740,7 +1812,7 @@ bool Renderer::blitPassToSwapchain() {
         return false;
     }
     VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
-    const auto* rt = reinterpret_cast<const GpuRenderTarget*>(mPassTarget);
+    auto* rt = reinterpret_cast<GpuRenderTarget*>(mPassTarget);
     const VkImage efbImage = rt->color.image;
     const int32_t efbW = static_cast<int32_t>(rt->color.width);
     const int32_t efbH = static_cast<int32_t>(rt->color.height);
@@ -1749,16 +1821,22 @@ bool Renderer::blitPassToSwapchain() {
     vkGetSwapchainImagesKHR(VKDEV, VKSWAP, &mImageCount, images.data());
     const VkImage swapImage = images[mImageIndex];
 
-    // EFB: COLOR_ATTACHMENT_OPTIMAL -> TRANSFER_SRC_OPTIMAL.
+    // EFB: <tracked layout> -> TRANSFER_SRC_OPTIMAL. Normally the pass just
+    // ended (COLOR_ATTACHMENT_OPTIMAL); use the tracked value so back-to-back
+    // blits/readbacks stay validation-clean.
+    const bool fromColorAttachment =
+        (rt->colorLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkImageMemoryBarrier efbBarrier{};
     efbBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    efbBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    efbBarrier.oldLayout = rt->colorLayout;
     efbBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     efbBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     efbBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     efbBarrier.image = efbImage;
     efbBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    efbBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    efbBarrier.srcAccessMask = fromColorAttachment
+                                   ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                                   : VK_ACCESS_TRANSFER_READ_BIT;
     efbBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
     // Swapchain: UNDEFINED -> TRANSFER_DST_OPTIMAL (the blit overwrites the
@@ -1775,7 +1853,10 @@ bool Renderer::blitPassToSwapchain() {
     swapBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
     VkImageMemoryBarrier barriers[2] = {efbBarrier, swapBarrier};
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    vkCmdPipelineBarrier(cmd,
+                         fromColorAttachment
+                             ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                             : VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
                          nullptr, 2, barriers);
 
@@ -1806,7 +1887,9 @@ bool Renderer::blitPassToSwapchain() {
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &toPresent);
+    mSwapPresentReady = true;
 
+    rt->colorLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     mPassTarget = nullptr; // the blit consumed the pass
     return true;
 }
@@ -1856,7 +1939,7 @@ bool Renderer::readRenderTarget(RenderTargetHandle target, uint32_t x, uint32_t 
     if (!isInitialized() || !target || !outRgba8 || w == 0 || h == 0) {
         return false;
     }
-    const auto* rt = reinterpret_cast<const GpuRenderTarget*>(target);
+    auto* rt = reinterpret_cast<GpuRenderTarget*>(target);
     if (x >= rt->color.width || y >= rt->color.height) {
         return false;
     }
@@ -1912,17 +1995,26 @@ bool Renderer::readRenderTarget(RenderTargetHandle target, uint32_t x, uint32_t 
     // beginPass/readRenderTarget). If a pass is currently open on it, the
     // recorded-but-unsubmitted draws are not visible to this readback (the
     // frame submits after the readback) — see docs/gx.md §J.
+    // The image may already be in TRANSFER_SRC_OPTIMAL (a previous blit or
+    // readback left it there) — use the tracked layout, not a hardcoded one.
+    const bool fromColorAttachment =
+        (rt->colorLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkImageMemoryBarrier toSrc{};
     toSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toSrc.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    toSrc.oldLayout = rt->colorLayout;
     toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     toSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     toSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     toSrc.image = rt->color.image;
     toSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    toSrc.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    toSrc.srcAccessMask = fromColorAttachment
+                              ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                              : VK_ACCESS_TRANSFER_READ_BIT;
     toSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    vkCmdPipelineBarrier(cmd,
+                         fromColorAttachment
+                             ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                             : VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &toSrc);
 
@@ -1949,6 +2041,7 @@ bool Renderer::readRenderTarget(RenderTargetHandle target, uint32_t x, uint32_t 
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &backToColor);
+    rt->colorLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     vkEndCommandBuffer(cmd);
     VkSubmitInfo si{};

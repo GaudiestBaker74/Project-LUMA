@@ -23,6 +23,14 @@ JKRExpHeap* JKRExpHeap::createRoot(int heapNum, bool a2) {
         u32 size = arenaSize - objSize;
         heap = new (stack_C) JKRExpHeap(area, size, nullptr, a2);
         JKRHeap::sRootHeap = heap;
+    } else {
+        // PC_PORT: the console calls createRoot exactly once (the gameMain
+        // boot); the upstream decomp leaves `heap` null on a second call and
+        // crashes writing mAllocMode. On the host the root heap is a
+        // process-wide singleton shared by the test suite (jkr_heap_test
+        // creates it first, the M9 boot tests reuse it) — return the existing
+        // root instead of dereferencing null.
+        heap = static_cast<JKRExpHeap*>(JKRHeap::sRootHeap);
     }
 
     heap->mAllocMode = 1;

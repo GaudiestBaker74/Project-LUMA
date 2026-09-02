@@ -11,7 +11,7 @@
 // Usage:
 //   galaxy-pc [--help] [--version] [--log-level LVL] [--log-file PATH]
 //             [--assets-dir DIR] [--gpu-debug] [--width N] [--height N]
-//             [--no-vsync] [--fullscreen] [--frames N]
+//             [--no-vsync] [--fullscreen] [--frames N] [--boot]
 // =============================================================================
 
 #include "compat/dvd/DVDCompat.h"
@@ -29,6 +29,11 @@
 #include <cstring>
 #include <string>
 
+// M9.2+: the vendored GameSystem.cpp `main()` (the DOL entry point), renamed
+// by the PC_PORT patch. Runs the console boot prologue and then the frame
+// loop forever (it does not return; the process is terminated by the OS/user).
+void gameMain(void);
+
 namespace {
 
 constexpr const char* kVersion = "0.5.0 (Milestone 5)";
@@ -43,6 +48,7 @@ struct Options {
     bool vsync = true;
     bool fullscreen = false;
     int maxFrames = 0; // 0 = run until quit
+    bool boot = false; // M9: run the real game boot (gameMain) instead of the demo
 };
 
 void printHelp() {
@@ -60,7 +66,9 @@ void printHelp() {
         "  --height N         window height (default 720)\n"
         "  --no-vsync         disable vsync (VK_PRESENT_MODE_IMMEDIATE)\n"
         "  --fullscreen       start fullscreen (F11 toggles)\n"
-        "  --frames N         run N frames then exit cleanly (0 = run forever)\n\n"
+        "  --frames N         run N frames then exit cleanly (0 = run forever)\n"
+        "  --boot             run the real game boot (M9: gameMain -> frameLoop,\n"
+        "                     Logo scene) instead of the M5 demo\n\n"
         "M5 demo: SDL3 window + Vulkan (Platform::Renderer) + fixed 60 Hz loop\n"
         "with a rotating GX quad (immediate vertices). Esc/close quits; F11 toggles\n"
         "fullscreen.\n"
@@ -113,6 +121,8 @@ bool parseArgs(int argc, char** argv, Options& out) {
             out.vsync = false;
         } else if (arg == "--fullscreen") {
             out.fullscreen = true;
+        } else if (arg == "--boot") {
+            out.boot = true;
         } else if (arg == "--frames") {
             const char* v = next("--frames");
             if (!v) return false;
@@ -211,6 +221,38 @@ int main(int argc, char** argv) {
     }
     compat::initOS();
     compat::initDVD();  // M7: FST from the mounted assets root (no-op without assets)
+
+    // --- M9: the real game boot (gameMain) -----------------------------------
+    // The vendored boot prologue (DVDInit/VIInit/heaps/GameSystem::init) and
+    // its frame loop need the window + renderer: the GX compat layer routes
+    // the game's draws into the EFB pass and GXCopyDisp presents through the
+    // swapchain (the frame cycle is bridged in the patched MainLoopFramework).
+    // gameMain() never returns — like the console, the boot runs until the
+    // process is terminated (window-close handling arrives with the M9.5
+    // present-driven mode).
+    if (opts.boot) {
+        Platform::WindowConfig bootWindowConfig;
+        bootWindowConfig.title = "galaxy-pc — Super Mario Galaxy (boot)";
+        bootWindowConfig.width = opts.width;
+        bootWindowConfig.height = opts.height;
+        bootWindowConfig.startFullscreen = opts.fullscreen;
+        Platform::Window bootWindow(bootWindowConfig);
+        if (!bootWindow.handle()) {
+            return 1;
+        }
+
+        Platform::RendererConfig bootRendererConfig;
+        bootRendererConfig.enableValidation = opts.gpuDebug;
+        bootRendererConfig.vsync = opts.vsync;
+        if (!Platform::Renderer::init(bootWindow.handle(), bootRendererConfig)) {
+            PL_LOG_FATAL("main", "renderer initialization failed");
+            return 1;
+        }
+
+        PL_LOG_INFO("main", "--boot: entering gameMain() (the vendored game boot)");
+        gameMain(); // does not return
+        return 0;   // unreachable
+    }
 
     // --- window + renderer ---------------------------------------------------
     Platform::WindowConfig windowConfig;

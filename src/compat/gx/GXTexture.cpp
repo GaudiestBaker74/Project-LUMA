@@ -25,6 +25,7 @@
 #include "platform/Log/Log.h"
 #include "platform/Renderer/Renderer.h"
 
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -166,8 +167,17 @@ bool loadTexture(TexObjData& d) {
         if (!btiDecodeToRgba8(d.image, need, d.width, d.height, d.format,
                               d.palette, d.paletteBytes, d.paletteFormat,
                               rgba.data())) {
-            PL_LOG_WARN("gx", "GXLoadTexObj: unsupported format 0x%x (%ux%u)",
-                        static_cast<unsigned>(d.format), d.width, d.height);
+            // M9.4: warn once per format, not per call — the boot's clearEfb
+            // loads the Z24X8 clear_z_tobj EVERY frame (the GXSetZTexture
+            // Z-replace path has no host texture; the pass depth-clear covers
+            // it), which flooded the log at 60 Hz.
+            static std::atomic<uint32_t> sWarnedFormats{0};
+            const uint32_t bit = 1u << (static_cast<uint32_t>(d.format) & 31);
+            if ((sWarnedFormats.fetch_or(bit, std::memory_order_relaxed) & bit) == 0) {
+                PL_LOG_WARN("gx", "GXLoadTexObj: unsupported format 0x%x (%ux%u) "
+                                  "(further warnings for this format suppressed)",
+                            static_cast<unsigned>(d.format), d.width, d.height);
+            }
             return false;
         }
         Platform::TextureDesc td;

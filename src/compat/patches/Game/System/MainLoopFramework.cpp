@@ -10,7 +10,9 @@
 #include <JSystem/JUtility/JUTXfb.hpp>
 #include <revolution/gx/GXRegs.h>
 #include <runtime.h>
+#include "compat/gx/GXCompat.h"
 #include "platform/Log/Log.h"
+#include "platform/Renderer/Renderer.h"
 
 MainLoopFramework* MainLoopFramework::sManager;
 
@@ -31,6 +33,13 @@ namespace {
     void waitDrawDoneAndSetAlarm();
 
     void handleGXAbortAlarm(OSAlarm*, OSContext*);
+
+    // PC_PORT (M9.4): true while the host renderer frame cycle is open for
+    // the current game frame (beginRender opened beginFrame + the EFB pass;
+    // endFrame presents and clears it). GX draws outside a pass are dropped
+    // by the compat layer (flushDraw guard), so a skipped host frame (e.g.
+    // swapchain recreation) degrades to "the console drew into the void".
+    bool sHostFrameActive = false;
 };  // namespace
 
 void MainLoopFramework::ctor_subroutine(bool useAlpha) {
@@ -252,6 +261,19 @@ void MainLoopFramework::beginRender() {
         mRenderCounter = 0;
     }
     if (mDoRenderFrame) {
+        // PC_PORT (M9.4): host renderer frame cycle. The console renders the
+        // frame into the EFB and the XFB machinery displays it; on PC the
+        // same frame is Renderer::beginFrame + the EFB offscreen pass
+        // (GXCopyDisp in endRender blits EFB -> swapchain, endFrame
+        // presents). If beginFrame fails (swapchain out-of-date/recreated)
+        // the host frame is simply skipped this cycle.
+        sHostFrameActive = false;
+        Platform::Renderer& r = Platform::Renderer::instance();
+        if (r.isInitialized() && r.beginFrame()) {
+            r.beginPass(static_cast<Platform::RenderTargetHandle>(
+                Platform::CompatGx::getEfbRenderTarget()));
+            sHostFrameActive = true;
+        }
         clearEfb(mClearColor);
         preGX();
     }
@@ -259,6 +281,12 @@ void MainLoopFramework::beginRender() {
 
 void MainLoopFramework::endRender() {
     endGX();
+    // PC_PORT (M9.4): close the EFB pass before the XFB copy below —
+    // GXCopyDisp blits the EFB into the swapchain image and needs the pass
+    // ended (the blit records its own commands on the frame buffer).
+    if (sHostFrameActive) {
+        Platform::Renderer::instance().endPass();
+    }
     if (mDoRenderFrame) {
         JUTXfb* xfb = JUTXfb::sManager;
         switch (xfb->mBufferNum) {
@@ -299,6 +327,17 @@ void MainLoopFramework::endFrame() {
             lbl_806B6ED4 = 1;
         }
         VIGetRetraceCount();
+    }
+
+    // PC_PORT (M9.4): present the host frame (endRender's GXCopyDisp already
+    // blitted the EFB into the swapchain image) and reset the GX dynamic
+    // vertex-buffer cursor — the tail of the demo's main loop, now driven by
+    // the game's own frame loop. waitForRetrace afterwards paces the loop on
+    // the VI field clock.
+    if (sHostFrameActive) {
+        Platform::Renderer::instance().endFrame();
+        GXCompatEndFrame();
+        sHostFrameActive = false;
     }
 }
 

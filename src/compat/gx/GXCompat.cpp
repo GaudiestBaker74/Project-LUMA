@@ -66,6 +66,11 @@ bool sHasProjection = false;
 // Viewport/scissor/clear (M3 hooks now with real state).
 f32 sViewportX = 0, sViewportY = 0, sViewportW = 0, sViewportH = 0;
 u32 sScissor[4] = {0, 0, 0, 0};
+// GXSetScissor may arrive before the host frame is recording; the mirror is
+// then re-applied by flushDraw (Renderer drops dynamic-state calls outside a
+// recording command buffer). sScissorSet keeps the {0,0,0,0} default from
+// clipping everything to nothing.
+bool sScissorSet = false;
 f32 sClearColor[4] = {0.1f, 0.1f, 0.15f, 1.0f};
 
 // --- pixel-engine state mirror (M5.5) ----------------------------------------
@@ -523,6 +528,16 @@ void flushDraw() {
     }
     Platform::Renderer& r = Platform::Renderer::instance();
 
+    // PC_PORT (M9.4): draws outside an active pass have no command buffer —
+    // e.g. the boot frame loop skipped beginFrame this frame (swapchain
+    // out-of-date) or a headless test emits geometry without a pass. Drop the
+    // primitive like the uninitialized case above (the debug snapshot was
+    // already taken, so capture tests still see the vertices).
+    if (!r.inPass()) {
+        sVertexData.clear();
+        return;
+    }
+
     // --- expand to the fixed TEV vertex layout (27 floats) ------------------
     // pos(3) clr0(4) clr1(4) tex0..7(2 each). Missing attributes are filled:
     // colors default per channel state (M5.7a: with the channel disabled the
@@ -741,6 +756,16 @@ void flushDraw() {
     } else {
         std::memset(mvp, 0, sizeof(mvp));
         mvp[0] = mvp[5] = mvp[10] = mvp[15] = 1.0f;
+    }
+    // Re-apply the mirrored viewport/scissor: GXSetViewport/GXSetScissor often
+    // arrive before the host command buffer is recording (game-boot order sets
+    // them during scene init, before beginRender). Renderer drops those early
+    // calls, and dynamic state must be recorded inside the pass — here it is.
+    if (sViewportW > 0.0f && sViewportH > 0.0f) {
+        r.setViewport(sViewportX, sViewportY, sViewportW, sViewportH);
+    }
+    if (sScissorSet) {
+        r.setScissor(sScissor[0], sScissor[1], sScissor[2], sScissor[3]);
     }
     r.setUniforms(mvp, sizeof(mvp));
     r.draw(static_cast<uint32_t>(drawVerts),
@@ -1397,6 +1422,7 @@ void GXSetScissor(u32 x, u32 y, u32 w, u32 h) {
     sScissor[1] = y;
     sScissor[2] = w;
     sScissor[3] = h;
+    sScissorSet = true;
     if (Platform::Renderer::instance().isInitialized()) {
         Platform::Renderer::instance().setScissor(x, y, w, h);
     }

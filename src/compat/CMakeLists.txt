@@ -86,9 +86,91 @@ add_library(pc_compat STATIC
     ${PETARI_ROOT}/src/Game/System/WPadRumbleData.cpp
     ${PETARI_ROOT}/src/Game/System/WPadInfoChecker.cpp
     ${PETARI_ROOT}/src/Game/System/WPadLeaveWatcher.cpp
+    # --- M8: audio pipeline (docs/audio.md) -----------------------------------
+    # compat: jdsp microcode emulation (mixer + ADPCM), AI registers/DMA +
+    # soft clock, 32-bit pointer token registry, JAS host glue (the audio
+    # thread's run loop over Platform::Threading).
+    audio/AudioCommon.cpp
+    dsp/Adpcm.cpp
+    dsp/DSP.cpp
+    dsp/Mixer.cpp
+    ai/AI.cpp
+    jsystem/JasAudioHost.cpp
+    # OS shims the driver needs (cache no-ops, interrupts, OSTime).
+    os/OSCache.cpp
+    os/OSInterrupt.cpp
+    os/OSTime.cpp
+    # Vendored JAudio2 driver (patched copies where the 32-bit pointer ABI or
+    # the header overrides require it — see patches/README.md).
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASAiCtrl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASCalc.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASDSPInterface.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASHeapCtrl.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASDriverIF.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASDSPChannel.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASLfo.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASProbe.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASCallback.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASCmdStack.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRSolidHeap.cpp
+    # --- M9.1: OSThread/OSMessageQueue host layer + JKRThread -----------------
+    os/OSThread.cpp
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRThread.cpp
+    # --- M9.2: the gameMain boot prologue (docs/boot.md) -----------------------
+    # Host stubs of the boot tree (font holder, audio wrapper, obj holder…) +
+    # the patched vendored GameSystem/FileRipper/HeapMemoryWatcher + the real
+    # vendored nerve/executor/util files.
+    game/GameBoot.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/GameSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/HeapMemoryWatcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/FileRipper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/NameObj/NameObj.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/NameObj/NameObjRegister.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemFrameControl.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemDimmingWatcher.cpp
+    ${PETARI_ROOT}/src/Game/System/FunctionAsyncExecutor.cpp
+    ${PETARI_ROOT}/src/Game/System/OSThreadWrapper.cpp
+    ${PETARI_ROOT}/src/Game/System/NerveExecutor.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/Nerve.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/Spine.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/ActorStateKeeper.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutActorFlag.cpp
+    ${PETARI_ROOT}/src/Game/Util/NerveUtil.cpp
+    ${PETARI_ROOT}/src/Game/Util/MemoryUtil.cpp
+    ${PETARI_ROOT}/src/Game/Util/TriggerChecker.cpp
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRUnitHeap.cpp
+    # --- M9.3: VI + frame control (docs/boot.md) -------------------------------
+    os/OSAlarm.cpp
+    vi/VICompat.cpp
+    gx/GXSync.cpp
+    jsystem/J2DGrafContextCompat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/MainLoopFramework.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Util/BothDirList.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTVideo.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTXfb.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTDirectPrint.cpp
+    ${PETARI_ROOT}/src/JSystem/J2DGraph/J2DOrthoGraph.cpp
+    ${PETARI_ROOT}/src/JSystem/J2DGraph/J2DGrafContext.cpp
+    ${PETARI_ROOT}/src/Game/Util/SchedulerUtil.cpp
+    # --- M9.4: scene system + Logo (docs/boot.md) ------------------------------
+    # Host implementations of the NameObj/Scene execution infrastructure +
+    # the real vendored scene controller, Scene base and LogoFader, plus the
+    # patched LogoScene/SceneFactory/StringUtil.
+    game/SceneCompat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/LogoScene.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/SceneFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Util/StringUtil.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemSceneController.cpp
+    ${PETARI_ROOT}/src/Game/Scene/Scene.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LogoFader.cpp
+    # M9.3: patched mtx44 (no MWERKS asm) — plain C bodies, but the PC GX/mtx
+    # header overrides are C++, so compile it as C++ like GXLight.c.
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
 )
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/gx/GXLight.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(pc_compat PUBLIC
@@ -100,6 +182,9 @@ target_include_directories(pc_compat PUBLIC
     ${PETARI_ROOT}/libs/JSystem/include
     # Revolution SDK headers (types, OS, GX...).
     ${PETARI_ROOT}/libs/RVL_SDK/include
+    # nw4r headers (lyt layout engine, ut, ...) — used by GameSystem (LytInit)
+    # and the layout/screen code.
+    ${PETARI_ROOT}/libs/nw4r/include
     # Game headers ("Game/...") — needed by the M6.5 WPad wrapper integration
     # (and, later, all of Game/System).
     ${PETARI_ROOT}/include
@@ -129,6 +214,55 @@ set(PETARI_SOURCES
     ${PETARI_ROOT}/src/Game/System/WPadRumbleData.cpp
     ${PETARI_ROOT}/src/Game/System/WPadInfoChecker.cpp
     ${PETARI_ROOT}/src/Game/System/WPadLeaveWatcher.cpp
+    # M8 (audio): patched + vendored JAudio2 driver files.
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASAiCtrl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASCalc.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASDSPInterface.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JAudio2/JASHeapCtrl.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASDriverIF.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASDSPChannel.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASLfo.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASProbe.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASCallback.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASCmdStack.cpp
+    ${PETARI_ROOT}/src/JSystem/JAudio2/JASReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRSolidHeap.cpp
+    # M9.1–M9.4: the boot tree, frame control, scene system (vendored +
+    # patched copies — all old-style decomp, silenced like the rest).
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRThread.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/GameSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/HeapMemoryWatcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/FileRipper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/NameObj/NameObj.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/NameObj/NameObjRegister.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemFrameControl.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemDimmingWatcher.cpp
+    ${PETARI_ROOT}/src/Game/System/FunctionAsyncExecutor.cpp
+    ${PETARI_ROOT}/src/Game/System/OSThreadWrapper.cpp
+    ${PETARI_ROOT}/src/Game/System/NerveExecutor.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/Nerve.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/Spine.cpp
+    ${PETARI_ROOT}/src/Game/LiveActor/ActorStateKeeper.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutActorFlag.cpp
+    ${PETARI_ROOT}/src/Game/Util/NerveUtil.cpp
+    ${PETARI_ROOT}/src/Game/Util/MemoryUtil.cpp
+    ${PETARI_ROOT}/src/Game/Util/TriggerChecker.cpp
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRUnitHeap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/MainLoopFramework.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Util/BothDirList.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTVideo.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTXfb.cpp
+    ${PETARI_ROOT}/src/JSystem/JUtility/JUTDirectPrint.cpp
+    ${PETARI_ROOT}/src/JSystem/J2DGraph/J2DOrthoGraph.cpp
+    ${PETARI_ROOT}/src/JSystem/J2DGraph/J2DGrafContext.cpp
+    ${PETARI_ROOT}/src/Game/Util/SchedulerUtil.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/LogoScene.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/SceneFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Util/StringUtil.cpp
+    ${PETARI_ROOT}/src/Game/System/GameSystemSceneController.cpp
+    ${PETARI_ROOT}/src/Game/Scene/Scene.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LogoFader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
 )
 set_source_files_properties(${PETARI_SOURCES} PROPERTIES COMPILE_OPTIONS
     "$<$<CXX_COMPILER_ID:MSVC>:/w>;$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>")

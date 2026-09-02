@@ -11,6 +11,7 @@
 #include "Game/Scene/GameScene.hpp"
 #include "Game/Scene/IntermissionScene.hpp"
 #include "Game/Scene/LogoScene.hpp"
+#include "platform/Log/Log.h"
 #include <cstdio>
 
 namespace {
@@ -48,6 +49,12 @@ namespace MR {
         if (pIter == pEnd) {
             return nullptr;
         }
+
+        // PC_PORT (M9.4): boot-progress marker — scene creation happens on an
+        // async worker (GameSystemSceneController::initializeScene), so this
+        // log line is the confirmation that the scene machine really created
+        // the requested scene.
+        PL_LOG_INFO("boot", "createScene('%s')", pName);
 
         return (*pIter->mCreateFunc)();
     }

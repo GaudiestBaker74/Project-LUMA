@@ -13,6 +13,8 @@ add_library(pc_platform STATIC
     Window/Window.cpp
     Input/Input.cpp
     Renderer/Renderer.cpp
+    # M8: SDL3 audio backend (pull stream + SPSC ring; virtual mode headless).
+    Audio/Audio.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/volk/volk.c
 )
 

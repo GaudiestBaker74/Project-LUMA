@@ -38,6 +38,19 @@ add_executable(galaxy-pc-tests
     # M7.3: verify-assets core (same sources as the standalone tool).
     ../tools/verify_assets/VerifyAssets.cpp
     verify_assets_test.cpp
+    # M8: audio pipeline (ring buffer, DSP mixer, AI/DMA cadence, full JAS
+    # driver boot in virtual mode — headless).
+    audio_ring_test.cpp
+    audio_dsp_mixer_test.cpp
+    audio_ai_test.cpp
+    jas_audio_driver_test.cpp
+    # M9.1: OSThread/OSMessageQueue host layer + JKRThread.
+    os_thread_test.cpp
+    # M9.3: VI field clock, retrace blocking/callbacks, OSAlarm.
+    vi_frame_test.cpp
+    # M9.4: scene system + Logo (factory, fader nerves, the full boot drive
+    # to the LogoScene Deactive nerve — headless).
+    scene_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)

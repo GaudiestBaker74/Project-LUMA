@@ -69,18 +69,31 @@ std::mutex gRegistryMutex;
 using MutexRegistry =
     std::unordered_map<OSMutex*, std::recursive_mutex*, std::hash<OSMutex*>,
                        std::equal_to<OSMutex*>, PlatformAllocator<std::pair<OSMutex* const, std::recursive_mutex*>>>;
-MutexRegistry gMutexes;
+
+// PC_PORT: the registry is a function-local (Meyers) singleton, NOT a
+// namespace-scope global. Vendored global objects (JASHeapCtrl.cpp's
+// `JASHeap JASKernel::audioAramHeap`) call OSInitMutex during static
+// initialization, before file-scope statics of other TUs are guaranteed to
+// be constructed — a global unordered_map is still empty-but-unconstructed
+// at that point (bucket count 0) and the first emplace divides by zero
+// (SIGFPE before main). The function-local static is constructed on first
+// use, which is always safe (thread-safe statics guard).
+MutexRegistry& mutexRegistry() {
+    static MutexRegistry sRegistry;
+    return sRegistry;
+}
 
 std::recursive_mutex* getMutex(OSMutex* mutex) {
     std::lock_guard<std::mutex> lock(gRegistryMutex);
-    auto it = gMutexes.find(mutex);
-    if (it != gMutexes.end()) {
+    MutexRegistry& registry = mutexRegistry();
+    auto it = registry.find(mutex);
+    if (it != registry.end()) {
         return it->second;
     }
     void* storage = Platform::Memory::allocate(sizeof(std::recursive_mutex),
                                                alignof(std::recursive_mutex));
     auto* created = ::new (storage) std::recursive_mutex();
-    gMutexes.emplace(mutex, created);
+    registry.emplace(mutex, created);
     return created;
 }
 } // namespace

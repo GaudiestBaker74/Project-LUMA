@@ -420,6 +420,10 @@ private:
     bool mFrameRecording = false;        // M5.7c: between beginFrame() and endFrame()
     bool mFrameAcquireConsumed = false;  // M5.7c: flushFrame() already waited on
                                          // the image-available semaphore
+    bool mSwapPresentReady = false;      // swap image transitioned to
+                                         // PRESENT_SRC this frame (endPass /
+                                         // blitPassToSwapchain); endFrame adds
+                                         // a fallback barrier for empty frames
     uint32_t mExtentW = 0;
     uint32_t mExtentH = 0;
 
@@ -451,6 +455,15 @@ private:
         void* memory;
     };
     std::vector<RetiredBuffer> mRetiredBuffers;
+
+    // M9.4: render targets retired by destroyRenderTarget(), destroyed at the
+    // next endFrame() after the frame fence (or at shutdown). GX may resize
+    // the EFB mid-frame (compat/gx ensureEfb recreates it when
+    // GXSetDispCopySrc changes) while the blit recorded in the same frame
+    // still references the old image AND reads the target struct through
+    // mPassTarget — immediate destruction frees memory the GPU (and the blit
+    // recording) still use.
+    std::vector<void*> mRetiredRenderTargets;
 
     // M4.3 frame statistics.
     void* mQueryPool = nullptr;        // VkQueryPool (2 timestamps: frame start/end)

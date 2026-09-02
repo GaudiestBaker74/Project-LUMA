@@ -255,17 +255,28 @@ Pendientes fuera de M7 (futuros): montaje **JKRArchive** (RARC/Yaz0) que
 consume el DVD; `JKRDvdRipper`/`JKRDvdFile`; conexión de
 `DVDReadAsyncPrio` con `FileLoaderThread` del juego.
 
-## M8 — Audio
+## M8 — Audio ✅ (core; M8.5 pendiente)
 
-- `compat/ax` + mezclador final en CPU + `Platform::Audio` (SDL3).
-- Carga de BNK/onda desde VFS; BGM y SE funcionando.
+- [x] Mezclador final en CPU (emulación del microcódigo jdsp del DSP) +
+  `compat/ai` (registros/DMA/reloj soft) + `Platform::Audio` (SDL3, modo
+  virtual headless) — driver JAudio2 vendered compilado nativo.
+  Detalle completo: `docs/audio.md`.
+- [ ] **M8.5**: carga de BNK/onda desde el VFS y BGM/SE reales
+  (`JASChannel`/`JASTrack` + `AudSystemWrapper` real, hoy stub).
 - Micrófono/speaker → stub documentado `TODO(PC_PORT)`.
+- Nota: `compat/ax` no ha hecho falta — el juego pasa todo por JAudio2.
 
-## M9 — Primer boot real 🎯 *(primer hito de éxito del proyecto)*
+## M9 — Primer boot real 🎯 *(primer hito de éxito del proyecto)* — en marcha (M9.1–M9.4 ✅)
 
 - `galaxy-pc` → inicialización de GameSystem → **Logo → título → una escena con Mario renderizado**.
 - Requiere: compat/os, dvd, vi, gx (subset), filesystem VFS, frame control, escena "Logo".
 - Audio puede seguir en stub; NWC24 en stub.
+- Progreso: **M9.1** (hilos OSThread/JKRThread) ✅, **M9.2** (prólogo
+  `gameMain()` hasta el frameLoop) ✅, **M9.3** (VI + frame control con
+  retrace real) ✅, **M9.4** (sistema de escenas + LogoScene: el boot llega a
+  la Logo y corre sus nerves hasta `Deactive`) ✅ — detalle en `docs/boot.md`.
+- Pendiente: **M9.5** (título + escena con Mario: J3D, layouts nw4r, montaje
+  JKRArchive del StationedArchiveLoader).
 
 ## M10 — Primera galaxia jugable
 

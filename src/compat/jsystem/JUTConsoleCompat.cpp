@@ -38,3 +38,19 @@ void JUTReportConsole_f(const char* fmt, ...) {
 }
 
 } // extern "C"
+
+// --- JUTConsoleManager host definitions --------------------------------------
+// The vendored MainLoopFramework::endGX draws the debug console through the
+// manager when one exists, and JUTVideo/JUTDirectPrint reference the static.
+// On the host no manager is ever created (the on-screen console arrives with
+// the JUT milestone, see the header comment), so sManager stays null and
+// draw()/drawDirect() are provided as no-ops for the link.
+JUTConsoleManager* JUTConsoleManager::sManager = nullptr;
+
+void JUTConsoleManager::draw() const {
+    // TODO(PC_PORT, M9.5): on-screen debug console rendering.
+}
+
+void JUTConsoleManager::drawDirect(bool) const {
+    // TODO(PC_PORT, M9.5): direct-print console rendering.
+}

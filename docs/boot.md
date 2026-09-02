@@ -1,7 +1,10 @@
 # Boot (M9) — primer boot real
 
-Status: **M9.1 (capas de hilos) ✅** — 158 tests, 0 failed. El resto de M9 está
-planificado abajo; cada sub-hito cierra con "compila + enlaza + ctest verde".
+Status: **M9.4 (sistema de escenas + Logo) ✅** — 169 tests, 0 failed (con display; 167+2 skipped headless), validación Vulkan limpia
+(headless; en máquina con display/GPU corren los 2 de Vulkan → 169). El boot
+real (`galaxy-pc --boot`) crea la LogoScene y corre su cadena de nerves hasta
+`Deactive` con el frame loop a 60 fps. M9.5 planificado abajo; cada sub-hito
+cierra con "compila + enlaza + ctest verde".
 
 ## Plan M9 (sub-hitos)
 
@@ -10,17 +13,17 @@ planificado abajo; cada sub-hito cierra con "compila + enlaza + ctest verde".
   vendered compilado. Base de todo lo que viene: `JASDvdThread`/`JASAudioThread`
   reales (pueden sustituir el host glue de M8), `FunctionAsyncExecutor`
   (`MR::startFunctionAsyncExecute`), thread-switch.
-- **M9.2 — Prólogo del boot**: `galaxy-pc` llama a `gameMain()` (el `main()` de
+- **M9.2 — Prólogo del boot ✅**: `galaxy-pc` llama a `gameMain()` (el `main()` de
   `GameSystem.cpp`, renombrado por patch PC_PORT) → `DVDInit/VIInit/
   HeapMemoryWatcher::createRootHeap/nw4r lyt init/FileRipper/GameSystemException/
   MR::initAcosTable` → `GameSystem::init()` retorna → `frameLoop()`. Árboles
   enormes con stubs documentados (`GameSystemFontHolder`, `HomeButtonLayout`,
   `DrawSyncManager`, `GameSystemResetAndPowerProcess`, …) hasta que el boot
   sea real.
-- **M9.3 — VI + frame control**: `VIInit`/`VIWaitForRetrace` → vsync de
+- **M9.3 — VI + frame control ✅**: `VIInit`/`VIWaitForRetrace` → vsync de
   `Platform::Window`; `GameSystemFrameControl` a 60 fps; el frameLoop hace
   update+draw con la escena actual.
-- **M9.4 — Sistema de escenas + Logo**: `GameSequenceDirector` + infra NameObj/
+- **M9.4 — Sistema de escenas + Logo ✅**: `GameSequenceDirector` + infra NameObj/
   Scene + `LogoScene` (`SceneRendering`, minimización del logo si hace falta).
 - **M9.5 — Título + una escena con Mario**: J3D (BMD/BDL), texturas, cámaras,
   LiveActor Mario.
@@ -196,9 +199,111 @@ RC=134) y 2 tests se marcan `[SKIP]` (`renderer_dynamic_buffer`,
 `gx_copy_efb_present_and_readback`). El smoke del boot con ventana se hace
 localmente.
 
-### Siguiente: M9.4 — Sistema de escenas + Logo
+### Siguiente: M9.5 — Título + una escena con Mario
 
-`GameSequenceDirector` + infra NameObj/Scene + `LogoScene` (`SceneRendering`).
-Pendientes conocidos para no tropezar: `MathUtil.cpp` real (M9.4/M10),
+## M9.4 — Sistema de escenas + Logo (CERRADO ✅)
+
+El boot real llega hasta la LogoScene y corre su máquina de nerves completa
+(`StrapFadein → StrapDisplay → StrapFadeout → WaitReadDoneSystemArchive →
+MountGameData → Deactive`) con el GameSystem en `Normal`. Verificado por
+`scene_test.cpp` (headless) y por el smoke `galaxy-pc --boot` con ventana.
+
+### Qué es real ahora
+
+| Área | Archivo | Notas |
+|---|---|---|
+| Controlador de escenas | `Game/System/GameSystemSceneController.cpp` (**vendered tal cual** — sin parche) | La máquina de nerves completa del decomp compila en host: `requestChangeScene` → `WaitDrawDone` → `ChangeWavebank` → `InitializeScene` (asíncrono vía `FunctionAsyncExecutor`, como en consola) → `InvalidateSystemWipe` → `ReadyToStartScene` → `startScene` → `Normal`. Los heaps (file cache/scene/game) y el `AudSystemWrapper` (stub M8.5) se resuelven contra lo ya existente. |
+| Escena base + LogoFader | `Game/Scene/Scene.cpp`, `Game/Screen/LogoFader.cpp` (vendered) | Compilan sin cambios sobre el `LayoutActor` host (nerve machine real vía `Spine`; el layout manager nw4r llega en M9.5). |
+| LogoScene + SceneFactory | `patches/Game/Scene/LogoScene.cpp`, `patches/Game/Scene/SceneFactory.cpp` | LogoScene con null-guard del `MainLoopFramework::sManager` (tests). SceneFactory corrige el bucle roto del decomp (`break` en el match, no en el no-match) — sin eso `createScene("Logo")` devolvía siempre GameScene. Marcador de progreso `createScene('X')` por log. |
+| Infra NameObj/Scene | `compat/game/SceneCompat.cpp` | `NameObjHolder`, `NameObjCategoryList` (listas reales por categoría con add/remove/execute), `NameObjListExecutor`/`SceneNameObjListExecutor`, `SceneObjHolder` + `MR::createSceneObj`, `NameObjExecuteHolder` (registro connect-to-scene real), los scene objects del boot (CameraContext/NameObjGroup/StopSceneController/SceneNameObjMovementController), las escenas pequeñas host (GameScene/Intermission/PlayTimer/ScenarioSelect/ScenarioDataParser), `SceneFunction`/`CategoryList` con el orden de ejecución vendered (menos las llamadas de draw buffer, M9.5/M10) y el glue `MR::connectToScene*`/LayoutUtil/DrawUtil. |
+| Stub tree del boot | `compat/game/GameBoot.cpp` | `GameSequenceDirector::update` real (sustituye a `GameSequenceProgress`: `startScene` + `tryToLoadSystemArchive` cuando el controller está ready), `GameSystemStationedArchiveLoader` "done" inmediato (TODO M9.4+: montaje JKRArchive real), `MR::requestChangeScene` → controller, `GameSystemFunction`/`GameSequenceFunction`, LayoutActor con nerve machine real. |
+| Frame del renderer | `patches/Game/System/MainLoopFramework.cpp` | **Puente PC_PORT del ciclo de frame**: `beginRender` abre `Renderer::beginFrame` + el pass del EFB (`CompatGx::getEfbRenderTarget`), `endRender` cierra el pass antes del `GXCopyDisp` (blit EFB→swapchain), `endFrame` presenta (`Renderer::endFrame` + `GXCompatEndFrame`). Si `beginFrame` falla (swapchain out-of-date) el frame host se salta: los draws GX fuera de pass se descartan (guarda `inPass()` nueva en `flushDraw`). |
+| Destrucción diferida de RTs | `platform/Renderer` (`mRetiredRenderTargets`) | `destroyRenderTarget` ya NO destruye en el acto: encola y se libera en el `endFrame` tras la fence (y en shutdown). Bug real cazado por el smoke: `ensureEfb` recrea el EFB a mitad de frame (el `GXSetDispCopySrc` del `prepareCopyDisp` cambia 640×448→640×456 en el primer frame) mientras `blitPassToSwapchain` aún lee el target viejo vía `mPassTarget` → use-after-free (crash en el worker de lavapipe). Con la destrucción diferida el blit usa la imagen vieja (válida hasta la fence) y el frame siguiente ya usa la nueva. |
+| `--boot` | `src/main.cpp` | `galaxy-pc --boot` = ventana + renderer + `gameMain()` (no retorna; el cierre de ventana/eventos llega con el modo present-driven de M9.5). |
+
+### Integración de build (el commit M8-M9 añadió las fuentes SIN cablear)
+
+Los 63 ficheros del commit "M8-M9 Done" no estaban en ningún CMakeLists — esta
+sesión los cableó todos: `pc_compat` (audio M8, OSThread M9.1, boot tree M9.2,
+VI/frame M9.3, escenas M9.4, parches JAS/JKernel/mtx, vendered JUT*/J2D*/JAS*/
+GameSystemSceneController/Scene/LogoFader), `pc_platform` (`Audio/Audio.cpp`),
+tests (audio×4, os_thread, vi_frame, scene) y el include dir de nw4r.
+
+Fixes de portabilidad necesarios al compilar ese árbol (todos con comentario
+PC_PORT in situ):
+
+- `compat/include/revolution/os.h`: macros de direcciones con `uintptr_t`
+  (`OSRoundUp32B` etc.) — el cast `(u32)` de un puntero es error duro en
+  GCC/Clang/MSVC. (Ya estaba documentado en audio.md §8 pero sin commitear.)
+- `compat/os/OSMutex.cpp`: registro de mutexes como singleton Meyers — los
+  globales vendered (`JASHeap audioAramHeap`) llaman a `OSInitMutex` durante
+  la inicialización estática, antes de que el `unordered_map` global de otro
+  TU exista (SIGFPE pre-`main`: bucket count 0). (Documentado en audio.md §7,
+  sin commitear.)
+- `patches/JSystem/JKernel/JKRExpHeap.cpp`: `createRoot` reentrante — en consola
+  se llama una vez; en la suite el root heap ya existe (jkr_heap_test) y el
+  decomp dejaba `heap = nullptr` → SIGSEGV. Ahora reutiliza el root existente.
+- `compat/os/PPCIntrinsics.cpp`: `__cvt_dbl_usll`/`__cvt_fp2unsigned` (runtime
+  MWC, declarados en el shim `runtime.h` que ya existía) con saturación.
+- `compat/jsystem/JMathCompat.cpp`: `PSMTXIdentity`/`PSMTXCopy` escalares (el
+  `mtx.c` vendered es asm Paired-Singles puro).
+- `compat/jsystem/JUTConsoleCompat.cpp` + `JUTExceptionCompat.cpp`:
+  `JUTConsoleManager::sManager`/`draw`/`drawDirect` y
+  `JUTAssertion::flushMessage`/`flushMessage_dbPrint` (host: no-op, los
+  mensajes ya van directos a Platform::Log).
+- `patches/RVL_SDK/mtx/mtx44.c`: `tan` con linkage C explícito (se compila
+  como C++; `extern f64 tan(f64);` enmanglea y no enlaza contra libm).
+- `compat/gx/GXTexture.cpp`: warning de formato no soportado una vez por
+  formato — el `clear_z_tobj` (Z24X8) del clearEfb se carga CADA frame y
+  llenaba el log a 60 Hz.
+
+### Tests (`src/tests/scene_test.cpp`, 3 TEST_CASE) + validación
+
+- `scene_factory_creates_logo_scene` — la factory parcheada crea LogoScene /
+  GameScene / nullptr para nombres desconocidos.
+- `logo_fader_nerve_timeline` — el LogoFader vendered: fade-in/out de 30
+  frames con la nerve machine real del LayoutActor.
+- `game_system_boot_reaches_logo` — el boot completo headless: prólogo
+  (heaps/JUTVideo/MainLoopFramework) → `GameSystem::init` → drive por
+  `update()`: audio asíncrono real (FunctionAsyncExecutor + hilos OSThread),
+  `requestChangeScene("Logo")`, init asíncrono de la escena, LogoScene
+  creada (dynamic_cast), su cadena de nerves hasta `Deactive`
+  (`isDisplayStrapRemineder()==false`) y GameSystem en `Normal`
+  (`isDoneLoadSystemArchive()`).
+- Suite: **169 passed / 0 failed / 0 skipped** con display (Xvfb +
+  llvmpipe + validation layers en sandbox; headless → 167 + 2 skipped).
+- Smoke con ventana (Xvfb + llvmpipe en sandbox): `--boot --gpu-debug` →
+  ventana 1280×720, EFB 640×448→640×456, `createScene('Intermission')`,
+  primer retrace, `createScene('Logo')`, 60 fps estables 20 s, **0 errores de
+  validación**.
+- Pasada de validación (M9.4, con `vulkan-validationlayers` + display por
+  primera vez en sandbox): destapó y corrigió 6 defectos reales del renderer
+  que llevaban latentes desde M5.7c (UB en el submit de `endFrame`, swapchain
+  sin `TRANSFER_DST`, aspect de depth en D24S8, dynamic state fuera de
+  grabación, layouts de RT sin trackear y present de frames vacíos) — ver
+  `docs/renderer.md` §8. Los 2 tests Vulkan que antes se skipeaban ya corren
+  y pasan.
+
+### Limitaciones conocidas (no bloquean M9.4)
+
+- La pantalla del boot se queda en el clear del EFB: el gráfico del strap
+  ("WiiRemoteStrap") necesita el motor de layouts nw4r (M9.5) — el
+  `SimpleLayout`/`LayoutManager` es stub y el Logo "fadea a través de negro".
+- `GameSystemStationedArchiveLoader` reporta "done" inmediato: el montaje real
+  de los archives staged (JKRArchive/RARC sobre el VFS) es prerrequisito de
+  M9.5/M10 (los assets del usuario ya se montan como FST en el DVD compat, pero
+  nada consume RARC todavía).
+- `--boot` no bombea eventos SDL (cerrar la ventana no sale; Alt+F4/kill).
+  El modo present-driven con bombeo de eventos está documentado en M9.3
+  (`fireRetrace()`).
+- `MR::getFileSize` devuelve 0 (TODO) y `MathUtil.cpp` real sigue pendiente
+  (M9.4/M10 → escalares math ya provistos host-side en GameBoot.cpp).
+
+### Siguiente: M9.5 — Título + una escena con Mario
+
+J3D (BMD/BDL), texturas, cámaras, LiveActor Mario + el motor de layouts nw4r
+(los gráficos del Logo/strap y el HomeButtonLayout). Pendientes conocidos para
+no tropezar: montaje JKRArchive (RARC/Yaz0) para el StationedArchiveLoader,
 `DrawSyncManager` real (hito async-GX), `GameSystemObjHolder::initDisplay`
-real (trae `CaptureScreenDirector`/`ScreenPreserver`).
+real (trae `CaptureScreenDirector`/`ScreenPreserver`), bombeo de eventos SDL
+en el frame loop.

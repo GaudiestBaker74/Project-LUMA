@@ -204,4 +204,33 @@ void PSVECNormalize(const Vec* src, Vec* dst) {
     }
 }
 
+// --- global PS matrix ops (extern "C", declared in revolution/mtx.h) --------
+// The vendored RVL_SDK/mtx/mtx.c is pure Paired-Singles assembly (psq_st /
+// ps_merge01); only the functions the host-compiled code actually references
+// are reimplemented here, scalar and equivalent. Add more when a link error
+// demands it (same policy as the PSVEC ops above).
+
+void PSMTXIdentity(Mtx m) {
+    m[0][0] = 1.0f;
+    m[0][1] = 0.0f;
+    m[0][2] = 0.0f;
+    m[0][3] = 0.0f;
+    m[1][0] = 0.0f;
+    m[1][1] = 1.0f;
+    m[1][2] = 0.0f;
+    m[1][3] = 0.0f;
+    m[2][0] = 0.0f;
+    m[2][1] = 0.0f;
+    m[2][2] = 1.0f;
+    m[2][3] = 0.0f;
+}
+
+void PSMTXCopy(const Mtx src, Mtx dst) {
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            dst[r][c] = src[r][c];
+        }
+    }
+}
+
 }  // extern "C"

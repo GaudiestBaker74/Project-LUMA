@@ -1,6 +1,13 @@
 #include "revolution/mtx.h"
 
+// PC_PORT PATCH: this copy is compiled as C++ (the PC mtx header overrides
+// are C++). The original `extern f64 tan(f64);` would get C++ linkage and
+// fail to link against libm's C `tan`; keep the C linkage explicitly.
+#ifdef __cplusplus
+extern "C" f64 tan(f64);
+#else
 extern f64 tan(f64);
+#endif
 
 void C_MTXPerspective(Mtx44 m, f32 fovY, f32 aspect, f32 n, f32 f) {
     f32 angle;

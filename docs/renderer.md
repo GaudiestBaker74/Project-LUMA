@@ -141,3 +141,44 @@ Detalles:
 - M4: API `renderer.h` cerrada + buffers/uniforms/viewport + pasadas con caché de pipelines básica + debug labels + frame timing.
 - M5.2: buffer dinámico (host-visible, crecimiento con retiro diferido al `endFrame`). M5.x: generación de shaders TEV + conversión de texturas + display lists (a través de compat/gx).
 - M9+: copy EFB→present con filtros, dithering opcional, y (post-M10) resolución interna variable.
+
+## 8. Invariantes de validación Vulkan (M9.4)
+
+Desde M9.4 la suite corre con `vulkan-validationlayers` instalado y display
+(Xvfb + llvmpipe), así que los dos tests que antes se skipeaban sin ventana
+(`renderer_dynamic_buffer`, `gx_copy_efb_present_and_readback`) se ejecutan y
+`--boot --gpu-debug` debe dar **0 errores**. Los defectos que esa pasada
+destapó (latentes desde M5.7c, invisibles sin capas de validación) fijan las
+reglas siguientes:
+
+- **Punteros de `VkSubmitInfo`**: todo lo que apunta `submit` (p. ej.
+  `pWaitDstStageMask`) debe vivir hasta `vkQueueSubmit`. `endFrame()` declaraba
+  `waitStage` dentro del `if (!mFrameAcquireConsumed)` → puntero colgante (UB:
+  las capas veían un máscara de stages basura). Regla: declarar fuera del
+  bloque.
+- **Usage del swapchain**: `blitPassToSwapchain()` hace `vkCmdBlitImage` contra
+  la imagen del swapchain → `sci.imageUsage` incluye `TRANSFER_DST` si
+  `caps.supportedUsageFlags` lo permite (antes solo `COLOR_ATTACHMENT`).
+- **Aspect en depth/stencil combinado**: sin `separateDepthStencilLayouts`,
+  todo `VkImageMemoryBarrier` sobre D24S8 cubre `DEPTH_BIT|STENCIL_BIT`
+  (VUID-VkImageMemoryBarrier-image-03320). El `VkImageView` del attachment sí
+  puede exponer solo depth.
+- **Dynamic state solo con el command buffer grabando**: `setViewport` /
+  `setScissor` retornan sin grabar si `!mFrameRecording`. El juego llama
+  `GXSetViewport` durante el init de escena (antes de `beginRender`); compat
+  guarda el valor en su mirror y `flushDraw()` lo re-aplica dentro del pass
+  (`sScissorSet` evita que el scissor por defecto `{0,0,0,0}` recorte todo).
+- **Layout del color de un RT trackeado**: `GpuRenderTarget::colorLayout`
+  refleja el layout real (los blit/readback dejan `TRANSFER_SRC_OPTIMAL`, no
+  `COLOR_ATTACHMENT_OPTIMAL`). Las barreras de `blitPassToSwapchain` y
+  `readRenderTarget` usan ese valor como `oldLayout` en vez de uno fijo; si no,
+  `GXCopyTex` antes del primer pass del frame (frame B del test) validaba mal.
+  `beginPass` sigue descartando contenido (`UNDEFINED → COLOR_ATTACHMENT`).
+- **Present siempre en `PRESENT_SRC_KHR`**: `mSwapPresentReady` se resetea en
+  `beginFrame()` y lo ponen `endPass()` (swapchain) y `blitPassToSwapchain()`.
+  Un frame vacío/abortado (transición de escena sin pass ni blit) llegaba a
+  `vkQueuePresentKHR` con la imagen en `UNDEFINED` → `endFrame()` graba una
+  barrera de respaldo antes del submit.
+
+Ambos son también requisitos para la máquina del usuario (NVIDIA/Windows con
+Vulkan SDK): el boot con `--gpu-debug` debe seguir en 0 VUIDs.
