@@ -654,10 +654,84 @@ void GXCopyDisp(void* dst, GXBool clear) {
         PL_LOG_WARN("gx", "GXCopyDisp: EFB unavailable — present skipped");
         return;
     }
-    if (!r.blitPassToSwapchain()) {
+    const bool blitted = r.blitPassToSwapchain();
+    if (!blitted) {
         // E.g. the last pass was the swapchain itself (no EFB): nothing to
         // copy — the frame is presented as rendered.
         PL_LOG_TRACE("gx", "GXCopyDisp: no EFB pass to blit (swapchain pass)");
+    }
+    // M9.5.3c-diag: the user's boots show a black window while the sandbox
+    // shows the EFB content, so report the present chain at INFO: first 5
+    // frames, then every 600th (~10 s). blit=NO-PASS + black window would
+    // mean the frame never opened/closed the EFB pass (beginFrame skipped or
+    // pass ordering); blit=OK shifts the suspicion to vkQueuePresentKHR
+    // (see Renderer::endFrame's "present #N" line).
+    {
+        static u32 sPresentDiagCount = 0;
+        const u32 n = sPresentDiagCount++;
+        if (n < 5 || (n % 600) == 0) {
+            PL_LOG_INFO("gx", "GXCopyDisp #%u: efb=%ux%u blit=%s", n, sEfbW, sEfbH,
+                        blitted ? "OK" : "NO-PASS");
+        }
+    }
+
+    // One-shot diagnostic (M9.5.3c): full EFB readback at present #300 —
+    // the layout pane tree dumps say everything is visible/loaded, yet the
+    // user's screen stays black, so report what was ACTUALLY rasterized:
+    // average color, non-black pixel count and its bounding box (a bbox
+    // inside the frame = quads land on screen; empty bbox = nothing drawn).
+    static u32 sDispProbeCount = 0;
+    if (++sDispProbeCount == 300) {
+        r.flushFrame(); // make the readback see THIS frame (docs/gx.md §J)
+        const u32 pw = sEfbW;
+        const u32 ph = sEfbH;
+        std::vector<uint8_t> rgba(static_cast<size_t>(pw) * ph * 4);
+        if (r.readRenderTarget(sEfbRt, 0, 0, pw, ph, rgba.data())) {
+            u64 nonBlack = 0;
+            u64 sumR = 0, sumG = 0, sumB = 0;
+            u32 minX = pw, minY = ph, maxX = 0, maxY = 0;
+            for (u32 y = 0; y < ph; y++) {
+                for (u32 x = 0; x < pw; x++) {
+                    const uint8_t* p = &rgba[(static_cast<size_t>(y) * pw + x) * 4];
+                    sumR += p[0];
+                    sumG += p[1];
+                    sumB += p[2];
+                    if (p[0] | p[1] | p[2]) {
+                        nonBlack++;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            const u64 total = static_cast<u64>(pw) * ph;
+            PL_LOG_INFO("gx", "EFB probe: %ux%u nonBlack=%llu/%llu avgRGB=(%llu,%llu,%llu) "
+                              "bbox=(%u,%u)-(%u,%u)",
+                        pw, ph, static_cast<unsigned long long>(nonBlack),
+                        static_cast<unsigned long long>(total),
+                        static_cast<unsigned long long>(sumR / total),
+                        static_cast<unsigned long long>(sumG / total),
+                        static_cast<unsigned long long>(sumB / total),
+                        nonBlack ? minX : 0, nonBlack ? minY : 0,
+                        nonBlack ? maxX : 0, nonBlack ? maxY : 0);
+            auto logPx = [&](const char* name, u32 x, u32 y) {
+                if (x >= pw || y >= ph) {
+                    return;
+                }
+                const uint8_t* p = &rgba[(static_cast<size_t>(y) * pw + x) * 4];
+                PL_LOG_INFO("gx", "EFB probe px %s (%u,%u) = (%u,%u,%u,%u)", name, x, y,
+                            static_cast<unsigned>(p[0]), static_cast<unsigned>(p[1]),
+                            static_cast<unsigned>(p[2]), static_cast<unsigned>(p[3]));
+            };
+            logPx("center", pw / 2, ph / 2);
+            logPx("tl", 8, 8);
+            logPx("tr", pw - 9, 8);
+            logPx("bl", 8, ph - 9);
+            logPx("br", pw - 9, ph - 9);
+        } else {
+            PL_LOG_WARN("gx", "EFB probe: readback failed");
+        }
     }
     // M8 (compat/vi): the VI retrace callbacks fire here, around the present.
 }

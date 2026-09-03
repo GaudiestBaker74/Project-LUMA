@@ -65,6 +65,7 @@ bool sHasProjection = false;
 
 // Viewport/scissor/clear (M3 hooks now with real state).
 f32 sViewportX = 0, sViewportY = 0, sViewportW = 0, sViewportH = 0;
+f32 sViewportNearZ = 0.0f, sViewportFarZ = 1.0f; // GX viewport depth range (M9.5.3c)
 u32 sScissor[4] = {0, 0, 0, 0};
 // GXSetScissor may arrive before the host frame is recording; the mirror is
 // then re-applied by flushDraw (Renderer drops dynamic-state calls outside a
@@ -756,6 +757,21 @@ void flushDraw() {
     } else {
         std::memset(mvp, 0, sizeof(mvp));
         mvp[0] = mvp[5] = mvp[10] = mvp[15] = 1.0f;
+    }
+    // M9.5.3c: GX viewport depth transform. GX maps visible ortho geometry to
+    // clip z in [-1, 0] and the viewport stage remaps clip z [-1,1] into the
+    // depth range set by GXSetViewport's nearZ/farZ (virtually always 0..1):
+    //   z_vk = (z_clip + w) * (farZ - nearZ) / 2 + nearZ * w
+    // The host shader passes clip z straight through and Vulkan's depth range
+    // is [0,1], so without this fold every layout/2D quad (negative depth)
+    // disappeared — the boot's black screen. Fold it into row 2 of the
+    // uploaded matrix (column-major flat: row r lives at mvp[c*4+r]).
+    {
+        const float a = (sViewportFarZ - sViewportNearZ) * 0.5f;
+        const float b = a + sViewportNearZ;
+        for (int c = 0; c < 4; ++c) {
+            mvp[c * 4 + 2] = a * mvp[c * 4 + 2] + b * mvp[c * 4 + 3];
+        }
     }
     // Re-apply the mirrored viewport/scissor: GXSetViewport/GXSetScissor often
     // arrive before the host command buffer is recording (game-boot order sets
@@ -1501,13 +1517,15 @@ void GXSetPixelFmt(GXPixelFmt pix_fmt, GXZFmt16 z_fmt) {
 }
 
 void GXSetViewport(f32 x, f32 y, f32 w, f32 h, f32 nearZ, f32 farZ) {
-    (void)nearZ;
-    (void)farZ;
-    PL_LOG_TRACE("gx", "GXSetViewport(%.0f, %.0f, %.0f, %.0f)", x, y, w, h);
+    PL_LOG_TRACE("gx", "GXSetViewport(%.0f, %.0f, %.0f, %.0f, %.2f, %.2f)", x, y, w, h, nearZ, farZ);
     sViewportX = x;
     sViewportY = y;
     sViewportW = w;
     sViewportH = h;
+    // M9.5.3c: the depth-range arguments feed the viewport depth transform,
+    // folded into the MVP at flushDraw (GX clip z [-1,1] -> VK depth [0,1]).
+    sViewportNearZ = nearZ;
+    sViewportFarZ = farZ;
     if (Platform::Renderer::instance().isInitialized()) {
         Platform::Renderer::instance().setViewport(x, y, w, h);
     }

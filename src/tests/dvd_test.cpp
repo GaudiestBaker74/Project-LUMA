@@ -170,10 +170,17 @@ TEST_CASE(dvd_open_read_close) {
     CHECK_EQ(DVDReadPrio(&info, sub, 2, 1, 2), 2);
     CHECK(std::memcmp(sub, "el", 2) == 0);
 
-    // Zero-length read at EOF is valid; past EOF -> error.
+    // Zero-length read at EOF is valid.
     CHECK_EQ(DVDReadPrio(&info, nullptr, 0, 5, 2), 0);
-    CHECK_EQ(DVDReadPrio(&info, buf, 2, 4, 2), -1);
-    CHECK_EQ(DVDReadPrio(&info, buf, 1, 5, 2), -1);
+    // Reads that start inside the file but run past EOF are clamped and
+    // zero-filled (console discs pad files to 32; game code reads aligned).
+    CHECK_EQ(DVDReadPrio(&info, buf, 2, 4, 2), 2);
+    CHECK(buf[0] == 'o');
+    CHECK(buf[1] == 0);
+    CHECK_EQ(DVDReadPrio(&info, buf, 1, 5, 2), 1);
+    CHECK(buf[0] == 0);
+    // Starting past EOF -> error.
+    CHECK_EQ(DVDReadPrio(&info, buf, 1, 6, 2), -1);
 
     // DVDFastOpen by entrynum behaves the same.
     const s32 entry = DVDConvertPathToEntrynum("/ObjectData/obj.txt");
@@ -281,7 +288,7 @@ TEST_CASE(dvd_async_read_worker) {
     CHECK(std::memcmp(bufB, "lo", 2) == 0);
 
     // Reject invalid async reads.
-    CHECK(!DVDReadAsyncPrio(&info, bufA, 5, 2, readCallback, 2));  // out of bounds
+    CHECK(!DVDReadAsyncPrio(&info, bufA, 5, 6, readCallback, 2));  // starts past EOF
     DVDFileInfo closed;
     CHECK(DVDOpen("/ObjectData/obj.txt", &closed));
     DVDClose(&closed);

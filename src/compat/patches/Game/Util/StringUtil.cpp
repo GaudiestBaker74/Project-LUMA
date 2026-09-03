@@ -27,8 +27,17 @@
 extern "C" {
 int strcasecmp(const char*, const char*);
 // extern int vswprintf(wchar_t*, size_t, const wchar_t*, va_list);
+#ifndef _MSC_VER
+// PC_PORT: the MSVC CRT already declares wcsncpy in <wchar.h> (returning
+// wchar_t*); redeclaring it returning int is a C2556/C2040 error there. The
+// call site below ignores the return value, so the CRT one is fine on Windows.
 int wcsncpy(wchar_t*, const wchar_t*, size_t);
+#endif
 };
+#endif
+#if defined(_MSC_VER)
+#include <string.h> // _stricmp
+#include <wchar.h>  // CRT wcsncpy
 #endif
 
 namespace MR {
@@ -223,7 +232,13 @@ namespace MR {
     }
 
     int strcasecmp(const char* pStr1, const char* pStr2) {
+#if defined(_MSC_VER)
+        // PC_PORT: the MSVC CRT has no strcasecmp; _stricmp is the equivalent
+        // (avoids an unresolvable ::strcasecmp reference at link time).
+        return _stricmp(pStr1, pStr2);
+#else
         return ::strcasecmp(pStr1, pStr2);
+#endif
     }
 
     bool isEqualString(const char* pStr1, const char* pStr2) {

@@ -11,6 +11,7 @@
 #include <revolution/gx/GXRegs.h>
 #include <runtime.h>
 #include "compat/gx/GXCompat.h"
+#include "compat/vi/VICompat.h"
 #include "platform/Log/Log.h"
 #include "platform/Renderer/Renderer.h"
 
@@ -43,7 +44,9 @@ namespace {
 };  // namespace
 
 void MainLoopFramework::ctor_subroutine(bool useAlpha) {
-    mClearColor = (GXColor){0, 0, 0, 0};
+    // PC_PORT: the C99 compound literal `(GXColor){...}` is a GCC extension in
+    // C++ (MSVC rejects it, C4576) — plain aggregate init instead.
+    mClearColor = GXColor{0, 0, 0, 0};
     mClearZ = 0xffffff;
     mDispCopyGamma = GX_GM_1_0;
     mCopyClamp = GX_CLAMP_TOP | GX_CLAMP_BOTTOM;
@@ -216,6 +219,16 @@ void MainLoopFramework::endGX() {
 }
 
 void MainLoopFramework::waitForRetrace() {
+    // PC_PORT PATCH (M9.5.3c): pump the host OS event queue once per frame.
+    // The steady-state loop paces on waitForTick (the VI field clock's
+    // message queue) and NEVER enters VIWaitForRetrace — petari's
+    // JUTVideo::waitRetraceIfNeed() is an empty stub — so the pump that
+    // lives in VIWaitForRetrace never runs during boot. On Windows an
+    // unpumped queue ghosts the window ("not responding") after ~5 s even
+    // though the frame loop is healthy at 60 fps. waitForRetrace runs once
+    // per frame on the window's thread: the correct hook.
+    Platform::CompatVi::pumpHostEvents();
+
     // PC_PORT PATCH: one-time boot-progress marker — the first waitForRetrace
     // only returns once the VI field clock's postRetraceProc has pinged the
     // JUTVideo message queue, i.e. the vsync loop is actually cycling.
@@ -273,6 +286,17 @@ void MainLoopFramework::beginRender() {
             r.beginPass(static_cast<Platform::RenderTargetHandle>(
                 Platform::CompatGx::getEfbRenderTarget()));
             sHostFrameActive = true;
+        } else if (r.isInitialized()) {
+            // M9.5.3c-diag: black-window hunt — if beginFrame keeps failing
+            // (swapchain out-of-date/recreate trouble) no EFB pass is opened,
+            // GXCopyDisp blits nothing and endFrame is skipped: the window
+            // never gets a present and stays black.
+            static int sBeginFrameFailCount = 0;
+            if (sBeginFrameFailCount++ < 10) {
+                PL_LOG_WARN("boot", "beginRender: Renderer::beginFrame FAILED "
+                                    "(host frame skipped, %d so far)",
+                            sBeginFrameFailCount);
+            }
         }
         clearEfb(mClearColor);
         preGX();
@@ -463,6 +487,11 @@ void MainLoopFramework::setForOSResetSystem() {
 
 namespace {
     void waitForTick(u32 tickDuration, u16 retraceCount) {
+        // PC_PORT (M9.5.3c): every frame-wait funnels through here
+        // (waitForRetrace AND waitBlanking's multi-tick loops), so this is
+        // the common pump point for the host OS event queue — see the note
+        // in MainLoopFramework::waitForRetrace.
+        Platform::CompatVi::pumpHostEvents();
         if (tickDuration) {
             static s64 nextTime;
             static s8 timeInitialized;

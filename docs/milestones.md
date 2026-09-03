@@ -266,7 +266,7 @@ consume el DVD; `JKRDvdRipper`/`JKRDvdFile`; conexión de
 - Micrófono/speaker → stub documentado `TODO(PC_PORT)`.
 - Nota: `compat/ax` no ha hecho falta — el juego pasa todo por JAudio2.
 
-## M9 — Primer boot real 🎯 *(primer hito de éxito del proyecto)* — en marcha (M9.1–M9.4 ✅)
+## M9 — Primer boot real 🎯 *(primer hito de éxito del proyecto)* — en marcha (M9.1–M9.4 ✅, M9.5.1–M9.5.2 ✅)
 
 - `galaxy-pc` → inicialización de GameSystem → **Logo → título → una escena con Mario renderizado**.
 - Requiere: compat/os, dvd, vi, gx (subset), filesystem VFS, frame control, escena "Logo".
@@ -275,8 +275,35 @@ consume el DVD; `JKRDvdRipper`/`JKRDvdFile`; conexión de
   `gameMain()` hasta el frameLoop) ✅, **M9.3** (VI + frame control con
   retrace real) ✅, **M9.4** (sistema de escenas + LogoScene: el boot llega a
   la Logo y corre sus nerves hasta `Deactive`) ✅ — detalle en `docs/boot.md`.
-- Pendiente: **M9.5** (título + escena con Mario: J3D, layouts nw4r, montaje
-  JKRArchive del StationedArchiveLoader).
+- **M9.5** (título + escena con Mario) se descompone en:
+  - **M9.5.1** — Pipeline de recursos: RARC/Yaz0/JKRArchive ✅ (montaje MEM de
+    archivos `.arc` desde el DVD host con conversión BE→host en
+    `compat/jsystem/RarcHost`, decodificación Yaz0 síncrona, `MR::mountArchive`
+    y `MR::loadToMainRAM` reales en `SceneCompat`; 5 tests nuevos con datos
+    sintéticos en `src/tests/jkr_archive_test.cpp`).
+  - **M9.5.2** — Layouts nw4r lyt + fuentes ✅ (conversor brlyt BE→host
+    in-place e idempotente en `compat/nw4r/LytHost`, conversor de TPL en
+    `compat/gx/TplHost`, conversor de brfnt en el `ut_ResFont.cpp` parcheado,
+    texto UTF-16BE de TextBox ampliado a `wchar_t` host, allocator de layouts
+    cableado a `MR::NewDeleteAllocator`, impls escalares host de
+    PSMTX*/mtx en `JMathCompat`, símbolos que el decomp declara y nunca
+    define reconstruidos en `compat/nw4r/LytMissing.cpp` + parches
+    (BuildPaneObj, PrintImpl, RTTI de TextBox, estáticos de CharWriter);
+    shadows de `nw4r/lyt/{common,pane,group,layout}.h` — el bug de los
+    LinkList con offset 0 sobre clases polimórficas corrompía vptrs;
+    animaciones brlan en stub hasta M9.5.3; 6 tests nuevos con blobs
+    sintéticos en `src/tests/lyt_layout_test.cpp`, 180/180 en total).
+  - **M9.5.3** — Flujo de título: reconstruir `requestGalaxyMove` +
+    `TitleScene` y registrarla en el SceneFactory. Plan detallado en
+    `docs/m9.5.3-plan.md`; sub-pasos: **a** ✅ pila de layouts real (carga:
+    LayoutManager/LayoutHolder reconstruidos + LayoutActor/SimpleLayout/
+    LayoutPaneCtrl/LayoutAnmPlayer vendados compilados; 3 tests nuevos,
+    181/181 verdes; detalle y desviaciones en `docs/m9.5.3-plan.md`),
+    **b** brlan real (swapper RLAN +
+    AnimTransformBasic), **c** dibujo de layouts por la capa GX compat,
+    **d** TitleScene (TitleSequenceProduct real — ya decompilado en Petari —
+    sobre fondo negro; FileSelector/guardado/Mii queda para M10).
+  - **M9.5.4** — J3D + escena con Mario renderizado.
 
 ## M10 — Primera galaxia jugable
 

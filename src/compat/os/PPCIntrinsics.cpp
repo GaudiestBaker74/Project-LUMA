@@ -14,11 +14,23 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 u32 __cntlzw(u32 value) {
     if (value == 0) {
         return 32;
     }
+#if defined(_MSC_VER)
+    // MSVC has no __builtin_clz: _BitScanReverse yields the index of the
+    // most-significant set bit (x86/x64 BSR); clz = 31 - index.
+    unsigned long msb = 0;
+    _BitScanReverse(&msb, value);
+    return 31u - static_cast<u32>(msb);
+#else
     return static_cast<u32>(__builtin_clz(value));
+#endif
 }
 
 f32 __frsqrte(f32 value) {

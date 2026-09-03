@@ -5,8 +5,12 @@
 // Change: MainLoopFramework::sManager may be null when the scene is created
 // directly by tests (the real boot always creates it first, so the ctor's
 // mUseVFilter/mUseAlpha writes are guarded instead of assuming the manager).
+// Change 2 (Windows triage): PL_LOG_DEBUG markers through ctor/init/
+// initLayout/update/draw — the Logo frame loop is silent at INFO and the
+// MSVC boot died somewhere in it; the last marker in the log pins the crash.
 // =============================================================================
 #include "Game/Scene/LogoScene.hpp"
+#include "platform/Log/Log.h"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/Scene/SceneFunction.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
@@ -50,10 +54,12 @@ namespace {
 };  // namespace
 
 LogoScene::LogoScene() : Scene("LogoScene"), mIsbnManager(nullptr), mStrapLayout(nullptr), mLogoFader(nullptr) {
+    PL_LOG_DEBUG("boot", "LogoScene: ctor begin");
     if (MainLoopFramework::sManager != nullptr) { // PC_PORT: null-guard (tests)
         MainLoopFramework::sManager->mUseVFilter = false;
         MainLoopFramework::sManager->mUseAlpha = false;
     }
+    PL_LOG_DEBUG("boot", "LogoScene: ctor end");
 }
 
 // FIXME: Missing and improperly ordered instructions.
@@ -65,23 +71,43 @@ LogoScene::~LogoScene() {
 }
 
 void LogoScene::init() {
+    PL_LOG_DEBUG("boot", "LogoScene::init: begin");
     if (MR::isEqualString(MR::getCurrentRegionPrefix(), "Cn")) {
         initNerve(&LogoSceneCensorshipFadein::sInstance);
     } else {
         initNerve(&LogoSceneStrapFadein::sInstance);
     }
+    PL_LOG_DEBUG("boot", "LogoScene::init: nerve set");
 
     SceneFunction::createHioBasicNode(this);
+    PL_LOG_DEBUG("boot", "LogoScene::init: hio node ok");
     SceneFunction::initForNameObj();
+    PL_LOG_DEBUG("boot", "LogoScene::init: nameobj ok");
     MR::createSceneObj(SceneObj_CameraContext);
+    PL_LOG_DEBUG("boot", "LogoScene::init: CameraContext ok");
     MR::createSceneObj(SceneObj_NameObjGroup);
+    PL_LOG_DEBUG("boot", "LogoScene::init: NameObjGroup ok");
     initLayout();
+    PL_LOG_DEBUG("boot", "LogoScene::init: done");
 }
 
 void LogoScene::update() {
+    static int sUpdCount = 0;
+    ++sUpdCount;
+    const bool log = sUpdCount <= 5;
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::update #%d: begin", sUpdCount);
+    // Heartbeat: one INFO line every 600 updates (~10 s at 59.94 Hz) so long
+    // boot runs show liveness in the log without per-frame spam.
+    if (sUpdCount % 600 == 0) {
+        PL_LOG_INFO("boot", "LogoScene: alive, %d updates (~%d s)", sUpdCount,
+                    sUpdCount / 60);
+    }
     GameSystemFunction::restartControllerLeaveWatcher();
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::update #%d: watcher ok", sUpdCount);
     updateNerve();
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::update #%d: nerve ok", sUpdCount);
     SceneFunction::executeMovementList();
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::update #%d: movement ok", sUpdCount);
 }
 
 void LogoScene::calcAnim() {
@@ -90,7 +116,12 @@ void LogoScene::calcAnim() {
 }
 
 void LogoScene::draw() const {
+    static int sDrawCount = 0;
+    ++sDrawCount;
+    const bool log = sDrawCount <= 5;
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: begin", sDrawCount);
     MR::drawInit();
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: drawInit ok", sDrawCount);
 
     GXColor fillColor;
     fillColor.r = 255;
@@ -101,6 +132,7 @@ void LogoScene::draw() const {
     MR::fillScreen(fillColor);
     MR::clearZBuffer();
     MR::drawInitFor2DModel();
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: fill/clear ok", sDrawCount);
 
     bool isCensorship = isNerve(&LogoSceneCensorshipFadein::sInstance) || isNerve(&LogoSceneCensorshipDisplay::sInstance) ||
                         isNerve(&LogoSceneCensorshipFadeout::sInstance);
@@ -111,12 +143,16 @@ void LogoScene::draw() const {
     }
 
     CategoryList::drawOpa(MR::DrawBufferType_Model3DFor2D);
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: opa ok", sDrawCount);
     CategoryList::drawXlu(MR::DrawBufferType_Model3DFor2D);
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: xlu ok", sDrawCount);
     CategoryList::execute(MR::DrawType_Layout);
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: layout ok", sDrawCount);
     CategoryList::execute(MR::DrawType_EffectDraw2D);
     CategoryList::execute(MR::DrawType_EffectDrawFor2DModel);
     CategoryList::execute(MR::DrawType_CometScreenFilter);
     CategoryList::execute(MR::DrawType_WipeLayout);
+    if (log) PL_LOG_DEBUG("boot", "LogoScene::draw #%d: end", sDrawCount);
 }
 
 bool LogoScene::isDisplayStrapRemineder() const {
@@ -217,14 +253,20 @@ void LogoScene::exeDeactive() {
 }
 
 void LogoScene::initLayout() {
+    PL_LOG_DEBUG("boot", "initLayout: creating strap layout");
     mStrapLayout = MR::createSimpleLayout("ストラップ着用画面", "WiiRemoteStrap", 1);
+    PL_LOG_DEBUG("boot", "initLayout: strap created %p -> kill", static_cast<void*>(mStrapLayout));
     mStrapLayout->kill();
-
+    PL_LOG_DEBUG("boot", "initLayout: strap killed; new LogoFader");
     mLogoFader = new LogoFader("ロゴフェーダ");
+    PL_LOG_DEBUG("boot", "initLayout: fader %p -> initWithoutIter", static_cast<void*>(mLogoFader));
     mLogoFader->initWithoutIter();
+    PL_LOG_DEBUG("boot", "initLayout: fader init ok -> setBlank/appear");
     mLogoFader->setBlank();
     mLogoFader->appear();
+    PL_LOG_DEBUG("boot", "initLayout: fader appeared -> connectToSceneLayout");
     MR::connectToSceneLayout(mLogoFader);
+    PL_LOG_DEBUG("boot", "initLayout: connected");
 
     if (!MR::isEqualString(MR::getCurrentRegionPrefix(), "Cn")) {
         return;

@@ -511,6 +511,40 @@ bool Renderer::init(SDL_Window* window, const RendererConfig& config) {
     dpci.pPoolSizes = poolSizes;
     vkCreateDescriptorPool(VKDEV, &dpci, nullptr, reinterpret_cast<VkDescriptorPool*>(&r.mDescriptorPool));
 
+    // --- M9.5.3c: per-draw texture descriptor-set pool -----------------------
+    // bindFragmentTextures used to UPDATE the pipeline's single texture set on
+    // every draw. vkUpdateDescriptorSets on a set still referenced by recorded
+    // (not yet submitted) commands INVALIDATES the whole command buffer —
+    // every draw of the frame silently disappears. Single-draw frames (tests,
+    // the M9.4 logo) survive because the update precedes the first bind;
+    // multi-draw frames (the game boot: layout = 10+ draws/frame) rendered
+    // only the clear color. Now each draw allocates a fresh set from this pool
+    // and endFrame() resets it after the frame fence (same point where the
+    // UBO arena rewinds). Capacity: 1024 sets/frame — far above the draws a
+    // SMG frame issues (lyt title: tens); allocDrawTexSet falls back to the
+    // shared set (pre-fix behavior, logged) if the pool is ever exhausted.
+    // NOTE: keep this modest — with validation layers enabled, every pool
+    // descriptor is tracked in layer bookkeeping allocated through the global
+    // operator new (JKR arena): 8192x8 sets asked the arena for ~4 MiB and
+    // exhausted it mid-suite.
+    {
+        VkDescriptorPoolSize framePoolSizes[1]{};
+        framePoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        framePoolSizes[0].descriptorCount = 1024 * 8;
+        VkDescriptorPoolCreateInfo fpci{};
+        fpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        fpci.maxSets = 1024;
+        fpci.poolSizeCount = 1;
+        fpci.pPoolSizes = framePoolSizes;
+        if (vkCreateDescriptorPool(VKDEV, &fpci, nullptr,
+                                   reinterpret_cast<VkDescriptorPool*>(&r.mFrameTexSetPool)) !=
+            VK_SUCCESS) {
+            r.mFrameTexSetPool = nullptr;
+            PL_LOG_WARN("renderer", "per-frame texture-set pool unavailable — "
+                                    "falling back to shared sets (multi-draw frames break)");
+        }
+    }
+
     // --- M5.4: per-frame fragment-UBO arena (host-visible, dynamic offsets) --
     // One region per draw; endFrame() resets the cursor after the frame fence.
     {
@@ -596,6 +630,10 @@ void Renderer::shutdown() {
         vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(r.mDescriptorPool), nullptr);
         r.mDescriptorPool = nullptr;
     }
+    if (r.mFrameTexSetPool) {
+        vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(r.mFrameTexSetPool), nullptr);
+        r.mFrameTexSetPool = nullptr;
+    }
     if (r.mUboMapped) {
         vkUnmapMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(r.mUboMemory));
         r.mUboMapped = nullptr;
@@ -639,6 +677,15 @@ void Renderer::shutdown() {
         RendererAccess::destroyRenderTargetNow(rt);
     }
     r.mRetiredRenderTargets.clear();
+    // M9.5.3c: retired textures (the device wait above covers them).
+    for (void* t : r.mRetiredTextures) {
+        auto* tex = reinterpret_cast<GpuTexture*>(t);
+        vkDestroyImageView(VKDEV, tex->view, nullptr);
+        vkDestroyImage(VKDEV, tex->image, nullptr);
+        vkFreeMemory(VKDEV, tex->memory, nullptr);
+        delete tex;
+    }
+    r.mRetiredTextures.clear();
     r.destroySwapchainInternal();
     vkDestroyDevice(VKDEV, nullptr);
     r.mDevice = nullptr;
@@ -1003,6 +1050,7 @@ void Renderer::endFrame() {
         endPass();
     }
     VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
+    const bool hadContent = mSwapPresentReady;
     if (!mSwapPresentReady) {
         // Empty/aborted frame (e.g. a scene transition where the game opened
         // no pass or never blitted): present still happens, so transition the
@@ -1066,6 +1114,19 @@ void Renderer::endFrame() {
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
         mSwapchainOutOfDate = true;
     }
+    // M9.5.3c-diag: black-window hunt — report the present chain at INFO for
+    // the first 5 frames and on any non-success result. hadContent=false
+    // means nothing was blitted into the swap image this frame (its contents
+    // are discarded/undefined — drivers typically show black).
+    {
+        static int sPresentDiagCount = 0;
+        if (sPresentDiagCount < 5 || presentResult != VK_SUCCESS) {
+            PL_LOG_INFO("renderer", "present #%d: result=%d hadContent=%d img=%u",
+                        sPresentDiagCount, static_cast<int>(presentResult),
+                        hadContent ? 1 : 0, mImageIndex);
+        }
+        ++sPresentDiagCount;
+    }
 
     // One frame in flight: wait for the submit before destroying the transient
     // image view and resetting the pool next frame (nothing may be pending).
@@ -1079,6 +1140,12 @@ void Renderer::endFrame() {
     // the fence guarantees the GPU finished reading every region.
     mUboCursor = 0;
 
+    // M9.5.3c: recycle the per-draw texture sets (the fence above guarantees
+    // no command buffer still references them).
+    if (mFrameTexSetPool) {
+        vkResetDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(mFrameTexSetPool), 0);
+    }
+
     // M5.2: destroy dynamic-buffer allocations retired during this frame (the
     // fence above guarantees no command buffer references them anymore).
     for (const RetiredBuffer& rb : mRetiredBuffers) {
@@ -1086,6 +1153,17 @@ void Renderer::endFrame() {
         vkFreeMemory(VKDEV, reinterpret_cast<VkDeviceMemory>(rb.memory), nullptr);
     }
     mRetiredBuffers.clear();
+
+    // M9.5.3c: destroy textures retired during this frame (same fence
+    // guarantee — recorded draws referencing their views have completed).
+    for (void* t : mRetiredTextures) {
+        auto* tex = reinterpret_cast<GpuTexture*>(t);
+        vkDestroyImageView(VKDEV, tex->view, nullptr);
+        vkDestroyImage(VKDEV, tex->image, nullptr);
+        vkFreeMemory(VKDEV, tex->memory, nullptr);
+        delete tex;
+    }
+    mRetiredTextures.clear();
 
     // M9.4: destroy render targets retired during this frame (same fence
     // guarantee — see destroyRenderTarget).
@@ -1531,11 +1609,10 @@ void Renderer::destroyTexture(TextureHandle texture) {
     if (!texture) {
         return;
     }
-    auto* tex = reinterpret_cast<GpuTexture*>(texture);
-    vkDestroyImageView(VKDEV, tex->view, nullptr);
-    vkDestroyImage(VKDEV, tex->image, nullptr);
-    vkFreeMemory(VKDEV, tex->memory, nullptr);
-    delete tex;
+    // M9.5.3c: deferred destruction — draws recorded this frame may still
+    // bind this texture's view; destroying it now invalidates the command
+    // buffer (see mRetiredTextures). endFrame() destroys it after the fence.
+    mRetiredTextures.push_back(texture);
 }
 
 SamplerHandle Renderer::getOrCreateSampler(const SamplerDesc& desc) {
@@ -1566,6 +1643,37 @@ SamplerHandle Renderer::getOrCreateSampler(const SamplerDesc& desc) {
     return reinterpret_cast<SamplerHandle>(sampler);
 }
 
+namespace {
+
+// M9.5.3c: allocate a fresh texture descriptor set for one draw from the
+// per-frame pool. Updating a set that recorded-but-unsubmitted commands still
+// reference invalidates the command buffer, so draws must never write into a
+// shared set. fresh=false → pool unavailable/exhausted; the caller then binds
+// the pipeline's shared set WITHOUT updating it (stale textures, but the
+// recording stays legal).
+VkDescriptorSet allocDrawTexSet(VkDevice dev, void* pool, void* setLayout,
+                                VkDescriptorSet shared, bool& fresh) {
+    fresh = false;
+    if (!pool || !setLayout) {
+        return shared;
+    }
+    VkDescriptorSetAllocateInfo ai{};
+    ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ai.descriptorPool = reinterpret_cast<VkDescriptorPool>(pool);
+    ai.descriptorSetCount = 1;
+    VkDescriptorSetLayout lay = reinterpret_cast<VkDescriptorSetLayout>(setLayout);
+    ai.pSetLayouts = &lay;
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    if (vkAllocateDescriptorSets(dev, &ai, &set) == VK_SUCCESS) {
+        fresh = true;
+        return set;
+    }
+    PL_LOG_ERROR("renderer", "texture-set pool exhausted — binding stale shared set");
+    return shared;
+}
+
+} // namespace
+
 void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandle sampler) {
     if (!mBoundEntry || !mBoundEntry->descriptorSet) {
         PL_LOG_ERROR("renderer", "bindTexture: no textured pipeline bound");
@@ -1578,6 +1686,11 @@ void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandl
     }
     auto* tex = reinterpret_cast<GpuTexture*>(texture);
 
+    bool fresh = false;
+    VkDescriptorSet set = allocDrawTexSet(
+        VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
+        reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
+
     VkDescriptorImageInfo imageInfo{};
     imageInfo.sampler = reinterpret_cast<VkSampler>(sampler);
     imageInfo.imageView = tex->view;
@@ -1585,15 +1698,16 @@ void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandl
 
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
+    write.dstSet = set;
     write.dstBinding = 0;
     write.dstArrayElement = binding;
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write.pImageInfo = &imageInfo;
-    vkUpdateDescriptorSets(VKDEV, 1, &write, 0, nullptr);
+    if (fresh) {
+        vkUpdateDescriptorSets(VKDEV, 1, &write, 0, nullptr);
+    }
 
-    VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
     vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
                             reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
                             0, 1, &set, 0, nullptr);
@@ -1610,6 +1724,11 @@ void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandl
                      count, mBoundEntry->desc.textureCount);
         return;
     }
+    bool fresh = false;
+    VkDescriptorSet set = allocDrawTexSet(
+        VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
+        reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
+
     VkWriteDescriptorSet writes[8]{};
     VkDescriptorImageInfo images[8]{};
     for (uint32_t i = 0; i < count; ++i) {
@@ -1618,16 +1737,17 @@ void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandl
         images[i].imageView = t->view;
         images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[i].dstSet = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
+        writes[i].dstSet = set;
         writes[i].dstBinding = 0;
         writes[i].dstArrayElement = i;
         writes[i].descriptorCount = 1;
         writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[i].pImageInfo = &images[i];
     }
-    vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
+    if (fresh) {
+        vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
+    }
 
-    VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet);
     vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
                             reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
                             0, 1, &set, 0, nullptr);

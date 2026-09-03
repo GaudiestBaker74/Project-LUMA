@@ -16,6 +16,12 @@
 // ============================================================================
 
 #include <cstdarg>
+// PC_PORT: lrintf for the host fallbacks of the f32->int fast casts below.
+#ifdef __cplusplus
+#include <cmath>
+#else
+#include <math.h>
+#endif
 #include <revolution/types.h>
 
 #ifdef __cplusplus
@@ -150,19 +156,22 @@ void* OSAllocFromArenaHi(u32 size, u32 align);
 #endif
 
 inline s16 __OSf32tos16(__REGISTER f32 inF) {
+    // clang-format off
+#ifdef __MWERKS__
     __REGISTER s16 out;
     u32 tmp;
     __REGISTER u32* tmpPtr = &tmp;
-    // clang-format off
-#ifdef __MWERKS__
     asm {
         psq_st inF, 0(tmpPtr), 0x1, 5
         lha out, 0(tmpPtr)
     }
+    return out;
+#else
+    // PC_PORT: the psq_st quantize path rounds to nearest — lrintf matches
+    // (the vendored body left `out` uninitialized on non-MWERKS toolchains).
+    return static_cast<s16>(lrintf(inF));
 #endif
     // clang-format on
-
-    return out;
 }
 
 inline void OSf32tos16(f32* f, s16* out) {
@@ -170,19 +179,21 @@ inline void OSf32tos16(f32* f, s16* out) {
 }
 
 inline u8 __OSf32tou8(__REGISTER f32 inF) {
+    // clang-format off
+#ifdef __MWERKS__
     __REGISTER u8 out;
     u32 tmp;
     __REGISTER u32* tmpPtr = &tmp;
-    // clang-format off
-#ifdef __MWERKS__
     asm {
         psq_st inF, 0(tmpPtr), 0x1, 2
         lbz out, 0(tmpPtr)
     }
+    return out;
+#else
+    // PC_PORT: round-to-nearest, matching the psq_st quantize path.
+    return static_cast<u8>(lrintf(inF));
 #endif
     // clang-format on
-
-    return out;
 }
 
 inline void OSf32tou8(f32* f, u8* out) {

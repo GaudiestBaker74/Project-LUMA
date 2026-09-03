@@ -24,36 +24,6 @@
 #include <JSystem/JGeometry/TVec.hpp>  // TVec3<f32> non-inline ctors
 #include <revolution/mtx.h>
 
-namespace {
-
-// Fills the JMath lookup tables with their exact mathematical content.
-// The PPC game baked these as static data; the decomp has not reconstructed
-// them yet, so the host computes them (deterministic, matches the access
-// patterns in JMATrigonometric.hpp).
-struct JMathTableInit {
-    JMathTableInit() {
-        constexpr u32 kSinCosLen = JMath::TSinCosTable<14, f32>::LEN;  // 16384
-        constexpr double kTwoPi = 6.283185307179586476925286766559;
-        JMath::TSinCosTable<14, f32>& sc = JMath::sSinCosTable;
-        for (u32 i = 0; i < kSinCosLen; ++i) {
-            const double a = kTwoPi * static_cast<double>(i) / kSinCosLen;
-            sc.table[i].a1 = static_cast<f32>(std::sin(a));  // sine slot
-            sc.table[i].b1 = static_cast<f32>(std::cos(a));  // cosine slot
-        }
-
-        // asin lookup table: acos_(x) computes RADIAN_DEG090 - mTable[(u32)(x*1023.5f)]
-        // for x >= 0, so mTable[k] must equal asin(k / 1023.5).
-        JMath::TAsinAcosTable<1024, f32>& aa = JMath::sAsinAcosTable;
-        for (u32 i = 0; i < 1024; ++i) {
-            aa.mTable[i] = static_cast<f32>(std::asin(static_cast<double>(i) / 1023.5));
-        }
-    }
-};
-
-JMathTableInit gJMathTableInit;  // runs before main()
-
-}  // namespace
-
 namespace JMath {
 
 f32 fastReciprocal(f32 value) {
@@ -144,15 +114,37 @@ T TAsinAcosTable<Len, T>::get_(T x, T y) const {
     return TAngleConstant_<T>::RADIAN_DEG090() - mTable[static_cast<u32>(x * 1023.5f)];
 }
 
-// The decomp declares the table constructors but never defines them (the
-// baked data was not reconstructed); the tables are filled by the static
-// init above, so the ctors just value-initialize.
+// The decomp declares the tables but never defines them (the baked data was
+// not reconstructed), so the ctors compute their exact mathematical content.
+// PC_PORT: filling from a separate TU's static init (the old gJMathTableInit)
+// is order-dependent across TUs — MSVC ran the filler BEFORE these ctors,
+// which then zeroed the tables again (JMASin/JMACos/JMAAcos returned 0).
+// Filling inside each ctor is order-independent.
+template <int Bits, typename T>
+TSinCosTable<Bits, T>::TSinCosTable() {
+    constexpr double kTwoPi = 6.283185307179586476925286766559;
+    for (u32 i = 0; i < LEN; ++i) {
+        const double a = kTwoPi * static_cast<double>(i) / LEN;
+        table[i].a1 = static_cast<T>(std::sin(a));  // sine slot
+        table[i].b1 = static_cast<T>(std::cos(a));  // cosine slot
+    }
+}
+
 template <s32 Len, typename T>
 TAtanTable<Len, T>::TAtanTable() : mTable(), _1000() {}
 
 template <s32 Len, typename T>
-TAsinAcosTable<Len, T>::TAsinAcosTable() : mTable(), _1000() {}
+TAsinAcosTable<Len, T>::TAsinAcosTable() : mTable(), _1000() {
+    // acos_(x) computes RADIAN_DEG090 - mTable[(u32)(x * scale)] for x >= 0
+    // (scale = Len - 0.5 = 1023.5 for the baked 1024-entry console table),
+    // so mTable[k] must equal asin(k / scale).
+    const double scale = static_cast<double>(Len) - 0.5;
+    for (s32 i = 0; i < Len; ++i) {
+        mTable[i] = static_cast<T>(std::asin(static_cast<double>(i) / scale));
+    }
+}
 
+template class TSinCosTable<14, f32>;
 template class TAtanTable<1024, f32>;
 template class TAsinAcosTable<1024, f32>;
 
@@ -230,6 +222,93 @@ void PSMTXCopy(const Mtx src, Mtx dst) {
         for (int c = 0; c < 4; ++c) {
             dst[r][c] = src[r][c];
         }
+    }
+}
+
+// M9.5.2: the nw4r lyt pane matrix pipeline (Pane::CalculateMtx) references
+// these. Same scalar-reimplementation policy as above; semantics are the RVL
+// SDK's row-vector convention (v' = v * M).
+
+void PSMTXConcat(const Mtx a, const Mtx b, Mtx d) {
+    // d = a * b (3x4 affine; b's implicit fourth row is (0,0,0,1)).
+    // Computed through a temp so d may alias a or b (the console asm is
+    // likewise alias-safe).
+    Mtx tmp;
+    for (int i = 0; i < 3; ++i) {
+        const f32 a0 = a[i][0];
+        const f32 a1 = a[i][1];
+        const f32 a2 = a[i][2];
+        tmp[i][0] = a0 * b[0][0] + a1 * b[1][0] + a2 * b[2][0];
+        tmp[i][1] = a0 * b[0][1] + a1 * b[1][1] + a2 * b[2][1];
+        tmp[i][2] = a0 * b[0][2] + a1 * b[1][2] + a2 * b[2][2];
+        tmp[i][3] = a0 * b[0][3] + a1 * b[1][3] + a2 * b[2][3] + a[i][3];
+    }
+    PSMTXCopy(tmp, d);
+}
+
+void PSMTXTrans(Mtx m, f32 xT, f32 yT, f32 zT) {
+    PSMTXIdentity(m);
+    m[0][3] = xT;
+    m[1][3] = yT;
+    m[2][3] = zT;
+}
+
+void PSMTXTransApply(const Mtx src, Mtx dst, f32 xT, f32 yT, f32 zT) {
+    // dst = src * Translate(xT, yT, zT): rotation rows copied, the
+    // translation column gets src's linear part applied to (x, y, z).
+    f32 t0 = src[0][0] * xT + src[0][1] * yT + src[0][2] * zT + src[0][3];
+    f32 t1 = src[1][0] * xT + src[1][1] * yT + src[1][2] * zT + src[1][3];
+    f32 t2 = src[2][0] * xT + src[2][1] * yT + src[2][2] * zT + src[2][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            dst[i][j] = src[i][j];
+        }
+    }
+    dst[0][3] = t0;
+    dst[1][3] = t1;
+    dst[2][3] = t2;
+}
+
+void PSMTXScale(Mtx m, f32 xS, f32 yS, f32 zS) {
+    // Matches the vendored asm: pure scale, zeroed translation column.
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            m[r][c] = 0.0f;
+        }
+    }
+    m[0][0] = xS;
+    m[1][1] = yS;
+    m[2][2] = zS;
+}
+
+void PSMTXRotRad(Mtx m, char axis, f32 rad) {
+    const f32 c = std::cos(rad);
+    const f32 s = std::sin(rad);
+    PSMTXIdentity(m);
+    switch (axis) {
+    case 'x':
+    case 'X':
+        m[1][1] = c;
+        m[1][2] = s;
+        m[2][1] = -s;
+        m[2][2] = c;
+        break;
+    case 'y':
+    case 'Y':
+        m[0][0] = c;
+        m[0][2] = -s;
+        m[2][0] = s;
+        m[2][2] = c;
+        break;
+    case 'z':
+    case 'Z':
+        m[0][0] = c;
+        m[0][1] = s;
+        m[1][0] = -s;
+        m[1][1] = c;
+        break;
+    default:
+        break;
     }
 }
 

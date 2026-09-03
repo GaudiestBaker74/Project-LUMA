@@ -18,10 +18,12 @@ constexpr uint64_t kTimerHz = 60750000ull; // OS_BUS_CLOCK(243 MHz) / 4
 const Platform::Timing::TimePoint kProcessStart = Platform::Timing::now();
 }
 
-// Console global mirror (declared `extern` by compat/include/revolution/os.h);
-// the JAS probes (JASProbe.cpp) read it directly, and OS_BUS_CLOCK derives
-// the timer frequency from it.
-u32 __OSBusClock = 243000000u;
+// Console global mirror (declared `extern` by compat/include/revolution/os.h
+// inside its extern "C" block); the JAS probes (JASProbe.cpp) read it directly,
+// and OS_BUS_CLOCK derives the timer frequency from it. PC_PORT: the extern "C"
+// here must match the header declaration — GCC does not mangle namespace-scope
+// variables (both spellings link), MSVC does (mismatch = LNK2001).
+extern "C" u32 __OSBusClock = 243000000u;
 
 extern "C" {
 

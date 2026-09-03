@@ -10,4 +10,12 @@ namespace Platform::CompatVi {
 // what MainLoopFramework::waitForRetrace blocks on).
 void fireRetrace();
 
+// Drains the host OS event queue (SDL). Called from VIWaitForRetrace once per
+// field on the boot's main thread: the --boot path runs the vendored gameMain,
+// which never returns to the native loop that would otherwise poll SDL — on
+// Windows the window goes "not responding" without this. A close/quit request
+// exits the process cleanly (atexit handlers stop the field clock). No-op when
+// SDL's event subsystem is not initialized (headless unit tests).
+void pumpHostEvents();
+
 } // namespace Platform::CompatVi

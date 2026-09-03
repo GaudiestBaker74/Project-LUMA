@@ -50,6 +50,10 @@ TEST_CASE(scene_factory_creates_logo_scene) {
 
 TEST_CASE(logo_fader_nerve_timeline) {
     LogoFader fader("test-fader");
+    // M9.5.3a: LayoutActor::movement is the REAL vendored one now, which
+    // early-outs while the actor is dead — and LogoFader's ctor kill()s it.
+    // LogoScene does exactly this appear() before using the fader.
+    fader.appear();
     fader.setBlank();
     CHECK(fader.isFadeEnd());
 

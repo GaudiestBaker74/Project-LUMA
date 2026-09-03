@@ -222,6 +222,23 @@ void buildFst() {
 }
 
 // Builds the FST when needed: on first use, or when the mounted root changed.
+// Console discs pad every file to a 32-byte boundary and game code reads
+// aligned sizes (JKRDvdRipper/JKRFileLoader use ALIGN_NEXT(fileSize, 32)),
+// so reads that run past the logical EOF are normal and must succeed. Host
+// files carry no padding: clamp the read at EOF and zero-fill the rest.
+// Reads starting past EOF still fail.
+bool readClamped(const std::string& virtualPath, void* dst, u64 length, u64 offset, u64 fileSize) {
+    const u64 avail = (offset < fileSize) ? (fileSize - offset) : 0;
+    const u64 n = (length < avail) ? length : avail;
+    if (n > 0 && !Platform::Filesystem::readFile(virtualPath, dst, n, offset)) {
+        return false;
+    }
+    if (length > n) {
+        std::memset(static_cast<u8*>(dst) + n, 0, length - n);
+    }
+    return true;
+}
+
 void ensureFst() {
     if (gFstReady && gScannedRoot == Platform::Filesystem::getRootDir()) {
         return;
@@ -273,6 +290,7 @@ struct AsyncCommand {
     s32 length = 0;
     s32 offset = 0;
     s32 prio = 2;
+    u64 fileSize = 0;  // for EOF clamping (see readClamped)
     std::string virtualPath;
     DVDCallback readCallback = nullptr;
     DVDCBCallback checkCallback = nullptr;
@@ -322,7 +340,8 @@ void workerMain() {
         if (cmd.canceled) {
             result = kResultCanceled;
         } else if (cmd.info != nullptr && cmd.dst != nullptr && cmd.length >= 0) {
-            if (Platform::Filesystem::readFile(cmd.virtualPath, cmd.dst, cmd.length, cmd.offset)) {
+            if (readClamped(cmd.virtualPath, cmd.dst, static_cast<u64>(cmd.length),
+                            static_cast<u64>(cmd.offset), cmd.fileSize)) {
                 result = cmd.length;
             }
         }
@@ -397,10 +416,11 @@ s32 DVDReadPrio(DVDFileInfo* fileInfo, void* addr, s32 length, s32 offset, s32 p
     if (length == 0) {
         return (static_cast<u64>(offset) <= f.size) ? 0 : -1;
     }
-    if (static_cast<u64>(offset) + static_cast<u64>(length) > f.size) {
-        return -1;  // out of bounds — the game always reads within fileInfo.length
+    if (static_cast<u64>(offset) > f.size) {
+        return -1;  // starts past EOF
     }
-    if (!Platform::Filesystem::readFile(f.virtualPath, addr, length, offset)) {
+    // Reads may run past EOF into the disc padding — clamp + zero-fill.
+    if (!readClamped(f.virtualPath, addr, static_cast<u64>(length), static_cast<u64>(offset), f.size)) {
         return -1;
     }
     return length;
@@ -418,8 +438,8 @@ BOOL DVDReadAsyncPrio(DVDFileInfo* fileInfo, void* addr, s32 length, s32 offset,
         return FALSE;
     }
     const FstEntry& f = gFst[entry];
-    if (static_cast<u64>(offset) + static_cast<u64>(length) > f.size) {
-        return FALSE;  // validate now so the worker never reads out of bounds
+    if (static_cast<u64>(offset) > f.size) {
+        return FALSE;  // starts past EOF; reads running past EOF are clamped
     }
     // Mirror the SDK's command block for the pending transfer, like the
     // hardware would: the callback and any DVDFileInfo inspection read these.
@@ -435,6 +455,7 @@ BOOL DVDReadAsyncPrio(DVDFileInfo* fileInfo, void* addr, s32 length, s32 offset,
     cmd.length = length;
     cmd.offset = offset;
     cmd.prio = prio;
+    cmd.fileSize = f.size;
     cmd.virtualPath = f.virtualPath;
     cmd.readCallback = callback;
     ensureWorker();

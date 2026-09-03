@@ -51,6 +51,14 @@ add_executable(galaxy-pc-tests
     # M9.4: scene system + Logo (factory, fader nerves, the full boot drive
     # to the LogoScene Deactive nerve — headless).
     scene_test.cpp
+    # M9.5.1: JKernel archive stack — Yaz0 decode, RARC host conversion,
+    # mounts over the compat DVD layer. Listed last: these tests remount the
+    # filesystem root over a synthetic tree, and the suite runs in
+    # registration order (see dvd_test.cpp's note).
+    jkr_archive_test.cpp
+    # M9.5.2: nw4r lyt — brlyt swapper, Layout::Build, TPL + brfnt conversion.
+    lyt_layout_test.cpp
+    layout_holder_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)

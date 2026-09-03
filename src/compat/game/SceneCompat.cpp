@@ -50,10 +50,19 @@
 #include "Game/System/GalaxyStatusAccessor.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
+#include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SingletonHolder.hpp"
 #include "Game/Util/SystemUtil.hpp"
+#include <JSystem/JKernel/JKRArchive.hpp>
 #include <JSystem/JKernel/JKRDvdRipper.hpp>
 #include <JSystem/JKernel/JKRHeap.hpp>
+#include <JSystem/JKernel/JKRMemArchive.hpp>
+
+// M9.5.3c: the DrawUtil replacements below are real GX state setup now —
+// matrix builders (C_MTXOrtho/PSMTXIdentity) + the compat GX API surface
+// (projection/viewport/scissor, the immediate vertex writers, tev/pixel state).
+#include <revolution/mtx.h>
+#include "compat/gx/GXCompat.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -986,15 +995,9 @@ bool ScenarioData::getValueBool(const char*, s32, bool*) const {
 // docs/boot.md M9.4).
 // =============================================================================
 
-SimpleLayout::SimpleLayout(const char* pName, const char* pLayoutName, u32 a3, int drawType) : LayoutActor(pName, true) {
-    int type = drawType >= 0 ? drawType : static_cast< int >(MR::DrawType_Layout);
-    MR::connectToScene(this, static_cast< int >(MR::MovementType_Layout), static_cast< int >(MR::CalcAnimType_Layout), -1, type);
-    initLayoutManager(pLayoutName, a3);
-}
-
-SimpleEffectLayout::SimpleEffectLayout(const char* pName, const char* pLayoutName, u32 a3, int a4) : SimpleLayout(pName, pLayoutName, a3, a4) {
-    initEffectKeeper(0, nullptr, nullptr);
-}
+// M9.5.3a: the REAL vendored Game/Screen/SimpleLayout.cpp is compiled now
+// (over the reconstructed LayoutManager), so the host stubs that lived here
+// were removed.
 
 IsbnManager::IsbnManager(MEMAllocator* pAllocator) : _0(false), mpAllocator(pAllocator), mpLayout(nullptr), mpResAccessor(nullptr) {
 }
@@ -1268,8 +1271,12 @@ void connectToSceneWipeLayout(NameObj* pObj) {
 }
 
 // Game/Util/LayoutUtil.cpp replacements.
-SimpleLayout* createSimpleLayout(const char* pName, const char* pLayoutName, u32 a3) {
-    return new SimpleLayout(pName, pLayoutName, a3, -1);
+SimpleLayout* createSimpleLayout(const char* pName, const char* pArcName, u32 param3) {
+    SimpleLayout* pSimpleLayout = new SimpleLayout(pName, pArcName, param3, 60);
+
+    pSimpleLayout->initWithoutIter();
+
+    return pSimpleLayout;
 }
 
 bool isStep(const LayoutActor* pActor, s32 step) {
@@ -1288,45 +1295,119 @@ bool isGreaterEqualStep(const LayoutActor* pActor, s32 step) {
     return pActor != nullptr && pActor->getNerveStep() >= step;
 }
 
-void startAnim(LayoutActor*, const char*, u32) {
-}
+// M9.5.3a: startAnim/setAnimFrameAndStop/... are REAL now (root LayoutPaneCtrl
+// over LayoutAnmPlayer) — see game/LayoutManagerCompat.cpp.
 
-void startAnimAtFirstStep(LayoutActor*, const char*, u32) {
-}
+// ---------------------------------------------------------------------------
+// Game/Util/DrawUtil.cpp replacements (M9.5.3c: real GX state setup — the
+// compat GX layer mirrors it and feeds the host renderer, so layouts actually
+// draw now). Bodies are verbatim ports of the vendored DrawUtil.cpp minus the
+// j3dSys/J3D pieces (J3D arrives in M9.5.4) and the Z-buffer clear quad (the
+// host renderer clears depth at pass begin; GXSetZTexture's Z24X8 dummy-texture
+// trick is not worth emulating for that).
+// ---------------------------------------------------------------------------
 
-void startAnimAndSetFrameAndStop(LayoutActor*, const char*, f32, u32) {
-}
+// DrawUtil.cpp file-local constants.
+static const f32 cNearZ = -10000.0f;
+static const f32 cFarZ = 10000.0f;
 
-void setAnimFrameAndStop(LayoutActor*, f32, u32) {
-}
-
-void setAnimFrameAndStopAtEnd(LayoutActor*, u32) {
-}
-
-void setAnimRate(LayoutActor*, f32, u32) {
-}
-
-// Game/Util/DrawUtil.cpp replacements (nothing is drawn on the host yet; the
-// GX state calls are cheap no-ops with the compat layer).
 void drawInit() {
+    // The real drawInit drives j3dSys (drawInit + tex-cache region); the J3D
+    // system is M9.5.4. Nothing to do on the host yet.
 }
 
 void drawInitFor2DModel() {
+    // The real one also reinits GX through j3dSys and loads an identity view
+    // mtx into j3dSys; the GX state parts are ported verbatim.
+    GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+
+    Mtx44 projMtx;
+    C_MTXOrtho(projMtx, 0.0f, -static_cast< f32 >(MR::getScreenHeight()), 0.0f,
+               static_cast< f32 >(MR::getScreenWidth()), cNearZ, cFarZ);
+    GXSetProjection(projMtx, GX_ORTHOGRAPHIC);
 }
 
-void setupDrawForNW4RLayout(f32, bool) {
+void setDefaultViewportAndScissor() {
+    s32 width = MR::getFrameBufferWidth();
+    s32 height = MR::getScreenHeight();
+    GXSetViewport(0.0f, 0.0f, static_cast< f32 >(width), static_cast< f32 >(height), 0.0f, 1.0f);
+    GXSetScissor(0, 0, static_cast< u32 >(width), static_cast< u32 >(height));
+}
+
+void setupDrawForNW4RLayout(f32 scale, bool) {
+    // Verbatim from DrawUtil.cpp (petari marks the decomp "! unfinished"; the
+    // bool is unused there too). Layout space is 608 wide, centered; the
+    // height spans the screen, so layouts fill it vertically (scale 1.0).
+    f32 v1 = MR::getScreenHeight() * 0.5f * scale;
+    f32 v2 = 608.0f * 0.5f * scale;
+
+    Mtx44 projMtx;
+    C_MTXOrtho(projMtx, v1, -v1, -v2, v2, cNearZ, cFarZ);
+    GXSetProjection(projMtx, GX_ORTHOGRAPHIC);
+    GXSetCullMode(GX_CULL_NONE);
+    GXSetZMode(GX_FALSE, GX_NEVER, GX_FALSE);
 }
 
 void clearZBuffer() {
+    // The real one draws a fullscreen quad with Z-write through a Z24X8
+    // Z-texture. The host renderer clears depth at every pass begin
+    // (ClearValues in Renderer.h), so there is nothing to do.
 }
 
-void fillScreenSetup(const GXColor&) {
+void fillScreenSetup(const GXColor& rColor) {
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_U16, 0);
+    GXClearVtxDesc();
+    GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+
+    Mtx mtxImm;
+    PSMTXIdentity(mtxImm);
+    GXLoadPosMtxImm(mtxImm, GX_PNMTX0);
+    GXSetCurrentMtx(GX_PNMTX0);
+
+    Mtx44 projMtx;
+    C_MTXOrtho(projMtx, 0.0f, static_cast< f32 >(MR::getScreenHeight()), 0.0f,
+               static_cast< f32 >(MR::getFrameBufferWidth()), -1.0f, 1.0f);
+    GXSetProjection(projMtx, GX_ORTHOGRAPHIC);
+
+    GXSetNumChans(1);
+    GXSetChanCtrl(GX_COLOR0A0, GX_FALSE, GX_SRC_REG, GX_SRC_REG, GX_LIGHT_NULL, GX_DF_NONE, GX_AF_NONE);
+    GXSetChanCtrl(GX_COLOR1A1, GX_FALSE, GX_SRC_REG, GX_SRC_REG, GX_LIGHT_NULL, GX_DF_NONE, GX_AF_NONE);
+    GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
+    GXSetZMode(GX_FALSE, GX_LEQUAL, GX_FALSE);
+    GXSetZCompLoc(GX_FALSE);
+    GXSetCullMode(GX_CULL_NONE);
+    GXSetDither(GX_FALSE);
+    GXSetNumTexGens(0);
+    GXSetNumTevStages(1);
+    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR_NULL);
+    GXSetTevColor(GX_TEVREG0, rColor);
+    GXSetTevColorIn(GX_TEVSTAGE0, GX_CC_C0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO);
+    GXSetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetTevAlphaIn(GX_TEVSTAGE0, GX_CA_A0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO);
+    GXSetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
 }
 
-void fillScreen(const GXColor&) {
+void fillScreenArea(const TVec2s& rMin, const TVec2s& rMax) {
+    GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+    {
+        u16 maxX = static_cast< u16 >(rMax.x);
+        u16 minX = static_cast< u16 >(rMin.x);
+        u16 minY = static_cast< u16 >(rMin.y);
+        u16 maxY = static_cast< u16 >(rMax.y);
+
+        GXPosition2u16(minX, minY);
+        GXPosition2u16(maxX, minY);
+        GXPosition2u16(maxX, maxY);
+        GXPosition2u16(minX, maxY);
+    }
+    GXEnd();
 }
 
-void fillScreenArea(const TVec2s&, const TVec2s&) {
+void fillScreen(const GXColor& color) {
+    fillScreenSetup(color);
+    u16 width = static_cast< u16 >(MR::getFrameBufferWidth());
+    u16 height = static_cast< u16 >(MR::getScreenHeight());
+    fillScreenArea(TVec2s(0, 0), TVec2s(width, height));
 }
 
 // Game/Util/GamePadUtil.cpp replacement (no pad state in the boot test).
@@ -1345,8 +1426,27 @@ bool isScreen16Per9() {
 }
 
 // Game/Util/FileUtil.cpp addition.
-void* loadToMainRAM(const char*, u8*, JKRHeap*, JKRDvdRipper::EAllocDirection) {
-    return nullptr; // Cn-only path; not reached with the US region prefix
+//
+// M9.5.1: real implementation over the compat DVD + JKernel archive stack.
+// Upstream routes these through the FileLoader request queue (async worker +
+// receiveFile/receiveArchive); the host reads archives from local disk, where
+// the synchronous JKRDvdRipper path is both correct and simpler. Returns
+// nullptr when the file is absent or is not a readable archive.
+void* loadToMainRAM(const char* pFilePath, u8* pDst, JKRHeap* pHeap, JKRDvdRipper::EAllocDirection allocDir) {
+    if (pFilePath == nullptr) {
+        return nullptr;
+    }
+    return JKRDvdRipper::loadToMainRAM(pFilePath, pDst, EXPAND_SWITCH_UNKNOWN1, 0, pHeap, allocDir, 0, nullptr,
+                                       nullptr);
+}
+
+JKRMemArchive* mountArchive(const char* pFilePath, JKRHeap* pHeap) {
+    if (pFilePath == nullptr) {
+        return nullptr;
+    }
+    JKRArchive* archive =
+        JKRArchive::mount(pFilePath, JKRArchive::MOUNT_MODE_MEM, pHeap, JKRArchive::MOUNT_DIRECTION_1);
+    return static_cast< JKRMemArchive* >(archive);
 }
 
 } // namespace MR

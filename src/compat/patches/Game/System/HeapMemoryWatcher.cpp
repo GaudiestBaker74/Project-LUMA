@@ -7,6 +7,8 @@
 // on the Wii (the arena emulation keeps the partition at 32-bit offsets).
 // =============================================================================
 #include "Game/System/HeapMemoryWatcher.hpp"
+
+#include <cstdio>
 #include "Game/Util/MemoryUtil.hpp"
 #include <JSystem/JKernel/JKRExpHeap.hpp>
 #include <JSystem/JKernel/JKRSolidHeap.hpp>
@@ -171,7 +173,15 @@ HeapMemoryWatcher::HeapMemoryWatcher()
     createHeaps();
 }
 
-void HeapMemoryWatcher::memoryErrorCallback(void*, u32, int) {
+void HeapMemoryWatcher::memoryErrorCallback(void* pHeap, u32 size, int alignment) {
+    // PC_PORT: the JKR error handler fires when a heap allocation fails. Keep
+    // the context: OSPanic's line number below is a hardcoded constant (0x219)
+    // and the test binary never initializes the platform logger, so raw
+    // stderr is the only channel that survives the abort.
+    std::fprintf(stderr,
+                 "[HeapMemoryWatcher] JKR allocation FAILED: heap=%p size=%u (0x%X) align=%d\n",
+                 pHeap, static_cast< unsigned >(size), static_cast< unsigned >(size), alignment);
+    std::fflush(stderr);
     OSPanic(__FILE__, 0x219, "");
 }
 

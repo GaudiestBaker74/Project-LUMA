@@ -8,5 +8,11 @@
 // __builtin_va_list) and then include the vendored header unchanged.
 // =============================================================================
 #include <cstdarg>
+#if defined(_MSC_VER)
+// PC_PORT: MSVC has no __builtin_va_list; va_list (from <cstdarg>) is already
+// the host type (char* on x64), so the alias is direct.
+typedef va_list __va_list;
+#else
 typedef __builtin_va_list __va_list;
+#endif
 #include "../../../../../third_party/petari/libs/JSystem/include/JSystem/JUtility/JUTAssert.hpp"

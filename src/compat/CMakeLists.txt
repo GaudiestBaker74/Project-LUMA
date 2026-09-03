@@ -17,6 +17,43 @@ set(JKR_HEAP_SOURCE
 set(JKR_EXPHEAP_SOURCE
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRExpHeap.cpp)
 
+# ---------------------------------------------------------------------------
+# M9.5.2: nw4r — the Revolution "network/graphics" middleware the layouts and
+# fonts are built on: lyt (brlyt layout engine), ut (brfnt fonts, text
+# writers, containers), math (tri tables/types). Vendored clean unless a
+# patches/nw4r override exists (host fixes go there, listed here instead).
+# NOT compiled: lyt_arcResourceAccessor (the SMG game code reaches resources
+# through LayoutHolder/JKRArchive; the RVL ARC subsystem it needs is not
+# ported and its in-place BE parsing cannot work on the host anyway).
+set(NW4R_SOURCES
+    ${PETARI_ROOT}/src/nw4r/math/math_types.cpp
+    ${PETARI_ROOT}/src/nw4r/math/math_triangular.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_CharStrmReader.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_CharWriter.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_Font.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_LinkList.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/ut/ut_ResFont.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_ResFontBase.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_RomFont.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_TagProcessorBase.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/ut/ut_TextWriterBase.cpp
+    ${PETARI_ROOT}/src/nw4r/ut/ut_binaryFileFormat.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_animation.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_bounding.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_common.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_drawInfo.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_group.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_init.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_layout.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_material.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_pane.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_picture.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_resourceAccessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_texMap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_textBox.cpp
+    ${PETARI_ROOT}/src/nw4r/lyt/lyt_window.cpp
+)
+
 add_library(pc_compat STATIC
     os/OSArena.cpp
     os/OSMutex.cpp
@@ -24,6 +61,10 @@ add_library(pc_compat STATIC
     os/PPCIntrinsics.cpp  # __cntlzw etc. (PPC intrinsics used by vendored inline code)
     jsystem/JUTConsoleCompat.cpp
     jsystem/JUTExceptionCompat.cpp
+    # M9.5.1: RARC (JKRArchive) host conversion — big-endian metadata swap +
+    # on-disk 16-byte file entries -> host SDIFileEntry layout. Used by the
+    # patched JKRMemArchive (see jsystem/RarcHost.cpp).
+    jsystem/RarcHost.cpp
     # M3 "first GX smell": minimal GX subset routed to Platform::Video.
     # Replaced by the real GX implementation in M5 (see gx/GXCompat.h).
     gx/GXCompat.cpp
@@ -65,6 +106,11 @@ add_library(pc_compat STATIC
     ${PETARI_ROOT}/src/JSystem/JKernel/JKRDisposer.cpp
     # JSUPtrList/JSUPtrLink (used by JKRHeap's heap registry). Compiles as-is.
     ${PETARI_ROOT}/src/JSystem/JSupport/JSUList.cpp
+    # M9.5.2: the MEM allocator forwarders used by Layout::AllocMemory
+    # (host implementation — the vendored mem_allocator.c drags in the RVL
+    # expHeap header tree, and the host never uses MEM ExpHeaps: game code
+    # allocates through JKRHeap-backed MEMAllocatorFuncs).
+    ${CMAKE_CURRENT_SOURCE_DIR}/mem/MEMAllocator.cpp
     # M5.6: GD display-list recording primitives (patched copy — the only
     # change is the DCFlushRange no-op, see patches/RVL_SDK/gd/GDBase.c).
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/gd/GDBase.c
@@ -167,6 +213,48 @@ add_library(pc_compat STATIC
     # M9.3: patched mtx44 (no MWERKS asm) — plain C bodies, but the PC GX/mtx
     # header overrides are C++, so compile it as C++ like GXLight.c.
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
+    # --- M9.5.1: JKernel archive stack (RARC mount + Yaz0/Yay0) ---------------
+    # The resource pipeline every layout/model/message load goes through:
+    # MR::mountArchive/loadToMainRAM -> JKRArchive::mount -> JKRMemArchive ->
+    # JKRDvdRipper/JKRDvdFile -> compat DVD; compressed payloads decode via
+    # JKRDecomp. Vendored clean: the file-loader registry, the archive lookup
+    # code, the archive iterators. Patched copies (see patches/README.md):
+    # JKRArchivePub (MEM-only mount + missing statics), JKRMemArchive
+    # (big-endian metadata + 20-byte on-disk file entries -> host layout, via
+    # jsystem/RarcHost.cpp), JKRDvdFile (doneProcess back-pointer),
+    # JKRDvdRipper (big-endian Yaz0 header, deterministic read errors),
+    # JKRDecomp (synchronous decode, big-endian stream reads).
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRFileLoader.cpp
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRArchivePri.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRFileFinder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRArchivePub.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRMemArchive.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDvdFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDvdRipper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDecomp.cpp
+    # M9.5.2: nw4r lyt/ut/math (vendored clean; see NW4R_SOURCES) + the host
+    # resource converters (brlyt swapper, TPL native-tree builder).
+    ${NW4R_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/nw4r/LytHost.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/nw4r/LytMissing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gx/TplHost.cpp
+    # --- M9.5.3a: the real layout stack (load & build) ------------------------
+    # Patched copies: LayoutHolder (RARC scan -> ResTables + the nw4r
+    # ResourceAccessor), LayoutAnmPlayer (null-safe start + reconstructed
+    # isStop), PaneEffectKeeper (effect-system stub), ResourceInfo (MSL_C
+    # include). Vendored clean: LayoutActor, SimpleLayout, LayoutPaneCtrl.
+    # Reconstructed: LayoutManager + the MR:: layout/anim/screen helpers
+    # (LayoutManagerCompat.cpp) and J3DFrameCtrl extracted verbatim from the
+    # huge J3DAnimation.cpp (the rest of J3D lands with M9.5.4).
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/ResourceInfo.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutActor.cpp
+    ${PETARI_ROOT}/src/Game/Screen/SimpleLayout.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutPaneCtrl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/LayoutHolder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Animation/LayoutAnmPlayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/PaneEffectKeeper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/LayoutManagerCompat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/jsystem/J3DFrameCtrlCompat.cpp
 )
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/gx/GXLight.c
@@ -191,6 +279,12 @@ target_include_directories(pc_compat PUBLIC
 )
 
 target_link_libraries(pc_compat PUBLIC pc_platform)
+if(WIN32)
+    # timeBeginPeriod (VICompat's field-clock cadence) lives in winmm. MSVC
+    # also picks it up from the #pragma comment(lib) in the source; linking it
+    # here keeps MinGW/Clang-cl builds working too.
+    target_link_libraries(pc_compat PUBLIC winmm)
+endif()
 
 # The vendored Petari sources are old-style decompiled code: silence warnings
 # for them (see cmake/CompilerWarnings.cmake). Flag differs per toolchain:
@@ -200,6 +294,11 @@ set(PETARI_SOURCES
     ${JKR_HEAP_SOURCE}
     ${PETARI_ROOT}/src/JSystem/JKernel/JKRDisposer.cpp
     ${PETARI_ROOT}/src/JSystem/JSupport/JSUList.cpp
+    # M9.5.2: the MEM allocator forwarders used by Layout::AllocMemory
+    # (host implementation — the vendored mem_allocator.c drags in the RVL
+    # expHeap header tree, and the host never uses MEM ExpHeaps: game code
+    # allocates through JKRHeap-backed MEMAllocatorFuncs).
+    ${CMAKE_CURRENT_SOURCE_DIR}/mem/MEMAllocator.cpp
     # M5.6: the GD display-list recording primitives (patched copy).
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/gd/GDBase.c
     # M5.7a: the GXInitLight* light-object builders (patched copy).
@@ -263,6 +362,46 @@ set(PETARI_SOURCES
     ${PETARI_ROOT}/src/Game/Scene/Scene.cpp
     ${PETARI_ROOT}/src/Game/Screen/LogoFader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
+    # M9.5.1: the JKernel archive stack — RARC mounting + Yaz0/Yay0 decode,
+    # the resource pipeline every layout/model/message load goes through.
+    # Vendored clean: the file-loader registry, the archive lookup code and
+    # the archive iterators. Patched copies (see patches/README.md): the
+    # public API (MEM-only mount), JKRMemArchive (big-endian metadata +
+    # 20-byte on-disk file entries -> host layout, via jsystem/RarcHost.cpp),
+    # JKRDvdFile (doneProcess back-pointer), JKRDvdRipper (big-endian Yaz0
+    # header, deterministic read errors) and JKRDecomp (synchronous decode,
+    # big-endian stream reads).
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRFileLoader.cpp
+    ${PETARI_ROOT}/src/JSystem/JKernel/JKRArchivePri.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRFileFinder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRArchivePub.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRMemArchive.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDvdFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDvdRipper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/JSystem/JKernel/JKRDecomp.cpp
+    # M9.5.2: nw4r lyt/ut/math (vendored clean; see NW4R_SOURCES) + the host
+    # resource converters (brlyt swapper, TPL native-tree builder).
+    ${NW4R_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/nw4r/LytHost.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/nw4r/LytMissing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gx/TplHost.cpp
+    # --- M9.5.3a: the real layout stack (load & build) ------------------------
+    # Patched copies: LayoutHolder (RARC scan -> ResTables + the nw4r
+    # ResourceAccessor), LayoutAnmPlayer (null-safe start + reconstructed
+    # isStop), PaneEffectKeeper (effect-system stub), ResourceInfo (MSL_C
+    # include). Vendored clean: LayoutActor, SimpleLayout, LayoutPaneCtrl.
+    # Reconstructed: LayoutManager + the MR:: layout/anim/screen helpers
+    # (LayoutManagerCompat.cpp) and J3DFrameCtrl extracted verbatim from the
+    # huge J3DAnimation.cpp (the rest of J3D lands with M9.5.4).
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/ResourceInfo.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutActor.cpp
+    ${PETARI_ROOT}/src/Game/Screen/SimpleLayout.cpp
+    ${PETARI_ROOT}/src/Game/Screen/LayoutPaneCtrl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/LayoutHolder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Animation/LayoutAnmPlayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/PaneEffectKeeper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/LayoutManagerCompat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/jsystem/J3DFrameCtrlCompat.cpp
 )
 set_source_files_properties(${PETARI_SOURCES} PROPERTIES COMPILE_OPTIONS
     "$<$<CXX_COMPILER_ID:MSVC>:/w>;$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>")

@@ -431,6 +431,8 @@ private:
     void* mCmd = nullptr;                // VkCommandBuffer (current frame)
     void* mPassImageView = nullptr;      // VkImageView of the acquired swapchain image
     void* mDescriptorPool = nullptr;     // VkDescriptorPool (M4.2, textured pipelines)
+    void* mFrameTexSetPool = nullptr;    // VkDescriptorPool (M9.5.3c: per-draw texture
+                                         // sets; reset in endFrame after the frame fence)
     // M5.4 (TEV): per-frame fragment-UBO arena (host-visible, one region per
     // draw via dynamic offsets). Reset every endFrame() after the fence.
     void* mUboBuffer = nullptr;          // VkBuffer
@@ -464,6 +466,15 @@ private:
     // mPassTarget — immediate destruction frees memory the GPU (and the blit
     // recording) still use.
     std::vector<void*> mRetiredRenderTargets;
+
+    // M9.5.3c: textures retired by destroyTexture(), destroyed at the next
+    // endFrame() after the frame fence (or at shutdown). The game destroys
+    // textures MID-FRAME (nw4r re-inits texture objects from a shared stack
+    // slot every draw; RLTP / TexMap::ReplaceImage swaps) while recorded
+    // draws of the same frame still bind their image view — an immediate
+    // vkDestroyImageView INVALIDATES the whole command buffer and every draw
+    // of the frame silently disappears (the boot's black screen).
+    std::vector<void*> mRetiredTextures;
 
     // M4.3 frame statistics.
     void* mQueryPool = nullptr;        // VkQueryPool (2 timestamps: frame start/end)

@@ -44,6 +44,10 @@ namespace JMath {
     template < int Bits, typename T >
     class TSinCosTable {
     public:
+        // PC_PORT: the ctor fills the table (see JMathCompat.cpp) — filling it
+        // from a separate TU's static init is order-dependent and MSVC ran the
+        // filler BEFORE the pair ctors zeroed the table again.
+        TSinCosTable();
         static const u32 LEN = 1 << Bits;
         pair< T, T > table[LEN];
 

@@ -47,3 +47,11 @@ void OSPanic(const char* file, int line, const char* fmt, ...) {
 }
 
 } // extern "C"
+
+// The console prints the library banner via the OS report channel at boot;
+// nw4r::lyt::LytInit (M9.5.2) registers its version string here.
+void OSRegisterVersion(const char* text) {
+    if (text != nullptr) {
+        PL_LOG_DEBUG("compat.os", "OSRegisterVersion: %s", text);
+    }
+}

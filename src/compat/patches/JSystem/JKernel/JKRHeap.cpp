@@ -1,12 +1,20 @@
 #include "JSystem/JKernel/JKRHeap.hpp"
 #include "JSystem/JUtility/JUTException.hpp"
 #include <revolution/os/OSBootInfo.h>
+#include <new>  // PC_PORT: std::nothrow_t for the nothrow delete overrides
 #include "compat/os/OSCompat.h"        // PC_PORT: compat::getBootInfo()
 #include "platform/Memory/Memory.h"    // PC_PORT: pre-boot allocator fallback
 
 JKRHeap* JKRHeap::sCurrentHeap;
 JKRHeap* JKRHeap::sRootHeap;
 JKRHeap* JKRHeap::sSystemHeap;
+// PC_PORT (M9.5.1): declared by the header, never defined by the
+// decompilation's compiled TUs — the archive stack references it
+// (JKRArchive::getFirstFile, JKRDecomp::prepareCommand). Zero-init matches
+// the console's BSS; the game heap is created by HeapMemoryWatcher during
+// boot, and until then these callers fall back through JKRHeap::alloc's
+// nullptr-heap path (sCurrentHeap).
+JKRHeap* JKRHeap::sGameHeap;
 
 void* JKRHeap::mCodeStart;
 void* JKRHeap::mCodeEnd;
@@ -407,6 +415,35 @@ void operator delete(void* pData) {
 }
 
 void operator delete[](void* pData) {
+    pcPortFree(pData);
+}
+
+// PC_PORT (M9.5.3a, Windows fix): sized deallocation overrides.
+//
+// MSVC (C++14+) emits calls to the SIZED forms `operator delete(void*, size_t)`
+// by default (/Zc:sizedDealloc is on), while GCC leaves -fsized-deallocation
+// off. Without these overrides, MSVC routed every plain `delete` of a
+// JKR-heap-allocated object (placement-new'd via `new (heap, align)`, or
+// allocated by the global operator new overrides above) straight into the
+// CRT's free() -> invalid free, heap corruption, intermittent 0xC0000005 and
+// the HeapMemoryWatcher alloc-failure panic in the full test suite. Both sized
+// forms simply forward to pcPortFree (the size hint is ignored: pcPortFree
+// resolves the owning JKR heap via findFromRoot, or falls back to the
+// platform allocator for pre-boot pointers). The nothrow delete forms are
+// provided for the same reason.
+void operator delete(void* pData, size_t) {
+    pcPortFree(pData);
+}
+
+void operator delete[](void* pData, size_t) {
+    pcPortFree(pData);
+}
+
+void operator delete(void* pData, const std::nothrow_t&) noexcept {
+    pcPortFree(pData);
+}
+
+void operator delete[](void* pData, const std::nothrow_t&) noexcept {
     pcPortFree(pData);
 }
 

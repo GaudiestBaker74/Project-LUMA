@@ -39,6 +39,7 @@
 #include "Game/Util/SystemUtil.hpp"
 #include <JSystem/JKernel/JKRAram.hpp>
 #include <JSystem/JKernel/JKRExpHeap.hpp>
+#include <JSystem/JKernel/JKRFileLoader.hpp>
 #include <JSystem/JKernel/JKRHeap.hpp>
 #include <JSystem/JUtility/JUTDirectPrint.hpp>
 #include <JSystem/JUtility/JUTVideo.hpp>
@@ -65,6 +66,10 @@ void gameMain(void) {
     OSInitMutex(&MR::MutexHolder< 0 >::sMutex);
     OSInitMutex(&MR::MutexHolder< 1 >::sMutex);
     OSInitMutex(&MR::MutexHolder< 2 >::sMutex);
+    // PC_PORT (M9.5.1): the archive volume list must exist before the first
+    // JKRArchive mounts (the console initializes it from
+    // GameSystemObjHolder::init, which runs after the root heap exists).
+    JKRFileLoader::initializeVolumeList();
     nw4r::lyt::LytInit();
     MR::setLayoutDefaultAllocator();
     SingletonHolder< HeapMemoryWatcher >::init();

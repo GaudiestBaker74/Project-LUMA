@@ -56,6 +56,7 @@
 #include <JSystem/JKernel/JKRSolidHeap.hpp>
 #include <JSystem/JUtility/JUTXfb.hpp>
 #include <nw4r/lyt/init.h>
+#include <nw4r/lyt/layout.h>
 #include <revolution.h>
 
 #include "Game/LiveActor/Spine.hpp"
@@ -87,105 +88,12 @@ JKRUnitHeap* JKRUnitHeap::create(u32, u32 size, u32, JKRHeap* pParent, bool) {
     return reinterpret_cast< JKRUnitHeap* >(JKRSolidHeap::create(size, pParent, false));
 }
 
-// nw4r::lyt::LytInit: layout engine init (M9.5).
-namespace nw4r {
-namespace lyt {
-void LytInit() {
-    // TODO(PC_PORT, M9.5): nw4r layout environment init.
-}
-} // namespace lyt
-} // namespace nw4r
-
 // =============================================================================
-// LayoutActor — base of the layout objects. M9.4: real nerve machine (Spine
-// is vendored); the layout manager (nw4r lyt) still arrives with M9.5.
+// LayoutActor — M9.5.3a: the REAL vendored Game/Screen/LayoutActor.cpp is
+// compiled now (with the reconstructed LayoutManager in
+// game/LayoutManagerCompat.cpp), so the old host stubs that lived here were
+// removed.
 // =============================================================================
-
-LayoutActor::LayoutActor(const char* pName, bool isChangeFrame)
-    : NameObj(pName), mLayoutManager(nullptr), mSpine(nullptr), mEffectKeeper(nullptr),
-      mPointingTarget(nullptr) {
-    (void)isChangeFrame;
-    // TODO(PC_PORT, M9.5): real layout management (J2D/nw4r lyt). The fader's
-    // logic only needs the nerve machine + draw, which are real here.
-}
-
-void LayoutActor::initNerve(const Nerve* pNerve) {
-    mSpine = new Spine(this, pNerve);
-}
-
-void LayoutActor::setNerve(const Nerve* pNerve) const {
-    if (mSpine != nullptr) {
-        mSpine->setNerve(pNerve);
-    }
-}
-
-bool LayoutActor::isNerve(const Nerve* pNerve) const {
-    return mSpine != nullptr && mSpine->isCurrentNerve(pNerve);
-}
-
-s32 LayoutActor::getNerveStep() const {
-    return mSpine != nullptr ? mSpine->mStep : 0;
-}
-
-void LayoutActor::updateSpine() {
-    if (mSpine != nullptr) {
-        mSpine->update();
-    }
-}
-
-void LayoutActor::movement() {
-    updateSpine();
-}
-
-void LayoutActor::draw() const {
-}
-
-void LayoutActor::calcAnim() {
-}
-
-void LayoutActor::appear() {
-    mFlag.mIsDead = false;
-}
-
-void LayoutActor::kill() {
-    mFlag.mIsDead = true;
-}
-
-void LayoutActor::initLayoutManager(const char*, u32) {
-    // TODO(PC_PORT, M9.5): nw4r layout resource loading. Until then the
-    // layout manager stays null (the strap graphic is not drawn).
-}
-
-void LayoutActor::initLayoutManagerNoConvertFilename(const char*, u32) {
-}
-
-void LayoutActor::initLayoutManagerWithTextBoxBufferLength(const char*, u32, u32) {
-}
-
-void LayoutActor::createPaneMtxRef(const char*) {
-}
-
-MtxPtr LayoutActor::getPaneMtxRef(const char*) {
-    return nullptr;
-}
-
-void LayoutActor::initEffectKeeper(int, const char*, const EffectSystem*) {
-}
-
-void LayoutActor::initPointingTarget(int) {
-}
-
-LayoutManager* LayoutActor::getLayoutManager() const {
-    return mLayoutManager;
-}
-
-TVec2f LayoutActor::getTrans() const {
-    return TVec2f(0.0f, 0.0f);
-}
-
-void LayoutActor::setTrans(const TVec2f&) {
-}
-
 
 // =============================================================================
 // HomeButtonLayout
@@ -630,7 +538,9 @@ void initAcosTable() {
 }
 
 void setLayoutDefaultAllocator() {
-    // TODO(PC_PORT, M9.5): nw4r::lyt::Layout::mspAllocator = NewDeleteAllocator.
+    // M9.5.2: real implementation (console: SystemUtil.cpp) — route the nw4r
+    // layout allocator through MR::NewDeleteAllocator (operator new/delete).
+    nw4r::lyt::Layout::mspAllocator = &MR::NewDeleteAllocator::sAllocator;
 }
 
 void startFunctionAsyncExecute(const MR::FunctorBase& rFunc, int priority, const char* pName) {

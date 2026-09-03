@@ -171,7 +171,12 @@ namespace JASKernel {
 };  // namespace JASKernel
 
 template < u32 ChunkSize, template < typename > class T >
-class JASMemChunkPool : public T< JASMemChunkPool< ChunkSize, T > >::ObjectLevelLockable {
+// PC_PORT: the vendored base was `T< JASMemChunkPool<...> >::ObjectLevelLockable`,
+// which only resolves via the injected-class-name (the nested name denotes
+// T<X> itself) — GCC accepts it, MSVC errors with C2516 and rejects the
+// `typename` spelling too. Spelling the base as T<X> directly is semantically
+// identical and portable.
+class JASMemChunkPool : public T< JASMemChunkPool< ChunkSize, T > > {
 public:
     struct MemoryChunk {
         MemoryChunk(MemoryChunk* nextChunk) {

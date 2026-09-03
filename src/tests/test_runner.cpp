@@ -85,6 +85,11 @@ int runAll(const char* filter) {
             ++skipped;
             continue;
         }
+        // Flushed start marker: if a test aborts the process (OSPanic, AV),
+        // the last [RUN ] line names the culprit even though the [ OK ]/[FAIL]
+        // line never prints.
+        std::printf("[RUN ] %s\n", it->name);
+        std::fflush(stdout);
         const auto result = pc_test::runTest(*it);
         if (result.skipped) {
             std::printf("[SKIP] %s — %s\n", it->name, pc_test::skipReason() ? pc_test::skipReason() : "skipped");
@@ -108,6 +113,8 @@ int runAll(const char* filter) {
 int runSingle(const char* name) {
     for (auto* it = pc_test::begin(); it != pc_test::end(); ++it) {
         if (std::string(it->name) == name) {
+            std::printf("[RUN ] %s\n", it->name);
+            std::fflush(stdout);
             const auto result = pc_test::runTest(*it);
             if (result.passed) {
                 std::printf("[ OK ] %s\n", it->name);

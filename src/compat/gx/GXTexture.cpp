@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 namespace Platform::CompatGx {
@@ -69,6 +70,7 @@ struct TexObjData {
     size_t paletteBytes = 0;
     u8 paletteFormat = 0;           // GXTlutFmt
     u32 paletteCount = 0;
+    u32 tlutName = 0xFFFFFFFFu;     // name passed to GXInitTexObjCI (M9.5.2)
 
     Platform::TextureHandle texture = nullptr; // lazily created at first load
     Platform::SamplerHandle sampler = nullptr;
@@ -95,15 +97,79 @@ TexGen sTexGen[8];
 // GX_TEXMTX0..9 (3x4 row-major).
 f32 sTexMtx[10][3][4] = {};
 
+// GXTexObj/GXTlutObj host data is looked up BY OBJECT ADDRESS instead of
+// reading obj->dummy: game code stack-allocates raw GXTexObj/GXTlutObj
+// regularly (nw4r's Material::SetupGX declares `GXTexObj texObj;` and only
+// initializes it inside TexMap::Get), so dummy holds stack garbage on first
+// contact — dereferencing it as a TexObjData* segfaulted (M9.5.3c). The dummy
+// slot is still written (struct round-trips), but the registries are the
+// truth. Meyers singletons: no namespace-scope dynamic init (pre-main SIGFPE
+// lesson). Stack-address reuse is fine: GXInitTexObj* treat a hit as a re-init.
+std::unordered_map<const void*, TexObjData*>& texObjRegistry() {
+    static std::unordered_map<const void*, TexObjData*> reg;
+    return reg;
+}
+
 TexObjData* texObjData(const GXTexObj* obj) {
-    TexObjData* p = nullptr;
-    if (obj) {
-        std::memcpy(&p, obj->dummy, sizeof(p));
+    if (!obj) {
+        return nullptr;
     }
-    return p;
+    const auto it = texObjRegistry().find(obj);
+    return it == texObjRegistry().end() ? nullptr : it->second;
+}
+
+// --- TLUT objects + name registry (M9.5.2, for the nw4r lyt font/CI path) ---
+
+// Per-GXTlutObj state (the SDK struct is u32 dummy[3] = 12 bytes; a pointer
+// fits). Same ownership model as TexObjData: we allocate, the registry of
+// objects keeps them alive for the process (a handful per layout).
+struct TlutObjData {
+    const u8* data = nullptr;
+    u8 format = 0;        // GXTlutFmt
+    u16 numEntries = 0;
+};
+
+// Same address-keyed registry as texObjRegistry (see the comment there).
+std::unordered_map<const void*, TlutObjData*>& tlutObjRegistry() {
+    static std::unordered_map<const void*, TlutObjData*> reg;
+    return reg;
+}
+
+TlutObjData* tlutObjData(const GXTlutObj* obj) {
+    if (!obj) {
+        return nullptr;
+    }
+    const auto it = tlutObjRegistry().find(obj);
+    return it == tlutObjRegistry().end() ? nullptr : it->second;
+}
+
+void setTlutObjData(GXTlutObj* obj, TlutObjData* d) {
+    std::memset(obj->dummy, 0, sizeof(obj->dummy));
+    std::memcpy(obj->dummy, &d, sizeof(d));
+    tlutObjRegistry()[obj] = d;
+}
+
+// Loaded TLUTs by name (GXLoadTlut publishes, GXInitTexObjCI consumes).
+// Meyers singleton: no namespace-scope dynamic init (pre-main SIGFPE lesson).
+struct TlutEntry {
+    const u8* data = nullptr;
+    u8 format = 0;
+    u16 numEntries = 0;
+};
+
+std::unordered_map<u32, TlutEntry>& tlutRegistry() {
+    static std::unordered_map<u32, TlutEntry> registry;
+    return registry;
+}
+
+std::vector<TlutObjData*>& tlutObjList() {
+    static std::vector<TlutObjData*> list;
+    return list;
 }
 void setTexObjData(GXTexObj* obj, TexObjData* p) {
+    std::memset(obj->dummy, 0, sizeof(obj->dummy));
     std::memcpy(obj->dummy, &p, sizeof(p));
+    texObjRegistry()[obj] = p;
 }
 
 // GX sampler state -> renderer SamplerDesc.
@@ -198,6 +264,35 @@ bool loadTexture(TexObjData& d) {
     d.sampler = r.getOrCreateSampler(
         samplerFromGx(d.wrapS, d.wrapT, d.minFilter, d.magFilter));
     return d.sampler != nullptr;
+}
+
+// TLUT refresh (M9.5.3c): nw4r's SetupGX re-registers the palette every frame
+// (GXLoadTlut) and re-names the object (GXInitTexObjTlut). Re-resolve the
+// palette from the TLUT registry and invalidate the renderer texture ONLY
+// when the palette source actually changed (palette animation), so steady
+// frames keep their uploaded texture.
+void refreshTlut(TexObjData& d) {
+    const auto& reg = tlutRegistry();
+    const auto it = reg.find(d.tlutName);
+    if (it == reg.end() || it->second.data == nullptr) {
+        return;
+    }
+    const TlutEntry& e = it->second;
+    if (d.palette == e.data && d.paletteFormat == e.format &&
+        d.paletteCount == e.numEntries) {
+        return;
+    }
+    d.palette = e.data;
+    d.paletteFormat = e.format;
+    d.paletteCount = e.numEntries;
+    d.paletteBytes = static_cast<size_t>(e.numEntries) * 2;
+    if (d.loaded) {
+        if (Platform::Renderer::instance().isInitialized()) {
+            Platform::Renderer::instance().destroyTexture(d.texture);
+        }
+        d.loaded = false;
+        d.texture = nullptr;
+    }
 }
 
 } // namespace
@@ -374,12 +469,22 @@ void GXInitTexObj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXTexFmt
                  static_cast<unsigned>(format));
     TexObjData* d = texObjData(obj);
     if (d && d->loaded) {
-        // Re-init of an already-loaded object: release the renderer texture.
-        if (Platform::Renderer::instance().isInitialized()) {
-            Platform::Renderer::instance().destroyTexture(d->texture);
+        // Console: this just reprograms (cheap) hardware registers. Host: it
+        // means a full decode + re-upload, and nw4r's Material::SetupGX
+        // re-inits from a fresh STACK GXTexObj EVERY FRAME — which the
+        // address-keyed registry maps back to this same TexObjData. Only
+        // invalidate when the source actually changed (RLTP image swaps
+        // change mImage; palette changes are handled by refreshTlut), or the
+        // per-frame churn stalls the driver (M9.5.3c boot: unresponsive
+        // window + black screen).
+        if (d->image != static_cast<const u8*>(imagePtr) || d->width != width ||
+            d->height != height || d->format != static_cast<u8>(format)) {
+            if (Platform::Renderer::instance().isInitialized()) {
+                Platform::Renderer::instance().destroyTexture(d->texture);
+            }
+            d->loaded = false;
+            d->texture = nullptr;
         }
-        d->loaded = false;
-        d->texture = nullptr;
     } else if (!d) {
         d = new TexObjData();
         setTexObjData(obj, d);
@@ -429,11 +534,20 @@ void GXInitTexObjCI(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITe
                  static_cast<unsigned>(format));
     TexObjData* d = texObjData(obj);
     if (d && d->loaded) {
-        if (Platform::Renderer::instance().isInitialized()) {
-            Platform::Renderer::instance().destroyTexture(d->texture);
+        // Same-source check as GXInitTexObj (see the note there): only
+        // invalidate when the image actually changed. tlutName is NOT part of
+        // the check — frame 1 carries GXGetTexObjTlut()'s 0xFFFFFFFF default
+        // (or the name from a stale stack-address registry hit) and is fixed
+        // up by GXInitTexObjTlut right after; palette source changes are
+        // caught by refreshTlut at load time.
+        if (d->image != static_cast<const u8*>(imagePtr) || d->width != width ||
+            d->height != height || d->format != static_cast<u8>(format)) {
+            if (Platform::Renderer::instance().isInitialized()) {
+                Platform::Renderer::instance().destroyTexture(d->texture);
+            }
+            d->loaded = false;
+            d->texture = nullptr;
         }
-        d->loaded = false;
-        d->texture = nullptr;
     } else if (!d) {
         d = new TexObjData();
         setTexObjData(obj, d);
@@ -446,16 +560,40 @@ void GXInitTexObjCI(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITe
     d->wrapS = static_cast<u8>(wrapS);
     d->wrapT = static_cast<u8>(wrapT);
     d->mipmap = (mipmap != GX_FALSE);
-    d->paletteCount = paletteCount;
-    // The TLUT data itself arrives via GXInitTexObjTlut; until then the
-    // object decodes as zeros (TODO(PC_PORT, M5.x): TLUT management).
+    // RVL semantics: the last parameter is the TLUT *name* published by
+    // GXLoadTlut (nw4r lyt passes it through GXGetTexObjTlut/GXInitTexObjCI).
+    // The M5.x BTI path passed a palette entry count instead — keep that
+    // working when no TLUT is registered under this name.
+    d->tlutName = paletteCount;
+    const auto& reg = Platform::CompatGx::tlutRegistry();
+    const auto it = reg.find(paletteCount);
+    if (it != reg.end() && it->second.data != nullptr) {
+        d->palette = it->second.data;
+        d->paletteFormat = it->second.format;
+        d->paletteCount = it->second.numEntries;
+        d->paletteBytes = static_cast<size_t>(it->second.numEntries) * 2;
+    } else {
+        d->paletteCount = paletteCount;
+    }
 }
 
-void GXInitTexObjTlut(GXTexObj* /*obj*/, u32 /*tlutName*/) {
-    // TODO(PC_PORT, M5.x): TLUT upload/lookup for GX_TF_C4/C8/C14X2. The BTI
-    // palette is parsed by the archive loader and passed to btiDecodeToRgba8
-    // directly; this entry point is where the game's TLUT id would map to it.
-    PL_LOG_WARN("gx", "GXInitTexObjTlut: TLUT management not implemented (M5.x)");
+void GXInitTexObjTlut(GXTexObj* obj, u32 tlutName) {
+    // M9.5.3c: real implementation. nw4r's Material::SetupGX names the TLUT
+    // here (AFTER TexMap::Get built the CI object with a garbage name read
+    // from the uninitialized stack object) and only THEN GXLoadTlut's the
+    // palette, so the name is stored now and the palette is resolved here if
+    // already registered, or at GXLoadTexObj time if not.
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    if (!d) {
+        PL_LOG_WARN("gx", "GXInitTexObjTlut: uninitialized texture object");
+        return;
+    }
+    d->tlutName = tlutName;
+    // Resolve now if the TLUT is already registered; refreshTlut only
+    // invalidates a live upload when the palette source actually changed
+    // (steady frames must keep their texture — see GXInitTexObj's note).
+    refreshTlut(*d);
 }
 
 void GXLoadTexObj(const GXTexObj* obj, GXTexMapID id) {
@@ -469,6 +607,12 @@ void GXLoadTexObj(const GXTexObj* obj, GXTexMapID id) {
         PL_LOG_WARN("gx", "GXLoadTexObj: texture object not initialized");
         return;
     }
+    // Late TLUT resolution (M9.5.3c): nw4r's Material::SetupGX registers the
+    // palette (GXLoadTlut) AFTER GXInitTexObjCI/GXInitTexObjTlut named it, so
+    // CI textures only find their palette data here. refreshTlut also
+    // invalidates a live upload when the palette source changed (palette
+    // animation) — but NOT on unchanged frames (no per-frame churn).
+    refreshTlut(*d);
     if (!loadTexture(*d)) {
         return;
     }
@@ -497,6 +641,98 @@ void GXSetTexCoordGen2(GXTexCoordID coord, GXTexGenType type, GXTexGenSrc src, u
     g.normalize = (normalize != GX_FALSE);
     g.set = true;
     // postMtx (GX_PTIDENTITY/GX_PTTEXMTX*) not applied in M5.3 (documented).
+}
+
+// --- M9.5.2: TLUT objects, getters (nw4r lyt TexMap::Get/Set needs these) ---
+
+void GXInitTlutObj(GXTlutObj* obj, void* data, GXTlutFmt format, u16 numEntries) {
+    using namespace Platform::CompatGx;
+    if (!obj) {
+        return;
+    }
+    TlutObjData* d = tlutObjData(obj);
+    if (!d) {
+        d = new TlutObjData();
+        setTlutObjData(obj, d);
+        tlutObjList().push_back(d);
+    }
+    d->data = static_cast<const u8*>(data);
+    d->format = static_cast<u8>(format);
+    d->numEntries = numEntries;
+}
+
+void GXLoadTlut(const GXTlutObj* obj, u32 tlutName) {
+    using namespace Platform::CompatGx;
+    TlutObjData* d = tlutObjData(obj);
+    if (!d || !d->data) {
+        PL_LOG_WARN("gx", "GXLoadTlut: uninitialized tlut object (name %u)", tlutName);
+        return;
+    }
+    // The console uploads the palette into TLUT memory; the host keeps the
+    // pointer and resolves it when a CI texture object references the name
+    // (GXInitTexObjCI) or when the decoder needs it (btiDecodeToRgba8 path).
+    TlutEntry& e = tlutRegistry()[tlutName];
+    e.data = d->data;
+    e.format = d->format;
+    e.numEntries = d->numEntries;
+    PL_LOG_TRACE("gx", "GXLoadTlut: name %u -> %u entries", tlutName,
+                 static_cast<unsigned>(d->numEntries));
+}
+
+u32 GXGetTexObjTlut(const GXTexObj* obj) {
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    return d ? d->tlutName : 0xFFFFFFFFu;
+}
+
+void GXGetTexObjAll(const GXTexObj* obj, void** image, u16* width, u16* height,
+                    GXTexFmt* format, GXTexWrapMode* wrapS, GXTexWrapMode* wrapT,
+                    GXBool* mipmap) {
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    if (!d) {
+        PL_LOG_WARN("gx", "GXGetTexObjAll: uninitialized texture object");
+        return;
+    }
+    if (image) *image = const_cast<u8*>(d->image);
+    if (width) *width = d->width;
+    if (height) *height = d->height;
+    if (format) *format = static_cast<GXTexFmt>(d->format);
+    if (wrapS) *wrapS = static_cast<GXTexWrapMode>(d->wrapS);
+    if (wrapT) *wrapT = static_cast<GXTexWrapMode>(d->wrapT);
+    if (mipmap) *mipmap = d->mipmap ? GX_TRUE : GX_FALSE;
+}
+
+void GXGetTexObjLODAll(const GXTexObj* obj, GXTexFilter* minFilter,
+                       GXTexFilter* magFilter, f32* minLod, f32* maxLod,
+                       f32* lodBias, GXBool* biasClamp, GXBool* edgeLod,
+                       GXAnisotropy* anisotropy) {
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    if (!d) {
+        PL_LOG_WARN("gx", "GXGetTexObjLODAll: uninitialized texture object");
+        return;
+    }
+    if (minFilter) *minFilter = d->minFilter;
+    if (magFilter) *magFilter = d->magFilter;
+    if (minLod) *minLod = d->minLod;
+    if (maxLod) *maxLod = d->maxLod;
+    if (lodBias) *lodBias = d->lodBias;
+    if (biasClamp) *biasClamp = d->biasClamp;
+    if (edgeLod) *edgeLod = d->edgeLod;
+    if (anisotropy) *anisotropy = d->anisotropy;
+}
+
+GXTexFmt GXGetTexObjFmt(const GXTexObj* obj) {
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    return d ? static_cast<GXTexFmt>(d->format) : GXTexFmt(0);
+}
+
+GXBool GXGetTexObjMipMap(const GXTexObj* obj) {
+    using namespace Platform::CompatGx;
+    TexObjData* d = texObjData(obj);
+    return (d && d->mipmap) ? GX_TRUE : GX_FALSE;
 }
 
 void GXLoadTexMtxImm(const f32 mtx[][4], u32 id, GXTexMtxType /*type*/) {

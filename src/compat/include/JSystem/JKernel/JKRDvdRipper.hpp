@@ -1,13 +1,14 @@
-// =============================================================================
-// PC_PORT PATCH — override de libs/JSystem/include/JSystem/JKernel/
-// JKRDvdRipper.hpp (ver compat/include/README.md).
-//
-// El vendered mezcla `unsigned long` y `u32` en las firmas de loadToMainRAM:
-// en Metrowerks (32 bits) eran el mismo tipo; en host (u32 = unsigned int,
-// unsigned long = 64 bits) las declaraciones no casan con las definiciones
-// del .cpp. Se unifica a u32; nada más cambia.
-// =============================================================================
 #pragma once
+
+// ============================================================================
+// PC_PORT PATCH (compat/include overrides this header for the PC build).
+//
+// Change vs. upstream: `long`/`unsigned long` parameters became `s32`/`u32`
+// (Metrowerks PPC32 `long` == 32 bits; on LP64 hosts it is 64, which changes
+// the mangled names and mismatches both the vendored definitions — which
+// already spell `u32` — and callers such as JKRMemArchive::open).
+// Everything else is identical to upstream.
+// ============================================================================
 
 #include "JSystem/JSupport/JSUList.hpp"
 #include <revolution.h>

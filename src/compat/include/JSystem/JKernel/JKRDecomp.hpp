@@ -1,0 +1,79 @@
+#pragma once
+
+// ============================================================================
+// PC_PORT PATCH (compat/include overrides this header for the PC build).
+//
+// Change vs. upstream: `long`/`unsigned long` parameters became `s32`/`u32`
+// (Metrowerks PPC32 `long` == 32 bits; on LP64 hosts it is 64, which changes
+// the mangled names and mismatches the callers, e.g. JKRMemArchive's
+// fetchResource_subroutine passing u32 sizes).
+// Everything else is identical to upstream. The matching patched .cpp decodes
+// synchronously and reads the Yaz0/Yay0 stream big-endian (see
+// patches/JSystem/JKernel/JKRDecomp.cpp).
+// ============================================================================
+
+#include "JSystem/JKernel/JKRCompression.hpp"
+#include "JSystem/JKernel/JKRThread.hpp"
+
+class JKRAMCommand;
+
+enum EJKRCompression { JKR_COMPRESSION_NONE = 0, JKR_COMPRESSION_SZP = 1, JKR_COMPRESSION_SZS = 2, JKR_COMPRESSION_ASR = 3 };
+
+class JKRDecompCommand {
+public:
+    JKRDecompCommand();
+
+    u8 _0[4];
+    u8* mSrc;               // 0x4
+    u8* mDst;               // 0x8
+    u32 mCompressedSize;    // 0xC
+    u32 mDecompressedSize;  // 0x10
+    void (*_14)(u32);
+    JKRDecompCommand* mThis;  // 0x18
+    OSMessageQueue* _1C;
+    s32 _20;
+    JKRAMCommand* mAmCommand;      // 0x24
+    OSMessageQueue mMessageQueue;  // 0x28
+    OSMessage mMessage;            // 0x48
+};
+
+class JKRDecomp : public JKRThread {
+public:
+    JKRDecomp(s32);
+    virtual ~JKRDecomp();
+
+    virtual void* run();
+
+    static JKRDecomp* create(s32);
+    static JKRDecompCommand* prepareCommand(unsigned char*, unsigned char*, u32, u32, void (*)(u32));
+    static void sendCommand(JKRDecompCommand*);
+    static bool sync(JKRDecompCommand*, int);
+    static bool orderSync(unsigned char*, unsigned char*, u32, u32);
+    static void decode(unsigned char*, unsigned char*, u32, u32);
+    static void decodeSZP(unsigned char*, unsigned char*, u32, u32);
+    static void decodeSZS(u8*, u8*, u32, u32);
+    static EJKRCompression checkCompressed(unsigned char*) NO_INLINE;
+};
+
+inline void JKRDecompress(u8* srcBuffer, u8* dstBuffer, u32 srcLength, u32 dstLength) {
+    JKRDecomp::orderSync(srcBuffer, dstBuffer, srcLength, dstLength);
+}
+
+inline JKRDecomp* JKRCreateDecompManager(s32 priority) {
+    return JKRDecomp::create(priority);
+}
+
+inline JKRCompression JKRCheckCompressed_noASR(u8* pBuf) {
+    JKRCompression compression = JKRDecomp::checkCompressed(pBuf);
+    if (compression == COMPRESSION_ASR)  // ternary i had before was either incorrect, or was not a ternary at all
+        compression = COMPRESSION_NONE;
+    return compression;
+}
+
+inline u32 JKRDecompExpandSize(u8* pBuf) {
+    return (pBuf[4] << 0x18) | (pBuf[5] << 0x10) | (pBuf[6] << 8) | pBuf[7];
+}
+
+inline void JKRDecompress_SendCommand(JKRDecompCommand* command) {
+    JKRDecomp::sendCommand(command);
+}

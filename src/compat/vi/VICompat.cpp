@@ -26,6 +26,8 @@
 
 #include <revolution/vi.h>
 
+#include <SDL3/SDL.h>
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -33,6 +35,18 @@
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+#if defined(_WIN32)
+// PC_PORT (Windows): the default system timer granularity (15.6 ms) rounds
+// the 16.68 ms field sleep up to ~31 ms — the field clock would run at half
+// speed and VIWaitForRetrace's 30 ms cap times out just before the next
+// field (vi_wait_for_retrace_blocks_about_one_field saw <5 fields). Request
+// 1 ms resolution (process-wide, standard game practice). Declared directly
+// to avoid pulling <windows.h> into this TU; winmm is linked via the pragma
+// below (MSVC) and via CMake (MinGW).
+extern "C" __declspec(dllimport) unsigned int __stdcall timeBeginPeriod(unsigned int);
+#pragma comment(lib, "winmm.lib")
+#endif
 
 namespace {
 
@@ -139,6 +153,11 @@ void VIInit(void) {
     if (sClockRunning.load(std::memory_order_acquire)) {
         return;
     }
+#if defined(_WIN32)
+    // Once per process: raise the OS timer resolution so the condvar sleeps
+    // below can hit the 16.68 ms field cadence (see the declaration note).
+    timeBeginPeriod(1);
+#endif
     sClockRunning.store(true, std::memory_order_release);
     sFieldClockThread = std::thread(fieldClockMain);
     // The clock thread is joined at process exit from the atexit handler
@@ -151,6 +170,17 @@ void VIFlush(void) {
 }
 
 void VIWaitForRetrace(void) {
+    // PC_PORT: pump the host event queue once per field.
+    //
+    // The native path polls SDL in Platform::Input::poll from main.cpp's demo
+    // loop, but --boot enters gameMain(), which never returns — nothing else
+    // drains the OS event queue. On Windows an unpumped queue makes the window
+    // go "not responding" after a few seconds even though the frame loop is
+    // healthy (the user sees exactly that at ~10 s into the Logo scene). The
+    // retrace wait runs on the boot's main thread once per frame, which is the
+    // one place that is both per-frame and on the window's thread.
+    Platform::CompatVi::pumpHostEvents();
+
     // Block until the retrace counter advances (one field = ~16.7 ms). The
     // 30 ms cap only matters if the clock is somehow not running.
     u32 before = sRetraceCount.load(std::memory_order_acquire);
@@ -265,6 +295,25 @@ void fireRetrace() {
     // While the field clock runs this would double the cadence, so it is
     // documented as the hook and not called from GXCopyDisp today.
     tickField();
+}
+
+void pumpHostEvents() {
+    // The headless unit tests call VIWaitForRetrace without ever initializing
+    // SDL, so skip when the event subsystem is not up.
+    if (SDL_WasInit(SDL_INIT_EVENTS) == 0) {
+        return;
+    }
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_QUIT ||
+            event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+            // gameMain never returns, so the window close button is the only
+            // way out of a boot run. Exit through the normal path so the
+            // atexit handlers stop the field clock and retire the renderer.
+            PL_LOG_INFO("vi", "close requested — exiting boot");
+            std::exit(0);
+        }
+    }
 }
 
 } // namespace Platform::CompatVi

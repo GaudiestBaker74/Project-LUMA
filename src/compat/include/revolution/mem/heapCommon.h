@@ -8,7 +8,11 @@
 extern "C" {
 #endif
 
-#include <revolution/mem.h>  // PC_PORT: upstream had the short <mem.h> (Metrowerks include path); full path avoids a self-include
+// PC_PORT: upstream had the short MSL <mem.h> (memcpy/memset). The compat
+// include path provides a shim for it; routing to <revolution/mem.h> (the RVL
+// MEM umbrella) instead would cycle back into this header via expHeap.h
+// before MEMHeapHandle is defined.
+#include <mem.h>
 #include <revolution/mem/list.h>
 #include <revolution/os.h>
 
