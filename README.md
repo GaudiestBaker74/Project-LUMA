@@ -68,7 +68,7 @@ GAME BOOT
 
 </div>
 
-### More screenshots coming 
+### More screenshots 
 
 |          Renderer          |          Runtime          |          Debug          |
 | :------------------------: | :-----------------------: | :---------------------: |
@@ -661,6 +661,7 @@ Special thanks to:
 * The developers and maintainers of the open-source libraries used by LUMA
 * Everyone contributing research, testing and documentation to the project
 * For now you can only use RMGK01 (Korea's SMG ROM) but in the future will be able to play with every SMG ROM
+* AI was used to make this possible
 
 ---
 
