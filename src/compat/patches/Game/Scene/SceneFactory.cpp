@@ -11,6 +11,7 @@
 #include "Game/Scene/GameScene.hpp"
 #include "Game/Scene/IntermissionScene.hpp"
 #include "Game/Scene/LogoScene.hpp"
+#include "Game/Scene/TitleScene.hpp"
 #include "platform/Log/Log.h"
 #include <cstdio>
 
@@ -29,6 +30,7 @@ namespace {
         {"Game", createScene< GameScene >},
         {"Intermission", createScene< IntermissionScene >},
         {"Logo", createScene< LogoScene >},
+        {"Title", createScene< TitleScene >},
     };
 };  // namespace
 

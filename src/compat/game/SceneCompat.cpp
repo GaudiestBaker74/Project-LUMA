@@ -50,6 +50,11 @@
 #include "Game/System/GalaxyStatusAccessor.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
+#include "Game/Util/SoundUtil.hpp"
+#include "compat/kpad/KPADCompat.h"
+#include "platform/Log/Log.h"
+#include <revolution/kpad.h>
+#include <revolution/wpad.h>
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SingletonHolder.hpp"
 #include "Game/Util/SystemUtil.hpp"
@@ -185,8 +190,11 @@ NameObjCategoryList::NameObjCategoryList(u32 count, const CategoryListInitialTab
 }
 
 NameObjCategoryList::~NameObjCategoryList() {
+    // mDelegator/mDelegatorConst are a UNION (NameObjCategoryList.hpp) — ONE
+    // storage, whichever ctor ran. Deleting both was a double-free that lay
+    // dormant until M9.5.3d: the Logo scene was never destroyed before the
+    // Title transition existed.
     delete mDelegator;
-    delete mDelegatorConst;
 }
 
 void NameObjCategoryList::execute(int category) {
@@ -1410,8 +1418,58 @@ void fillScreen(const GXColor& color) {
     fillScreenArea(TVec2s(0, 0), TVec2s(width, height));
 }
 
-// Game/Util/GamePadUtil.cpp replacement (no pad state in the boot test).
-bool testCorePadTriggerAnyWithoutHome(s32) {
+// Game/Util/GamePadUtil.cpp replacements (M9.5.3d). The real functions
+// dereference MR::getWPad(channel)->mButton; the WPadHolder doesn't exist yet
+// (M10), so these read the KPAD channel masks directly — the same hold/trig
+// state the vendored WPadButton would cache from KPADRead. This also makes
+// the strap screen skippable with any button, like on the console.
+bool testCorePadButtonA(s32 channel) {
+    return (Platform::CompatInput::getHoldButtons(channel) & WPAD_BUTTON_A) != 0;
+}
+
+bool testCorePadButtonB(s32 channel) {
+    return (Platform::CompatInput::getHoldButtons(channel) & WPAD_BUTTON_B) != 0;
+}
+
+bool testCorePadTriggerAnyWithoutHome(s32 channel) {
+    // KPAD_BUTTON_MASK excludes the auto-repeat bit (KPAD_BUTTON_RPT).
+    return (Platform::CompatInput::getTrigButtons(channel) & KPAD_BUTTON_MASK) != 0;
+}
+
+// Game/Util/SoundUtil.cpp replacements — the audio director is M10+; the
+// stubs keep the Title nerves moving (isPreparedStageBgm MUST return true or
+// TitleSequenceProduct waits on BgmPrepare forever).
+JAISoundHandle* startStageBGM(const char* pName, bool) {
+    PL_LOG_INFO("game.audio", "startStageBGM('%s') — audio stub (M10)", pName);
+    return nullptr;
+}
+
+void stopStageBGM(u32 frames) {
+    PL_LOG_INFO("game.audio", "stopStageBGM(%u) — audio stub (M10)", frames);
+}
+
+void unlockStageBGM() {}
+
+bool isPreparedStageBgm() {
+    return true;
+}
+
+JAISoundHandle* startSystemSE(const char* pName, s32, s32) {
+    PL_LOG_INFO("game.audio", "startSystemSE('%s') — audio stub (M10)", pName);
+    return nullptr;
+}
+
+void startCSSound(const char* pName, const char*, s32) {
+    PL_LOG_INFO("game.audio", "startCSSound('%s') — audio stub (M10)", pName);
+}
+
+// Game/Util/SystemUtil.cpp replacement — PAL60 is impossible on a PC host.
+bool isDisplayEncouragePal60Window() {
+    return false;
+}
+
+// Game/Util/ObjUtil.hpp:176 — rumble needs the WPadHolder (M10).
+bool tryRumblePadMiddle(const void*, s32) {
     return false;
 }
 

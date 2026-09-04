@@ -37,6 +37,13 @@ void gameMain(void);
 namespace {
 
 constexpr const char* kVersion = "0.5.0 (Milestone 5)";
+// Build stamp (M9.5.3c-diag): makes a STALE BINARY recognizable at a
+// glance. The user's black-screen hunt was prolonged by an exe built
+// from older sources than the tree it ran from — the log had none of
+// the diagnostics the current source emits. MSVC/GCC both define
+// __DATE__/__TIME__ (compile time of THIS translation unit, which is
+// rebuilt on every version bump of main.cpp).
+constexpr const char* kBuildStamp = __DATE__ " " __TIME__;
 
 struct Options {
     std::string logLevel;
@@ -221,6 +228,10 @@ int main(int argc, char** argv) {
     }
     compat::initOS();
     compat::initDVD();  // M7: FST from the mounted assets root (no-op without assets)
+
+    // M9.5.3c-diag: version + build stamp FIRST in every log (demo and boot),
+    // so "the log says X but my exe predates X" is visible immediately.
+    PL_LOG_INFO("main", "galaxy-pc %s — built %s", kVersion, kBuildStamp);
 
     // --- M9: the real game boot (gameMain) -----------------------------------
     // The vendored boot prologue (DVDInit/VIInit/heaps/GameSystem::init) and

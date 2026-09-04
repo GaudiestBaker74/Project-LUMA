@@ -39,6 +39,7 @@
 
 #include "platform/Log/Log.h"
 
+#include <atomic>
 #include <cstring>
 
 #include <revolution/tpl.h>
@@ -481,6 +482,94 @@ namespace nw4r {
             }
         }
 
+        // PC_PORT (M9.5.3c): the material-side tag application, shared by
+        // Animate(u32, Material*) and the material tags that hang under a
+        // PANE content (RLTS/RLMC/RLTP name the pane on disk; on the console
+        // AnimTransformBasic::Animate(Pane) routes them to pPane->mpMaterial
+        // — our earlier version ignored them there, which silently dropped
+        // the strap screen's texture-pattern animation: the second Wiimote
+        // image never appeared).
+        void ApplyMaterialTag(Material* pMaterial, const BrlanTag* pTag,
+                              const BrlanEntry* pEntry, f32 value,
+                              void** fileResAry, u16 fileNum) {
+            if (pMaterial == nullptr) {
+                return;
+            }
+
+            if (tagKindIs(pTag, "RLTS")) {
+                const u32 texIdx = pEntry->index;
+                if (texIdx >= pMaterial->GetTextureNum()) {
+                    return;
+                }
+                TexSRT& srt = pMaterial->GetTexSRTAry()[texIdx];
+                switch (pEntry->target) {
+                case 0x00: srt.translate.x = value; break;
+                case 0x01: srt.translate.y = value; break;
+                case 0x02: srt.rotate = value; break;
+                case 0x03: srt.scale.x = value; break;
+                case 0x04: srt.scale.y = value; break;
+                default: break;
+                }
+            } else if (tagKindIs(pTag, "RLMC")) {
+                const u32 target = pEntry->target;
+                if (target < 0x04) {
+                    if (pMaterial->IsMatColorCap()) {
+                        ut::Color* pCol = &pMaterial->GetMatColAry()[0];
+                        switch (target) {
+                        case 0: pCol->r = ClampU8(value); break;
+                        case 1: pCol->g = ClampU8(value); break;
+                        case 2: pCol->b = ClampU8(value); break;
+                        default: pCol->a = ClampU8(value); break;
+                        }
+                    }
+                } else if (target < 0x10) {
+                    GXColorS10& col = pMaterial->mTevCols[(target - 0x04) / 4];
+                    switch (target % 4) {
+                    case 0: col.r = ClampS10(value); break;
+                    case 1: col.g = ClampS10(value); break;
+                    case 2: col.b = ClampS10(value); break;
+                    default: col.a = ClampS10(value); break;
+                    }
+                } else if (target < 0x20) {
+                    ut::Color& col = pMaterial->mTevKCols[(target - 0x10) / 4];
+                    switch (target % 4) {
+                    case 0: col.r = ClampU8(value); break;
+                    case 1: col.g = ClampU8(value); break;
+                    case 2: col.b = ClampU8(value); break;
+                    default: col.a = ClampU8(value); break;
+                    }
+                }
+            } else if (tagKindIs(pTag, "RLTP")) {
+                // Texture pattern: step value = index into the file table
+                // SetResource resolved through the accessor. The entry's
+                // TARGET is the texMap index (MKW BRLAN targets doc: RLTP
+                // 0..7 = "which pane texture"); some tools wrote it in
+                // `index` — accept either.
+                u32 texIdx = pEntry->target;
+                if (texIdx >= 8) {
+                    texIdx = pEntry->index;
+                }
+                const u32 fileIdx = static_cast< u32 >(value);
+                if (texIdx >= pMaterial->GetTextureNum() || fileResAry == nullptr ||
+                    fileIdx >= fileNum || fileResAry[fileIdx] == nullptr) {
+                    static std::atomic< u32 > sRltpDropCount{0};
+                    if ((sRltpDropCount.fetch_add(1) & 0xFF) == 0) {
+                        PL_LOG_WARN("compat.lyt",
+                                    "RLTP: drop (texIdx %u/%u, fileIdx %u/%u, table %p) — "
+                                    "check the brlan file-table names",
+                                    static_cast< unsigned >(texIdx),
+                                    static_cast< unsigned >(pMaterial->GetTextureNum()),
+                                    static_cast< unsigned >(fileIdx),
+                                    static_cast< unsigned >(fileNum),
+                                    static_cast< void* >(fileResAry));
+                    }
+                    return;
+                }
+                pMaterial->GetTexMapAry()[texIdx].ReplaceImage(
+                    static_cast< TPLPalettePtr >(fileResAry[fileIdx]), 0);
+            }
+        }
+
         void AnimTransformBasic::Animate(u32 contentIdx, Pane* pPane) {
             if (mpRes == nullptr || pPane == nullptr || contentIdx >= mpRes->animContNum) {
                 return;
@@ -526,8 +615,13 @@ namespace nw4r {
                         // the pane alpha — exactly Pane::SetColorElement's
                         // switch (0x10 -> mAlpha, default -> vtx color).
                         pPane->SetColorElement(pEntry->target, ClampU8(value));
+                    } else {
+                        // PC_PORT (M9.5.3c): material-side tags (RLTS/RLMC/
+                        // RLTP) under a pane content go to the pane's
+                        // material, like the console path.
+                        ApplyMaterialTag(pPane->GetMaterial(), pTag, pEntry, value,
+                                         mpFileResAry, mpRes->fileNum);
                     }
-                    // Material-side tags on a pane content: ignored.
                 }
             }
         }
@@ -551,63 +645,10 @@ namespace nw4r {
                 for (u32 e = 0; e < pTag->entryNum; ++e) {
                     const BrlanEntry* const pEntry = GetEntry(pTag, e);
                     const f32 value = EvalEntry(pEntry, frame);
-
-                    if (tagKindIs(pTag, "RLTS")) {
-                        const u32 texIdx = pEntry->index;
-                        if (texIdx >= pMaterial->GetTextureNum()) {
-                            continue;
-                        }
-                        TexSRT& srt = pMaterial->GetTexSRTAry()[texIdx];
-                        switch (pEntry->target) {
-                        case 0x00: srt.translate.x = value; break;
-                        case 0x01: srt.translate.y = value; break;
-                        case 0x02: srt.rotate = value; break;
-                        case 0x03: srt.scale.x = value; break;
-                        case 0x04: srt.scale.y = value; break;
-                        default: break;
-                        }
-                    } else if (tagKindIs(pTag, "RLMC")) {
-                        const u32 target = pEntry->target;
-                        if (target < 0x04) {
-                            if (pMaterial->IsMatColorCap()) {
-                                ut::Color* pCol = &pMaterial->GetMatColAry()[0];
-                                switch (target) {
-                                case 0: pCol->r = ClampU8(value); break;
-                                case 1: pCol->g = ClampU8(value); break;
-                                case 2: pCol->b = ClampU8(value); break;
-                                default: pCol->a = ClampU8(value); break;
-                                }
-                            }
-                        } else if (target < 0x10) {
-                            GXColorS10& col = pMaterial->mTevCols[(target - 0x04) / 4];
-                            switch (target % 4) {
-                            case 0: col.r = ClampS10(value); break;
-                            case 1: col.g = ClampS10(value); break;
-                            case 2: col.b = ClampS10(value); break;
-                            default: col.a = ClampS10(value); break;
-                            }
-                        } else if (target < 0x20) {
-                            ut::Color& col = pMaterial->mTevKCols[(target - 0x10) / 4];
-                            switch (target % 4) {
-                            case 0: col.r = ClampU8(value); break;
-                            case 1: col.g = ClampU8(value); break;
-                            case 2: col.b = ClampU8(value); break;
-                            default: col.a = ClampU8(value); break;
-                            }
-                        }
-                    } else if (tagKindIs(pTag, "RLTP")) {
-                        // Texture pattern: step value = index into the file
-                        // table SetResource resolved through the accessor.
-                        const u32 texIdx = pEntry->index;
-                        const u32 fileIdx = static_cast< u32 >(value);
-                        if (texIdx >= pMaterial->GetTextureNum() || mpFileResAry == nullptr ||
-                            fileIdx >= mpRes->fileNum || mpFileResAry[fileIdx] == nullptr) {
-                            continue;
-                        }
-                        pMaterial->GetTexMapAry()[texIdx].ReplaceImage(
-                            static_cast< TPLPalettePtr >(mpFileResAry[fileIdx]), 0);
-                    }
-                    // Pane-side tags on a material content: ignored.
+                    // PC_PORT (M9.5.3c): shared with the pane-content route
+                    // (RLTS/RLMC/RLTP live here; see ApplyMaterialTag).
+                    ApplyMaterialTag(pMaterial, pTag, pEntry, value,
+                                     mpFileResAry, mpRes->fileNum);
                 }
             }
         }

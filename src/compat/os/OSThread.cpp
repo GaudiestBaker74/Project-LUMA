@@ -73,9 +73,21 @@ std::unordered_map<OSThread*, std::unique_ptr<HostThread>>& threadRegistry() {
     return r;
 }
 
-HostThread* getHost(OSThread* t) {
+// Caller must hold registryMutex(). Kept separate from getHost(): most OS
+// entry points already lock the registry around their whole body.
+HostThread* findHostUnlocked(OSThread* t) {
     auto it = threadRegistry().find(t);
     return it == threadRegistry().end() ? nullptr : it->second.get();
+}
+
+// PC_PORT (M9.5.3d): locking lookup. The unlocked reads (thread trampolines,
+// OSJoinThread/OSDetachThread) raced OSCreateThread's insert — an unordered_map
+// find during a rehash returns garbage HostThread* whose writes then corrupt
+// arbitrary heap (the "Bad Block"/pipeline-cache crashes at the Logo->Title
+// transition; TSAN: 37 reports on this registry).
+HostThread* getHost(OSThread* t) {
+    std::lock_guard<std::mutex> lock(registryMutex());
+    return findHostUnlocked(t);
 }
 
 // Run the trampoline (marks termination, never throws across the boundary).
@@ -145,7 +157,7 @@ BOOL OSCreateThread(OSThread* thread, void* (*func)(void*), void* arg, void* sta
         return FALSE;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    if (getHost(thread) != nullptr) {
+    if (findHostUnlocked(thread) != nullptr) {
         return FALSE; // already created
     }
     auto host = std::make_unique<HostThread>();
@@ -175,7 +187,7 @@ void OSExitThread(void* value) {
         return;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    HostThread* h = getHost(t);
+    HostThread* h = findHostUnlocked(t);
     if (h != nullptr) {
         h->exitValue = value;
         h->terminated = true;
@@ -189,7 +201,7 @@ s32 OSResumeThread(OSThread* thread) {
         return -1;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    HostThread* h = getHost(thread);
+    HostThread* h = findHostUnlocked(thread);
     if (h == nullptr) {
         return -1;
     }
@@ -218,7 +230,7 @@ s32 OSSuspendThread(OSThread* thread) {
         return -1;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    HostThread* h = getHost(thread);
+    HostThread* h = findHostUnlocked(thread);
     if (h == nullptr) {
         return -1;
     }
@@ -236,7 +248,7 @@ BOOL OSIsThreadTerminated(OSThread* thread) {
         return TRUE;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    HostThread* h = getHost(thread);
+    HostThread* h = findHostUnlocked(thread);
     return h == nullptr || h->terminated;
 }
 
@@ -283,7 +295,7 @@ void OSCancelThread(OSThread* thread) {
         return;
     }
     std::lock_guard<std::mutex> lock(registryMutex());
-    HostThread* h = getHost(thread);
+    HostThread* h = findHostUnlocked(thread);
     if (h == nullptr) {
         return;
     }
@@ -340,7 +352,7 @@ void OSSleepThread(OSThreadQueue* queue) {
     HostThread* h = nullptr;
     {
         std::lock_guard<std::mutex> lock(registryMutex());
-        h = getHost(t);
+        h = findHostUnlocked(t);
         if (h == nullptr) {
             return;
         }
@@ -389,7 +401,7 @@ void OSWakeupThread(OSThreadQueue* queue) {
     }
     std::lock_guard<std::mutex> lock(registryMutex());
     OSThread* t = queue->head;
-    HostThread* h = getHost(t);
+    HostThread* h = findHostUnlocked(t);
     if (h != nullptr) {
         h->wakeRequested = true;
         h->cv.notify_all();

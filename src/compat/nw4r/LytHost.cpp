@@ -327,7 +327,9 @@ struct Swapper {
 //     endFrame s16 @22, flag u8 @24. Group refs are strings/bytes.
 //   shr1 (res::AnimationShareBlock): animShareInfoOffset u32 @8, shareNum
 //     u16 @12. Share infos are strings/bytes.
-//   pat1 (MKW texture-pattern block): not used by SMG — left as-is.
+//   pat1 (MKW texture-pattern block): metadata-only section — its per-file
+//   texture patterns actually live in the pai1 contents (RLTP tags), which
+//   swapPai1 converts generically; pat1 itself needs no conversion.
 // =============================================================================
 struct BrlanSwapper {
     u8* base = nullptr;
@@ -495,7 +497,9 @@ struct BrlanSwapper {
             swap32At(blk + 8);   // animShareInfoOffset
             swap16At(blk + 0xC); // shareNum
         } else if (kindIs(blk, "pat1")) {
-            PL_LOG_WARN("compat.lyt", "brlan: pat1 (texture patterns) not converted");
+            // Metadata-only on disk (names + bind order); the actual texture
+            // patterns ride the pai1 contents as RLTP tags (converted above).
+            PL_LOG_INFO("compat.lyt", "brlan: pat1 present (metadata only; RLTP handled via pai1)");
         } else {
             PL_LOG_WARN("compat.lyt", "brlan: unknown block '%.4s' left as-is", blk);
         }

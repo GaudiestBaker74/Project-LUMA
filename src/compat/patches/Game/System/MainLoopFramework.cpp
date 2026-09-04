@@ -516,13 +516,19 @@ namespace {
             u32 count = retraceCount ? retraceCount : 1;
             u32 dummy = 0;
 
-            u32 msg;
+            // PC_PORT (M9.5.3d): OSMessage is void* — 8 bytes on the host.
+            // The decomp's `u32 msg` + (OSMessage*)&msg cast (safe on PPC32,
+            // where void* is 4 bytes) wrote 8 bytes into a 4-byte stack slot
+            // EVERY FRAME — ASAN: stack-buffer-overflow in OSReceiveMessage,
+            // and the likely source of the intermittent corruption that made
+            // long runs die at random points.
+            OSMessage msg = nullptr;
             do {
-                if (!OSReceiveMessage(JUTVideo::getManager()->getMessageQueue(), (OSMessage*)&msg, OS_MESSAGE_BLOCK)) {
-                    msg = dummy;
+                if (!OSReceiveMessage(JUTVideo::getManager()->getMessageQueue(), &msg, OS_MESSAGE_BLOCK)) {
+                    msg = reinterpret_cast< OSMessage >(static_cast< uintptr_t >(dummy));
                 }
-            } while ((s32)(msg - nextCount) < 0);
-            nextCount = msg + count;
+            } while ((s32)(static_cast< u32 >(reinterpret_cast< uintptr_t >(msg)) - nextCount) < 0);
+            nextCount = static_cast< u32 >(reinterpret_cast< uintptr_t >(msg)) + count;
         }
     }
 

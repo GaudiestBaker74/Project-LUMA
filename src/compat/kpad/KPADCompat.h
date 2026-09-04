@@ -29,6 +29,12 @@ void updateFrame(const InputState& state, double dt);
 void init();
 void shutdown();
 
+// Current per-channel button masks for the compat GamePadUtil replacements
+// (testCorePadButtonA/B, testCorePadTriggerAnyWithoutHome). `hold` = buttons
+// held this frame; `trig` = this-frame press edges. 0 for invalid channels.
+uint32_t getHoldButtons(int chan);
+uint32_t getTrigButtons(int chan);
+
 // --- Test hooks -------------------------------------------------------------
 // Replaces the config used by updateFrame (bypasses the config file).
 void setConfig(const InputConfig& config);

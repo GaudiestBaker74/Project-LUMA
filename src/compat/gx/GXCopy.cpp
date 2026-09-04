@@ -729,6 +729,13 @@ void GXCopyDisp(void* dst, GXBool clear) {
             logPx("tr", pw - 9, 8);
             logPx("bl", 8, ph - 9);
             logPx("br", pw - 9, ph - 9);
+            // Orientation pair (M9.5.3c: the strap screen rendered upside
+            // down until the flushDraw Y-flip): two pixels at 1/4 and 3/4 of
+            // the frame height. With asymmetric on-screen content (any real
+            // layout), top-half vs bottom-half colors in this pair expose a
+            // vertical flip at a glance.
+            logPx("upmid", pw / 2, ph / 4);
+            logPx("dnmid", pw / 2, ph * 3 / 4);
         } else {
             PL_LOG_WARN("gx", "EFB probe: readback failed");
         }

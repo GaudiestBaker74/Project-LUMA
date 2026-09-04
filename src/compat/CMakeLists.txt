@@ -38,14 +38,14 @@ set(NW4R_SOURCES
     ${PETARI_ROOT}/src/nw4r/ut/ut_TagProcessorBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/ut/ut_TextWriterBase.cpp
     ${PETARI_ROOT}/src/nw4r/ut/ut_binaryFileFormat.cpp
-    ${PETARI_ROOT}/src/nw4r/lyt/lyt_animation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_animation.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_bounding.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_common.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_drawInfo.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_group.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_init.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_layout.cpp
-    ${PETARI_ROOT}/src/nw4r/lyt/lyt_material.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_material.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_pane.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_picture.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_resourceAccessor.cpp
@@ -205,6 +205,11 @@ add_library(pc_compat STATIC
     # patched LogoScene/SceneFactory/StringUtil.
     game/SceneCompat.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/LogoScene.cpp
+    # M9.5.3d: TitleScene (host reconstruction) + the inert PAL60 window +
+    # the vendored title sequence (needs the M9.5.3 layout/input compat).
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/TitleScene.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/EncouragePal60Window.cpp
+    ${PETARI_ROOT}/src/Game/Screen/TitleSequenceProduct.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/SceneFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Util/StringUtil.cpp
     ${PETARI_ROOT}/src/Game/System/GameSystemSceneController.cpp

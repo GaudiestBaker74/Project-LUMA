@@ -26,6 +26,9 @@
 #include "Game/System/DrawSyncManager.hpp"
 #include "Game/System/FunctionAsyncExecutor.hpp"
 #include "Game/System/GameSequenceDirector.hpp"
+#include "platform/Log/Log.h"
+#include "Game/System/GalaxyMoveArgument.hpp"
+#include "Game/System/GameDataFunction.hpp"
 #include "Game/System/GameSequenceFunction.hpp"
 #include "Game/System/GameSystem.hpp"
 #include "Game/System/GameSystemErrorWatcher.hpp"
@@ -497,9 +500,38 @@ void startPreLoadSaveDataSequence() {
 }
 
 void notifyToGameSequenceProgressToEndScene() {
-    // TODO(PC_PORT, M9.5): after the Logo, progress requests the next scene
-    // (Title). Until then the Logo holds the boot in its Deactive nerve.
+    // Real GameSequenceProgress::endScene (after the Logo nerve):
+    // requestChangeSceneAfterBoot → requestChangeSceneTitle → galaxy move
+    // type 7 → "Title". (From the Title itself the console loops back here
+    // too; our M9.5.3 TitleScene parks instead — see TitleScene.cpp.)
+    MR::requestChangeSceneTitle();
 }
+
+void requestGalaxyMove(const GalaxyMoveArgument& rArgument) {
+    // Real GameSequenceProgress::requestGalaxyMove (M9.5.3d scope): move type
+    // 7 = Title. The galaxy-loading move types (0-6, 8+) need the stage
+    // loader — M9.5.4.
+    if (rArgument.mMoveType == 7) {
+        requestChangeScene("Title");
+        return;
+    }
+    PL_LOG_WARN("game", "requestGalaxyMove type %u (stage '%s') not ported yet (M9.5.4)",
+                static_cast< unsigned >(rArgument.mMoveType),
+                rArgument.mStageName != nullptr ? rArgument.mStageName : "(null)");
+}
+
+} // namespace GameSequenceFunction
+
+// Game/System/GalaxyMoveArgument.cpp — the vendored ctor is not compiled; the
+// class is a plain POD + JMapIdInfo copy (JMapIdInfo default-constructs).
+GalaxyMoveArgument::GalaxyMoveArgument(u32 type, const char* pStageName, s32 scenarioNo, const JMapIdInfo* pIDInfo)
+    : mMoveType(type), mStageName(pStageName), mScenarioNo(scenarioNo), _C(0), mIDInfo() {
+    if (pIDInfo != nullptr) {
+        mIDInfo = *pIDInfo;
+    }
+}
+
+namespace GameSequenceFunction {
 
 void requestChangeScene(const char* pName) {
     // Real semantics (GameSequenceFunction.cpp): stage the next scene info
@@ -518,6 +550,20 @@ void requestChangeScene(const char* pName) {
 } // namespace GameSequenceFunction
 
 // =============================================================================
+// GameDataFunction — the two SysConfig-file timestamps referenced by
+// TitleSequenceProduct's PAL60 branch. That branch never runs on PC
+// (MR::isDisplayEncouragePal60Window() is false), but the symbols must link.
+// The real ones read/write the save-data SysConfig (M11).
+// =============================================================================
+namespace GameDataFunction {
+OSTime getSysConfigFileTimeAnnounced() {
+    return 0;
+}
+
+void updateSysConfigFileTimeAnnounced() {}
+} // namespace GameDataFunction
+
+// =============================================================================
 // MR:: — the small host replacements of Game/Util/SystemUtil.cpp,
 // SequenceUtil.cpp and FileUtil.cpp (those pull JKRMemArchive / GameData /
 // save-data trees; they return with M9.4/M9.5).
@@ -531,6 +577,11 @@ namespace MR {
 template<> MEMAllocator MR::JKRHeapAllocator< 0 >::sAllocator;
 template<> MEMAllocatorFunc MR::JKRHeapAllocator< 0 >::sAllocatorFunc;
 template<> JKRHeap* MR::JKRHeapAllocator< 0 >::sHeap = nullptr;
+
+// Game/Util/SequenceUtil.cpp:19 — Title = galaxy move type 7.
+void requestChangeSceneTitle() {
+    GameSequenceFunction::requestGalaxyMove(GalaxyMoveArgument(7, nullptr, 1, nullptr));
+}
 
 void initAcosTable() {
     // TODO(PC_PORT): the real MathUtil.cpp builds gAcosTable[256] on the

@@ -354,19 +354,42 @@ JKRErrorHandler JKRHeap::setErrorHandler(JKRErrorHandler errorHandler) {
 constexpr size_t kPcNewAlign = 16;
 
 void* operator new(size_t size) {
-    if (JKRHeap::sRootHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), kPcNewAlign, nullptr);
-    }
-    // PC_PORT: pre-boot fallback (see block comment above).
+    // PC_PORT (M9.5.3d): the SYSTEM allocator, never the current JKR heap.
+    // Plain new used to route to sCurrentHeap = the SCENE heap during a
+    // scene; HeapMemoryWatcher destroys those heaps at every scene transition
+    // (the first ever is Logo->Title), which freed every std:: container that
+    // allocated through plain new platform-wide (Renderer pipeline/sampler
+    // caches, GXCompat tables...) under their owners — dangling nodes, the
+    // random-SEGV/"Bad Block" family. Heap-pinned game allocations use the
+    // explicit new (heap, align) placement forms; pcPortFree pairs with this
+    // (findFromRoot falls through to the platform allocator).
     return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new(size_t size, int align) {
-    if (JKRHeap::sCurrentHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), align, nullptr);
-    }
-    // PC_PORT: pre-boot fallback.
+    // PC_PORT (M9.5.3d): the SYSTEM allocator, never the current JKR heap.
+    // Plain new used to route to sCurrentHeap = the SCENE heap during a
+    // scene; HeapMemoryWatcher destroys those heaps at every scene transition
+    // (the first ever is Logo->Title), which freed every std:: container that
+    // allocated through plain new platform-wide (Renderer pipeline/sampler
+    // caches, GXCompat tables...) under their owners — dangling nodes, the
+    // random-SEGV/"Bad Block" family. Heap-pinned game allocations use the
+    // explicit new (heap, align) placement forms; pcPortFree pairs with this
+    // (findFromRoot falls through to the platform allocator).
     return Platform::Memory::allocate(size, static_cast<size_t>(align));
+}
+
+void* operator new(size_t size, const std::nothrow_t&) noexcept {
+    // PC_PORT (M9.5.3d): pair for the nothrow/sized deletes below. Third-
+    // party code in our process (lavapipe's LLVM JIT compiles shaders at
+    // runtime) allocates with nothrow new; without this override those blocks
+    // came from the SYSTEM allocator while their deletes went through
+    // pcPortFree (Platform::Memory::free on a foreign pointer). ASAN flagged
+    // the heap-buffer-overflow; non-ASAN builds corrupted whatever malloc
+    // reused the block (the renderer's pipeline cache died at the first
+    // scene transition). Routing to the platform allocator pairs it with
+    // pcPortFree's fallback.
+    return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new(size_t size, JKRHeap* pHeap, int align) {
@@ -375,19 +398,34 @@ void* operator new(size_t size, JKRHeap* pHeap, int align) {
 }
 
 void* operator new[](size_t size) {
-    if (JKRHeap::sRootHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), kPcNewAlign, nullptr);
-    }
-    // PC_PORT: pre-boot fallback.
+    // PC_PORT (M9.5.3d): the SYSTEM allocator, never the current JKR heap.
+    // Plain new used to route to sCurrentHeap = the SCENE heap during a
+    // scene; HeapMemoryWatcher destroys those heaps at every scene transition
+    // (the first ever is Logo->Title), which freed every std:: container that
+    // allocated through plain new platform-wide (Renderer pipeline/sampler
+    // caches, GXCompat tables...) under their owners — dangling nodes, the
+    // random-SEGV/"Bad Block" family. Heap-pinned game allocations use the
+    // explicit new (heap, align) placement forms; pcPortFree pairs with this
+    // (findFromRoot falls through to the platform allocator).
     return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new[](size_t size, int align) {
-    if (JKRHeap::sCurrentHeap != nullptr) {
-        return JKRHeap::alloc(static_cast<u32>(size), align, nullptr);
-    }
-    // PC_PORT: pre-boot fallback.
+    // PC_PORT (M9.5.3d): the SYSTEM allocator, never the current JKR heap.
+    // Plain new used to route to sCurrentHeap = the SCENE heap during a
+    // scene; HeapMemoryWatcher destroys those heaps at every scene transition
+    // (the first ever is Logo->Title), which freed every std:: container that
+    // allocated through plain new platform-wide (Renderer pipeline/sampler
+    // caches, GXCompat tables...) under their owners — dangling nodes, the
+    // random-SEGV/"Bad Block" family. Heap-pinned game allocations use the
+    // explicit new (heap, align) placement forms; pcPortFree pairs with this
+    // (findFromRoot falls through to the platform allocator).
     return Platform::Memory::allocate(size, static_cast<size_t>(align));
+}
+
+void* operator new[](size_t size, const std::nothrow_t&) noexcept {
+    // PC_PORT (M9.5.3d): nothrow pair — see operator new(nothrow_t).
+    return Platform::Memory::allocate(size, kPcNewAlign);
 }
 
 void* operator new[](size_t size, JKRHeap* pHeap, int align) {
@@ -444,6 +482,16 @@ void operator delete(void* pData, const std::nothrow_t&) noexcept {
 }
 
 void operator delete[](void* pData, const std::nothrow_t&) noexcept {
+    pcPortFree(pData);
+}
+
+// PC_PORT (M9.5.3d): sized nothrow deletes (C++17; emitted when a nothrow-new
+// allocation is deleted with a size hint). Same routing as the sized forms.
+void operator delete(void* pData, size_t, const std::nothrow_t&) noexcept {
+    pcPortFree(pData);
+}
+
+void operator delete[](void* pData, size_t, const std::nothrow_t&) noexcept {
     pcPortFree(pData);
 }
 

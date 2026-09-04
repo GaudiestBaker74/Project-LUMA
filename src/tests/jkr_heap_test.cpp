@@ -19,6 +19,7 @@
 
 #include <JSystem/JKernel/JKRExpHeap.hpp>
 #include <JSystem/JKernel/JKRHeap.hpp>
+#include <JSystem/JKernel/JKRSolidHeap.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -119,4 +120,114 @@ TEST_CASE(jkr_heap_many_blocks) {
 
     heap->freeAll();
     JKRHeap::destroy(heap);
+}
+
+// =============================================================================
+// jkr_solid_heap_cycle (M9.5.3d): the HeapMemoryWatcher scene-change cycle —
+// an exp "game heap" holding two carved solid heaps (file cache + scene heap)
+// destroyed back-to-back. This is the exact sequence that panicked with
+// "Bad Block" in JKRExpHeap::do_free at the first Logo→Title transition once
+// the _6E leak fix returned the game heaps' blocks to the root: freeing the
+// scene-heap block (last carved) and then the file-cache block (first carved)
+// exercises the free-list coalescing across the carved boundary.
+// =============================================================================
+TEST_CASE(jkr_solid_heap_cycle) {
+    JKRExpHeap* root = static_cast< JKRExpHeap* >(JKRHeap::sRootHeap);
+    if (root == nullptr) {
+        // Standalone --run-test: fresh process (in the full suite the smoke
+        // test has already created the shared root).
+        root = JKRExpHeap::createRoot(1, true);
+    }
+    REQUIRE(root != nullptr);
+
+    // 1. Game heap = everything the root still has (HeapMemoryWatcher's -1).
+    JKRExpHeap* gameHeap = JKRExpHeap::create(-1, root, false);
+    REQUIRE(gameHeap != nullptr);
+    const s32 gameFree = gameHeap->getFreeSize();
+    CHECK(gameFree > 0);
+
+    // 2. File cache (17 MB, the real GameSystemSceneController request) and
+    //    scene heap (all the rest), both carved from the game heap.
+    JKRSolidHeap* fileCache = JKRSolidHeap::create(0x1040400, gameHeap, false);
+    REQUIRE(fileCache != nullptr);
+
+    JKRSolidHeap* sceneHeap = JKRSolidHeap::create(-1, gameHeap, false);
+    REQUIRE(sceneHeap != nullptr);
+
+    // 3. The scene heap carries the scene's loads (strap arc-sized blocks).
+    void* a = JKRAllocFromHeap(sceneHeap, 1024 * 1024, 32);
+    REQUIRE(a != nullptr);
+    void* b = JKRAllocFromHeap(sceneHeap, 632608, 32);
+    REQUIRE(b != nullptr);
+
+    // 4. Destroy in HeapMemoryWatcher::destroyGameHeap order: scene heaps
+    //    first, then the file cache, then the game heap itself.
+    JKRHeap::destroy(sceneHeap);
+    JKRHeap::destroy(fileCache);
+
+    // The game heap must have everything back (its own object aside).
+    CHECK(gameHeap->getFreeSize() >= gameFree - static_cast< s32 >(sizeof(JKRExpHeap)));
+
+    JKRHeap::destroy(gameHeap);
+
+    // 5. The root must be usable afterwards (the cycle returned its memory).
+    void* fromRoot = root->alloc(64, 16);
+    REQUIRE(fromRoot != nullptr);
+    root->free(fromRoot);
+}
+
+// -----------------------------------------------------------------------------
+// jkr_gddr_destroy_cycle (M9.5.3d): the HeapMemoryWatcher GDDR root layout in
+// creation order (audSystem, wpad work mem, home button, stationed GDDR, then
+// the game heap = remainder), then the scene-change destroy cycle. This is
+// the sequence that hit "Bad Block" in joinTwoBlocks when the game heap's
+// block was returned to the GDDR root at the Logo->Title transition.
+// -----------------------------------------------------------------------------
+TEST_CASE(jkr_gddr_destroy_cycle) {
+    JKRExpHeap* root = static_cast< JKRExpHeap* >(JKRHeap::sRootHeap);
+    if (root == nullptr) {
+        root = JKRExpHeap::createRoot(1, true);
+    }
+    REQUIRE(root != nullptr);
+
+    // GDDR root prelude (sizes from HeapMemoryWatcher::createHeaps).
+    JKRSolidHeap* audSystem = JKRSolidHeap::create(0x1E0000, root, false);
+    REQUIRE(audSystem != nullptr);
+    JKRExpHeap* wpad = JKRExpHeap::create(0x1000 + 208, root, false);
+    REQUIRE(wpad != nullptr);
+    JKRExpHeap* homeButton = JKRExpHeap::create(0x80000, root, false);
+    REQUIRE(homeButton != nullptr);
+    JKRExpHeap* stationed = JKRExpHeap::create(0x1400000, root, false);
+    REQUIRE(stationed != nullptr);
+
+    // Game heap = the remainder (createExpHeap -1).
+    JKRExpHeap* gameHeap = JKRExpHeap::create(-1, root, false);
+    REQUIRE(gameHeap != nullptr);
+    const s32 gameFree = gameHeap->getFreeSize();
+    CHECK(gameFree > 0);
+
+    // File cache + scene heap out of the game heap, some scene allocations.
+    JKRSolidHeap* fileCache = JKRSolidHeap::create(0x1040400, gameHeap, false);
+    REQUIRE(fileCache != nullptr);
+    JKRSolidHeap* sceneGDDR = JKRSolidHeap::create(-1, gameHeap, false);
+    REQUIRE(sceneGDDR != nullptr);
+    void* a = JKRAllocFromHeap(sceneGDDR, 1024 * 1024, 32);
+    REQUIRE(a != nullptr);
+
+    // destroySceneHeap + file cache + game heap (destroyGameHeap order).
+    JKRHeap::destroy(sceneGDDR);
+    JKRHeap::destroy(fileCache);
+    JKRHeap::destroy(gameHeap);
+
+    // Freeing the game heap's block must have returned to the root: the
+    // stationed heaps + prelude are still carved, everything else is back.
+    void* fromRoot = root->alloc(64, 16);
+    REQUIRE(fromRoot != nullptr);
+    root->free(fromRoot);
+
+    // Cleanup the prelude (fresh-process runs leave the root tidy).
+    JKRHeap::destroy(stationed);
+    JKRHeap::destroy(homeButton);
+    JKRHeap::destroy(wpad);
+    JKRHeap::destroy(audSystem);
 }

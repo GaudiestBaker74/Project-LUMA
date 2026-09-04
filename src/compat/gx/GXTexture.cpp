@@ -85,6 +85,31 @@ Platform::SamplerHandle sTexMapSam[8] = {};
 // TEXMAP0..7 -> texel size of the bound texture (M5.7b texDims UBO field).
 float sTexMapDims[8][2] = {};
 
+// PC_PORT (M9.5.3c): unbind every TEXMAP slot that references `tex`.
+//
+// WHY: nw4r's Material::SetupGX re-inits ONE STACK GXTexObj for ALL its
+// texmaps; the host TexObjData registry is address-keyed, so texmap 2 of the
+// same material REPROGRAMS the record of texmap 1. The source-changed path
+// destroys the previous renderer texture — but the TEXMAP slot still held the
+// dead handle, and nothing re-bound that slot (the second texture loads into
+// the NEXT slot; the per-frame clearEfb GXLoadTexObj of the unsupported
+// Z24X8 object fails BEFORE touching its slot). The dangling handle reached
+// bindFragmentTextures -> vkUpdateDescriptorSets -> DRIVER CRASH (the user's
+// strap screen died ~3 s in: HookMessage — the layout's first 2-texture
+// material — becomes visible at anim frame ~270). Any destroy of a live
+// handle MUST scrub the maps.
+void unbindTexMapHandle(Platform::TextureHandle tex) {
+    if (tex == nullptr) {
+        return;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (sTexMapTex[i] == tex) {
+            sTexMapTex[i] = nullptr;
+            sTexMapSam[i] = nullptr;
+        }
+    }
+}
+
 struct TexGen {
     GXTexGenType type = GX_TG_MTX2x4;
     GXTexGenSrc src = GX_TG_TEX0;
@@ -288,6 +313,7 @@ void refreshTlut(TexObjData& d) {
     d.paletteBytes = static_cast<size_t>(e.numEntries) * 2;
     if (d.loaded) {
         if (Platform::Renderer::instance().isInitialized()) {
+            unbindTexMapHandle(d.texture); // PC_PORT (M9.5.3c): see unbindTexMapHandle
             Platform::Renderer::instance().destroyTexture(d.texture);
         }
         d.loaded = false;
@@ -480,6 +506,7 @@ void GXInitTexObj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXTexFmt
         if (d->image != static_cast<const u8*>(imagePtr) || d->width != width ||
             d->height != height || d->format != static_cast<u8>(format)) {
             if (Platform::Renderer::instance().isInitialized()) {
+                unbindTexMapHandle(d->texture); // PC_PORT (M9.5.3c): see unbindTexMapHandle
                 Platform::Renderer::instance().destroyTexture(d->texture);
             }
             d->loaded = false;
@@ -543,6 +570,7 @@ void GXInitTexObjCI(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITe
         if (d->image != static_cast<const u8*>(imagePtr) || d->width != width ||
             d->height != height || d->format != static_cast<u8>(format)) {
             if (Platform::Renderer::instance().isInitialized()) {
+                unbindTexMapHandle(d->texture); // PC_PORT (M9.5.3c): see unbindTexMapHandle
                 Platform::Renderer::instance().destroyTexture(d->texture);
             }
             d->loaded = false;
@@ -614,6 +642,14 @@ void GXLoadTexObj(const GXTexObj* obj, GXTexMapID id) {
     // animation) — but NOT on unchanged frames (no per-frame churn).
     refreshTlut(*d);
     if (!loadTexture(*d)) {
+        // PC_PORT (M9.5.3c): a failed load UNBINDS the slot. On the console
+        // GXLoadTexObj cannot fail; here an unsupported format (clearEfb's
+        // Z24X8 object every frame) used to leave the PREVIOUS texture of the
+        // slot bound — including already-destroyed handles (see
+        // unbindTexMapHandle) — which crashed the driver at the next draw.
+        const int failedSlot = static_cast<int>(id) - GX_TEXMAP0;
+        sTexMapTex[failedSlot] = nullptr;
+        sTexMapSam[failedSlot] = nullptr;
         return;
     }
     const int slot = static_cast<int>(id) - GX_TEXMAP0;

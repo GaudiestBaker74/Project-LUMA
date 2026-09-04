@@ -66,6 +66,13 @@ JKRExpHeap* JKRExpHeap::create(u32 size, JKRHeap* pParent, bool errorFlag) {
         return nullptr;
     }
 
+    // PC_PORT (M9.5.3d): this heap OWNS its block (carved from the parent in
+    // the alloc above). Upstream do_destroy only returns the block when _6E
+    // is set ("needsFree" — the size-ctor sets it on the console); leaving it
+    // at garbage/0 leaked the whole arena at the first destroyGameHeap: the
+    // recreated game heap after the Logo scene had 32 KB free and the Title's
+    // 17 MB file cache panicked.
+    heap->_6E = 1;
     heap->mAllocMode = 0;
     return heap;
 }
@@ -97,6 +104,9 @@ JKRExpHeap* JKRExpHeap::create(void* ptr, u32 size, JKRHeap* pParent, bool error
     u32 alignSize = (u32)ALIGN_PREV((uintptr_t)ptr + size - (uintptr_t)data, 0x10);
     if (ptr != nullptr) {
         heap = new (ptr) JKRExpHeap(data, alignSize, parent, errorFlag);
+        // PC_PORT (M9.5.3d): caller-owned buffer — do_destroy must NOT free
+        // it (see the size-ctor note above).
+        heap->_6E = 0;
     }
 
     heap->mAllocMode = 1;

@@ -19,6 +19,7 @@
 // Everything else is identical to upstream.
 // =============================================================================
 #include "nw4r/lyt/layout.h"
+#include "platform/Log/Log.h"
 #include "nw4r/ut/RuntimeTypeInfo.h"
 #include "nw4r/lyt/resourceAccessor.h"
 #include "nw4r/lyt/textBox.h"
@@ -87,7 +88,28 @@ namespace nw4r {
             mLineSpace = pBlock->lineSpace;
 
             const res::Font* const fonts = detail::ConvertOffsToPtr< res::Font >(resBlockSet.pFontList, sizeof(*resBlockSet.pFontList));
-            const char* const fontName = detail::ConvertOffsToPtr< char >(fonts, fonts[pBlock->fontIdx].nameStrOffset);
+            // PC_PORT (M9.5.3c hardening): same validation as lyt_material.cpp —
+            // a corrupt fnl1 (bad fontIdx or nameStrOffset) produced a wild
+            // pointer here (SIGSEGV in GetFont/GetResource). Degrade to an empty
+            // name: the lookups return null and the textbox stays without a
+            // font (it draws nothing) instead of crashing the build.
+            const char* fontName = "";
+            if (resBlockSet.pFontList != nullptr) {
+                const u32 fontListNum = resBlockSet.pFontList->fontNum;
+                const u32 fontListSize = resBlockSet.pFontList->blockHeader.size;
+                if (fontListSize >= sizeof(*resBlockSet.pFontList) &&
+                    pBlock->fontIdx < fontListNum &&
+                    fonts[pBlock->fontIdx].nameStrOffset <
+                        fontListSize - sizeof(*resBlockSet.pFontList)) {
+                    fontName = detail::ConvertOffsToPtr< char >(fonts, fonts[pBlock->fontIdx].nameStrOffset);
+                } else {
+                    PL_LOG_WARN("compat.lyt",
+                                "TextBox '%.16s': font %u out of range (fontNum %u, block size %u) — no font",
+                                pBlock->name, static_cast< unsigned >(pBlock->fontIdx),
+                                static_cast< unsigned >(fontListNum),
+                                static_cast< unsigned >(fontListSize));
+                }
+            }
 
             if (ut::Font* pFont = resBlockSet.pResAccessor->GetFont(fontName)) {
                 mpFont = pFont;

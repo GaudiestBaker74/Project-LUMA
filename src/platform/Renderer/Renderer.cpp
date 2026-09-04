@@ -2460,6 +2460,9 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
                              reinterpret_cast<void*>(uboSet)};
     mPipelineCache[hash] = entry;
     mPipelineByHandle[reinterpret_cast<void*>(pipeline)] = &mPipelineCache[hash];
+    // M9.5.3d triage: new-pipeline inserts rehash the cache; log the growth.
+    PL_LOG_INFO("renderer", "pipeline cache insert #%zu (hash %llx)", mPipelineCache.size(),
+                static_cast< unsigned long long >(hash));
     return reinterpret_cast<PipelineHandle>(pipeline);
 }
 

@@ -264,6 +264,17 @@ JKRHeap* ensureHeap() {
         JKRExpHeap::createRoot(1, true);
     }
     JKRHeap::sRootHeap->becomeCurrentHeap();
+    // Full-suite hygiene (M9.5.3d): game_system_boot_reaches_logo leaves the
+    // Logo->Title transition's recreated game heaps carved out of the root
+    // (createExpHeap -1 = the whole remainder), so late tests can find the
+    // root without a usable block. The system heap (0x40000, carved once at
+    // createHeaps) always has room for these small mounts. Plain new no
+    // longer feeds JKR heaps (system allocator since M9.5.3d), so only these
+    // deliberate allocations need JKR space.
+    if (JKRHeap::sRootHeap->getMaxAllocatableSize(0x20) < 0x10000 && JKRHeap::sSystemHeap != nullptr) {
+        JKRHeap::sSystemHeap->becomeCurrentHeap();
+        return JKRHeap::sSystemHeap;
+    }
     return JKRHeap::sRootHeap;
 }
 

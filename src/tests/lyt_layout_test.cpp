@@ -221,17 +221,25 @@ RichLayout makeRichBrlyt() {
     b.endBlock(out.lyt1);
 
     out.txl1 = b.beginBlock("txl1");
+    // res::Texture entries (resources.h): 8 bytes each — u32 nameStrOffset
+    // (RELATIVE to the entry array at block+12: lyt_material.cpp resolves
+    // `ConvertOffsToPtr<char>(textures, nameStrOffset)`), u8 type, 3 pad.
+    // Strings sit after the entries at block+28/+40 -> entry-relative 16/28.
+    // (Before M9.5.3c this test wrote 4-byte entries with block-relative
+    // offsets — wrong vs. the real format; it only passed because the stub
+    // accessor serves ANY name.)
     put16(b.raw(), 2); put16(b.raw(), 0);
+    put32(b.raw(), 16); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
     put32(b.raw(), 28); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
-    put32(b.raw(), 40); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
     putNulStr(b.raw(), "tex0.tpl"); padTo4(b.raw());  // @28
     putNulStr(b.raw(), "tex1.tpl"); padTo4(b.raw());  // @40
     b.endBlock(out.txl1);
 
     out.fnl1 = b.beginBlock("fnl1");
+    // res::Font entry (8 B), same entry-array-relative rule as txl1.
     put16(b.raw(), 1); put16(b.raw(), 0);
-    put32(b.raw(), 20); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
-    putNulStr(b.raw(), "font1.brfnt"); padTo4(b.raw());  // @20
+    put32(b.raw(), 8); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putNulStr(b.raw(), "font1.brfnt"); padTo4(b.raw());  // @20 (entries+8)
     b.endBlock(out.fnl1);
 
     // mat1: one material, resNum = texMap 1 | texSRT 1<<4 | texCoordGen 1<<8
@@ -541,6 +549,8 @@ std::vector<u8> makeBrfnt() {
 
 // Stub accessor: serves the synthetic TPL for 'timg' and the synthetic brfnt
 // for 'font' (the two resource types Layout::Build/Material/TextBox fetch).
+// Records every requested name so tests can pin the txl1/fnl1 offset
+// semantics (what the engine asks for must be the name the block declares).
 class StubResourceAccessor : public nw4r::lyt::ResourceAccessor {
 public:
     StubResourceAccessor() {
@@ -548,7 +558,8 @@ public:
         mFont = makeBrfnt();
     }
 
-    void* GetResource(nw4r::lyt::ResType type, const char* /*name*/, u32* pSize) override {
+    void* GetResource(nw4r::lyt::ResType type, const char* name, u32* pSize) override {
+        requested.emplace_back(name != nullptr ? name : "(null)");
         if (type == 'timg') {
             if (pSize != nullptr) {
                 *pSize = static_cast<u32>(mTpl.size());
@@ -564,7 +575,13 @@ public:
         return nullptr;
     }
 
-    nw4r::ut::Font* GetFont(const char* /*name*/) override { return nullptr; }
+    nw4r::ut::Font* GetFont(const char* name) override {
+        requestedFonts.emplace_back(name != nullptr ? name : "(null)");
+        return nullptr;
+    }
+
+    std::vector<std::string> requested;    // GetResource names, in order
+    std::vector<std::string> requestedFonts;  // GetFont names, in order
 
 private:
     std::vector<u8> mTpl;
@@ -613,15 +630,17 @@ TEST_CASE(lyt_swapper_converts_all_sections) {
     CHECK_NEAR(getF32(p + lyt.lyt1 + 12), 640.0f, 1e-6);
     CHECK_NEAR(getF32(p + lyt.lyt1 + 16), 480.0f, 1e-6);
 
-    // txl1: count + name offsets; names untouched.
+    // txl1: count + name offsets; names untouched. Offsets are relative to
+    // the ENTRY ARRAY at block+12 (the lyt_material.cpp base), so the
+    // strings at block+28/+40 are stored as 16/28.
     CHECK_EQ(get16(p + lyt.txl1 + 8), static_cast<u16>(2));
-    CHECK_EQ(get32(p + lyt.txl1 + 12), static_cast<u32>(28));
-    CHECK_EQ(get32(p + lyt.txl1 + 20), static_cast<u32>(40));
+    CHECK_EQ(get32(p + lyt.txl1 + 12), static_cast<u32>(16));
+    CHECK_EQ(get32(p + lyt.txl1 + 20), static_cast<u32>(28));
     CHECK(std::strcmp(reinterpret_cast<const char*>(p + lyt.txl1 + 28), "tex0.tpl") == 0);
 
-    // fnl1
+    // fnl1 (same entry-array-relative rule: string @20 -> stored as 8)
     CHECK_EQ(get16(p + lyt.fnl1 + 8), static_cast<u16>(1));
-    CHECK_EQ(get32(p + lyt.fnl1 + 12), static_cast<u32>(20));
+    CHECK_EQ(get32(p + lyt.fnl1 + 12), static_cast<u32>(8));
 
     // mat1: count, block-relative material offset, resNum, tail fields.
     CHECK_EQ(get16(p + lyt.mat1 + 8), static_cast<u16>(1));
@@ -807,6 +826,19 @@ TEST_CASE(lyt_build_full_chain_pic_txt_wnd) {
     CHECK_EQ(static_cast<int>(texMap->GetTexelFormat()), 4);  // GX_TF_RGB565
     CHECK(texMap->mImage != nullptr);
 
+    // Offset semantics pinned: the material's texIdx=1 must have asked for
+    // the txl1's SECOND declared name ("tex1.tpl"), resolved relative to the
+    // entry array (M9.5.3c — the old test blob used the wrong base).
+    bool askedTex1 = false, askedFont1 = false;
+    for (const std::string& n : accessor.requested) {
+        askedTex1 = askedTex1 || n == "tex1.tpl";
+    }
+    for (const std::string& n : accessor.requestedFonts) {
+        askedFont1 = askedFont1 || n == "font1.brfnt";
+    }
+    CHECK(askedTex1);
+    CHECK(askedFont1);
+
     // TextBox: BE UTF-16 text widened to host wchar_t, font built from the
     // synthetic brfnt through the accessor ('font' -> ResFont::SetResource).
     nw4r::lyt::Pane* txtPane = root->FindPaneByName("textbox", true);
@@ -829,6 +861,90 @@ TEST_CASE(lyt_build_full_chain_pic_txt_wnd) {
     // Window: built with its frame; bounding pane present.
     CHECK(root->FindPaneByName("window", true) != nullptr);
     CHECK(root->FindPaneByName("bounding", true) != nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// M9.5.3c hardening regression: a brlyt whose material references a texIdx
+// outside the txl1 used to produce a wild `char*` (entries + garbage u32) and
+// SIGSEGV inside GetResource/ResTable::getRes during Layout::Build. The
+// patched Material ctor must degrade to the "not found" path (empty name) and
+// the build must complete.
+// ---------------------------------------------------------------------------
+TEST_CASE(lyt_build_survives_out_of_range_texidx) {
+    BrlytBuilder b;
+    const u32 lyt1 = b.beginBlock("lyt1");
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putF32(b.raw(), 640.0f);
+    putF32(b.raw(), 480.0f);
+    b.endBlock(lyt1);
+
+    // txl1: exactly ONE texture, real entry format.
+    const u32 txl1 = b.beginBlock("txl1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 8); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putNulStr(b.raw(), "tex0.tpl"); padTo4(b.raw());  // @20 (entries+8)
+    b.endBlock(txl1);
+
+    // mat1: one material, texMap 1 (texIdx 7 = OUT OF RANGE) + 1 tev stage.
+    const u32 mat1 = b.beginBlock("mat1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 16);
+    putFixedStr(b.raw(), "mat_bad", 20);
+    for (int i = 0; i < 3; ++i) {
+        for (int c = 0; c < 4; ++c) {
+            put16(b.raw(), 255);
+        }
+    }
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), 0);
+    }
+    put32(b.raw(), 0x00040101);  // texMap 1 | texCoordGen 1<<8 | tevStage 1<<18
+    put16(b.raw(), 7);           // texIdx 7 — txl1 only has 1 entry
+    put8(b.raw(), 0); put8(b.raw(), 0);
+    put8(b.raw(), 1); put8(b.raw(), 4); put8(b.raw(), 60); put8(b.raw(), 0);  // TexCoordGen
+    const u8 tevStage[16] = {0, 4, 0, 0, 0xFF, 0x8F, 0x00, 0x61, 0x77, 0x47, 0x00, 0x81, 0, 0, 0, 0};
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), tevStage[i]);
+    }
+    b.endBlock(mat1);
+
+    const u32 rootPan = b.beginBlock("pan1");
+    putPaneBody(b.raw(), "root_pane", 0, 0, 0, 1, 1, 640, 480);
+    b.endBlock(rootPan);
+    const u32 pas1 = b.beginBlock("pas1");
+    b.endBlock(pas1);
+    const u32 pic1 = b.beginBlock("pic1");
+    putPaneBody(b.raw(), "picture", 0, 0, 0, 1, 1, 100, 50);
+    for (int i = 0; i < 4; ++i) {
+        put32(b.raw(), 0xFFFFFFFF);
+    }
+    put16(b.raw(), 0);  // materialIdx -> mat_bad
+    put8(b.raw(), 0);   // texCoordNum
+    put8(b.raw(), 0);
+    b.endBlock(pic1);
+    const u32 pae1 = b.beginBlock("pae1");
+    b.endBlock(pae1);
+    const u32 grp1 = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "root_group", 16);
+    put16(b.raw(), 0); put16(b.raw(), 0);
+    b.endBlock(grp1);
+
+    std::vector<u8> file = b.finish();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file.data(), static_cast<u32>(file.size())));
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+    StubResourceAccessor accessor;
+
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(file.data(), &accessor));  // pre-patch: SIGSEGV here
+    REQUIRE(layout.mpRootPane != nullptr);
+
+    // The guard must have substituted the empty name instead of the wild one.
+    bool askedEmpty = false;
+    for (const std::string& n : accessor.requested) {
+        askedEmpty = askedEmpty || n.empty();
+    }
+    CHECK(askedEmpty);
 }
 
 TEST_CASE(lyt_draw_full_chain_headless) {
@@ -1030,6 +1146,69 @@ TEST_CASE(lyt_draw_lands_on_efb) {
     GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
     quad(160.0f, -60.0f, 290.0f, 60.0f, 0xFF0000FFu);   // ctrl B (right)
 
+    // Orientation marker (M9.5.3c: the user's strap screen rendered upside
+    // down — GL-style Y-up clip space fed straight into Vulkan's Y-down NDC,
+    // and every synthetic check so far was vertically symmetric, so the flip
+    // was invisible). A GREEN quad near the TOP of layout space: with the
+    // console orientation (EFB row 0 = top, like GXCopyDisp/GXCopyTex) it
+    // must land in the top rows of the EFB. The check below pins it forever.
+    quad(-60.0f, 190.0f, 60.0f, 225.0f, 0x00FF00FFu); // top-center, green
+
+    // Regression (M9.5.3c): the Material::SetupGX pattern — ONE stack
+    // GXTexObj reprogrammed for each texmap — plus clearEfb's failed Z24X8
+    // load used to leave a DESTROYED handle in TEXMAP0 (the second texture
+    // loads into slot 1, nothing re-bound slot 0), and the next flushDraw
+    // crashed the driver inside vkUpdateDescriptorSets. The fix unbinds
+    // matching TEXMAP slots whenever a host texture is destroyed and makes a
+    // failed load unbind its slot. Pin both behaviors on the handle state,
+    // then force a flushDraw with the scrubbed maps (pre-fix: driver crash
+    // right here).
+    {
+        static u8 texA[64], texB[64];
+        for (int i = 0; i < 64; ++i) {
+            texA[i] = 0x11;
+            texB[i] = 0x22;
+        }
+        GXTexObj stackObj;  // ONE address — nw4r's SetupGX pattern
+        std::memset(&stackObj, 0, sizeof(stackObj));
+        GXInitTexObj(&stackObj, texA, 8, 8, GX_TF_I4, GX_CLAMP, GX_CLAMP, GX_FALSE);
+        GXInitTexObjLOD(&stackObj, GX_NEAR, GX_NEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+        GXLoadTexObj(&stackObj, GX_TEXMAP0);
+        void* map0First = nullptr;
+        void* sam0 = nullptr;
+        Platform::CompatGx::getTexMap0(&map0First, &sam0);
+        REQUIRE(map0First != nullptr);
+
+        // Same address, new content: destroys map0First's renderer texture
+        // and loads the new content into TEXMAP1. Slot 0 must NOT keep the
+        // destroyed handle (pre-fix: dangling -> driver crash below).
+        GXInitTexObj(&stackObj, texB, 8, 8, GX_TF_I4, GX_CLAMP, GX_CLAMP, GX_FALSE);
+        GXInitTexObjLOD(&stackObj, GX_NEAR, GX_NEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+        GXLoadTexObj(&stackObj, GX_TEXMAP1);
+        void* maps[8];
+        void* sams[8];
+        Platform::CompatGx::getTexMaps(maps, sams);
+        CHECK(maps[0] == nullptr);           // scrubbed at destroy (pre-fix: == map0First, freed)
+        CHECK(maps[1] != nullptr);           // the new content is bound
+        CHECK(maps[1] != map0First);
+
+        // clearEfb's Z24X8 object: unsupported -> failed load must unbind its
+        // slot (pre-fix: left whatever was there — including freed handles).
+        static u32 zdata[16] = {};
+        GXTexObj zobj;
+        std::memset(&zobj, 0, sizeof(zobj));
+        GXInitTexObj(&zobj, zdata, 4, 4, GX_TF_Z24X8, GX_CLAMP, GX_CLAMP, GX_FALSE);
+        GXInitTexObjLOD(&zobj, GX_NEAR, GX_NEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+        GXLoadTexObj(&zobj, GX_TEXMAP0);
+        Platform::CompatGx::getTexMaps(maps, sams);
+        CHECK(maps[0] == nullptr);
+
+        // The bind itself: white fallbacks for the null maps, a quad through
+        // flushDraw. Pre-fix this was the crash site.
+        quad(-60.0f, 150.0f, 60.0f, 185.0f, 0xFFFFFFFFu);
+    }
+
+
     r.endPass();
     r.flushFrame(); // submit so the synchronous readback sees this frame
 
@@ -1088,6 +1267,20 @@ TEST_CASE(lyt_draw_lands_on_efb) {
     const uint8_t* cA = px(80, 228);
     const uint8_t* cB = px(560, 228);
     const uint8_t* cL = px(380, 232);
+
+    // Orientation (console: EFB row 0 = TOP — GXCopyDisp/GXCopyTex semantics).
+    // The green marker quad spans layout y 190..225, x -60..60 -> with the
+    // correct orientation it rasterizes into EFB rows ~3..38, x ~276..364.
+    auto isGreen = [](const uint8_t* p) {
+        return p[1] > 200 && p[0] < 80 && p[2] < 80;
+    };
+    const size_t greenTop = countIn(280, 2, 360, 60, isGreen);       // where it MUST be
+    const size_t greenBottom = countIn(280, 396, 360, 454, isGreen); // where a Y-flip puts it
+    fprintf(stderr, "[lyt-efb] green top=%zu bottom=%zu (orientation %s)\n",
+            greenTop, greenBottom, greenTop > 1000 ? "OK" : "FLIPPED");
+    CHECK(greenTop > 1000);      // the marker lands at the TOP rows
+    CHECK(greenBottom < 100);    // ...and nowhere at the bottom (pre-fix: flipped)
+
     fprintf(stderr, "[lyt-efb] changed=%zu/%u bbox=(%u,%u)-(%u,%u)\n"
                     "[lyt-efb] redA=%zu A=(%u,%u,%u,%u) redB=%zu B=(%u,%u,%u,%u) "
                     "layoutPix=%zu L=(%u,%u,%u,%u)\n",

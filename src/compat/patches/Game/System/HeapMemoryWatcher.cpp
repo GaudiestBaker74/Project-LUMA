@@ -7,6 +7,7 @@
 // on the Wii (the arena emulation keeps the partition at 32-bit offsets).
 // =============================================================================
 #include "Game/System/HeapMemoryWatcher.hpp"
+#include "platform/Log/Log.h"
 
 #include <cstdio>
 #include "Game/Util/MemoryUtil.hpp"
@@ -78,6 +79,12 @@ JKRHeap* HeapMemoryWatcher::getHeapGDDR3(const JKRHeap* pHeap) {
 }
 
 void HeapMemoryWatcher::createFileCacheHeapOnGameHeap(u32 size) {
+    // PC_PORT (M9.5.3d): visibility for the scene-change heap cycle — the
+    // file-cache slice is the big request per scene load.
+    if (mGameHeapGDDR != nullptr) {
+        PL_LOG_INFO("boot", "createFileCacheHeap: request %u (0x%x), game GDDR free %u", size, size,
+                    static_cast< unsigned >(mGameHeapGDDR->getFreeSize()));
+    }
     mFileCacheHeap = ::createSolidHeap(size, mGameHeapGDDR);
 }
 
@@ -104,11 +111,13 @@ void HeapMemoryWatcher::setCurrentHeapToSceneHeap() {
 }
 
 void HeapMemoryWatcher::destroySceneHeap() {
+    PL_LOG_INFO("boot", "destroySceneHeap: begin");
     ::destroyHeapAndSetNULL((JKRHeap**)&mSceneHeapNapa);
     ::destroyHeapAndSetNULL((JKRHeap**)&mSceneHeapGDDR);
 }
 
 void HeapMemoryWatcher::destroyGameHeap() {
+    PL_LOG_INFO("boot", "destroyGameHeap: begin");
     if (mSceneHeapNapa != nullptr) {
         ::destroyHeapAndSetNULL((JKRHeap**)&mSceneHeapNapa);
     }
@@ -121,9 +130,18 @@ void HeapMemoryWatcher::destroyGameHeap() {
         ::destroyHeapAndSetNULL((JKRHeap**)&mFileCacheHeap);
     }
 
-    ::destroyHeapAndSetNULL((JKRHeap**)&mGameHeapNapa);
-    ::destroyHeapAndSetNULL((JKRHeap**)&mGameHeapGDDR);
-    createGameHeap();
+    // PC_PORT (M9.5.3d): the game heaps themselves stay alive across scenes.
+    // On the console they are destroyed here to fight fragmentation; on the
+    // host, returning the -1-carved game heaps' blocks to their parents
+    // panics in the exp-heap free-list coalescing (joinTwoBlocks "Bad
+    // Block") once the heaps carry real alloc/free history — and since plain
+    // new moved to the system allocator, these heaps only hold deliberate
+    // placement-new game data and are nearly empty anyway. The scene +
+    // file-cache frees above still return the bulk of the memory. Revisit
+    // with the exp-heap coalescing fix (M9.5.4).
+    if (mGameHeapNapa == nullptr || mGameHeapGDDR == nullptr) {
+        createGameHeap();
+    }
 }
 
 void HeapMemoryWatcher::createRootHeap() {
@@ -164,6 +182,8 @@ void HeapMemoryWatcher::createHeaps() {
 void HeapMemoryWatcher::createGameHeap() {
     mGameHeapNapa = ::createExpHeap(-1, JKRHeap::sRootHeap, false);
     mGameHeapGDDR = ::createExpHeap(-1, HeapMemoryWatcher::sRootHeapGDDR3, false);
+    PL_LOG_INFO("boot", "createGameHeap: GDDR free %u",
+                mGameHeapGDDR != nullptr ? static_cast< unsigned >(mGameHeapGDDR->getFreeSize()) : 0u);
 }
 
 HeapMemoryWatcher::HeapMemoryWatcher()

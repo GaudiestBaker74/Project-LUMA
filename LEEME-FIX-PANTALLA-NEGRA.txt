@@ -1,0 +1,136 @@
+PAQUETE DE FIXES — galaxy-pc (M9.5.3c: pantalla en negro + crash de layouts)
+=============================================================================
+
+Qué trae
+--------
+RONDA M9.5.3c-fixes + M9.5.3d (esta entrega):
+- Fix "LA SEGUNDA IMAGEN DEL WIIMOTE NO CARGA": la animación del strap cambia
+  la textura del panel por RLTP (texture-pattern del brlan). Esa ruta estaba
+  incompleta: los tags de material colgaban de CONTENIDOS DE PANE y se
+  ignoraban. Ahora se aplican al material del pane como en consola, con log
+  de diagnóstico si la tabla de texturas del brlan no resuelve.
+- TITLE SCENE (M9.5.3d): tras el strap, el juego pasa a la pantalla de título
+  real (TitleSequenceProduct vendido: logo + PressStart + nervios BgmPrepare →
+  LogoFadein → LogoWait → LogoDisplay → Decide). En el PC: "press A+B" responde
+  con A=Espacio / B=clic izq. (o tu mapeo), y al llegar a Decide el título
+  APARCA con un log (FileSelector es M10; sin él el título reiniciaría para
+  siempre). El fondo 3D del título llega en un hito posterior.
+- GRAN LIMPIEZA DE MEMORIA (la causa de los cuelgues aleatorios de esta ronda):
+  1) el `operator new` global ya NO reserva en el heap de escena de JKR (iba
+     al heap corriente = heap de escena; cada transición de escena lo
+     destruye y dejaba contenedores STL de toda la capa platform con nodos
+     colgantes). Ahora va al asignador del sistema; los objetos del juego que
+     quieren heap concreto siguen usando `new (heap, align)`.
+  2) faltaba el `operator new(nothrow)` — el JIT de LLVM de lavapipe asignaba
+     con él y liberaba por nuestra ruta (mismatch detectado con ASAN).
+  3) OSReceiveMessage escribía 8 bytes en un u32 del stack CADA FRAME
+     (OSMessage es void* en host) — corrupción de stack por frame.
+  4) el registro de hilos de OSThread se leía sin mutex (37 data races
+     detectadas con TSAN).
+  5) doble-delete en ~NameObjCategoryList (unión mDelegator/mDelegatorConst)
+     — dormante hasta la primera destrucción de la escena Logo.
+  6) JKRExpHeap: los heaps creados con tamaño no devolvían su bloque al padre
+     al destruirse (fuga de todo el arena en el primer cambio de escena).
+- Los heaps de juego (game heaps) se mantienen vivos entre escenas (en la
+  consola se destruyen aquí); devolver sus bloques al padre peta en la
+  coalescencia del free-list del ExpHeap con historia real. M9.5.4.
+- Logs nuevos útiles: "SetResource: file table[N] 'x.tpl' ok/NOT FOUND",
+  "createScene('Title')", "TitleScene: alive, N updates".
+- Suite de tests: 187 passed / 0 failed / 3 skipped (2 tests nuevos de ciclos
+  de heaps JKR).
+
+Qué trae
+--------
+- Fix del CRASH a los ~3-5 segundos: el primer material con 2 texturas del
+  layout (HookMessage, el cartel del mando, se activa en el frame ~270 de la
+  animación) dejaba un handle de textura destruido en un slot del TEXMAP y el
+  driver gráfico revientaba. Reproducido, depurado y arreglado (con test de
+  regresión incluido). El strap ahora aguanta los 600 frames del anim y sigue.
+- Fix de la PANTALLA BOCA ABAJO: el render GX salía volteado verticalmente
+  (convención Y-arriba de GX/OpenGL vs Y-abajo de Vulkan). Ahora la pantalla
+  de inicio (strap) se ve con la orientación correcta.
+- Fix de un SIGSEGV real en Layout::Build con brlyt corruptos
+  (patch nuevo: src\compat\patches\nw4r\lyt\lyt_material.cpp + guard en lyt_textBox.cpp).
+- Sello de compilación en el log: la primera línea de boot.log ahora dice
+  "galaxy-pc 0.5.0 (Milestone 5) — built <FECHA>". Si la fecha no es de hoy,
+  tu exe es viejo (esto te ha pasado: tu boot.log era de un exe anterior).
+- Test del repo corregido (formato real de txl1/fnl1) + test nuevo de regresión.
+- Herramienta para generar un WiiRemoteStrap.arc sintético (sin assets del juego)
+  por si quieres probar el boot sin meter tus assets.
+- INFORME-PANTALLA-NEGRA.md: todo el diagnóstico y la evidencia.
+
+PASO 1 — Copiar los archivos
+----------------------------
+1. Descarga galaxy-pc-m9-5-3c-fixes.zip.
+2. Clic derecho -> Extraer todo...
+3. Abre la carpeta extraída: verás src, tools, INFORME-PANTALLA-NEGRA.md
+   y este LEEME.
+4. Copia TODO y pégalo en tu carpeta galaxy-pc (la misma donde está el .git
+   o donde extrajiste los zips anteriores).
+5. ¿Reemplazar? -> Sí a todo.
+
+  (Alternativa limpia: si prefieres empezar de cero, descarga también el ZIP
+  "Source code" de GitHub, extráelo en una carpeta nueva, y extrae ESTE zip
+  encima. Las dos opciones valen; lo importante es reemplazar todo.)
+
+PASO 2 — Borrar la carpeta build (IMPORTANTE)
+---------------------------------------------
+Tu build quedó coja: el exe que sacaste en el log NO reflejaba las fuentes
+que tienes en disco (por eso no salían las líneas GXCopyDisp # / present #).
+
+En PowerShell, dentro de galaxy-pc:
+
+    Remove-Item -Recurse -Force build
+
+PASO 3 — Configurar
+-------------------
+    cmake -B build -DPLATFORM=PC -G "Visual Studio 17 2022" -A x64
+
+PASO 4 — Compilar
+-----------------
+    cmake --build build --config RelWithDebInfo
+
+(Recompila todo por el Paso 2; 5-15 min, normal.)
+
+PASO 5 — Tests
+--------------
+    ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+Lo esperado: **185 passed, 0 failed, 3 skipped**.
+(Sí: ahora debe existir el test lyt_draw_lands_on_efb — el "no such test"
+que te salía era porque tu galaxy-pc-tests.exe era viejo.)
+
+PASO 6 — Arrancar el juego
+--------------------------
+    .\build\src\RelWithDebInfo\galaxy-pc.exe --boot --log-level INFO --log-file boot.log
+
+Qué tienes que ver (y cómo saber que el exe ya es el bueno):
+  1. PRIMERA línea del boot.log:
+         [INFO ] [main] galaxy-pc 0.5.0 (Milestone 5) — built <FECHA DE HOY>
+     Si la fecha no es de hoy -> el exe es viejo -> repite Pasos 2-4.
+  2. Al instante, líneas por frame:
+         [INFO ] [gx] GXCopyDisp #0: efb=640x456 blit=OK
+         [INFO ] [renderer] present #0: result=0 hadContent=1
+  3. A los ~5 segundos, la sonda del EFB:
+         [INFO ] [gx] EFB probe: 640x456 nonBlack=<MÁS DE 0>/291840 ...
+     Con tus assets reales, nonBlack debe ser > 0 y en la ventana se ve el
+     fondo blanco y luego el strap de WiiRemote con su animación.
+
+PASO 7 — (Opcional) Probar SIN tus assets
+-----------------------------------------
+Si quieres descartar que el problema esté en tus assets, genera un arc
+sintético (es un layout de prueba con barras de color, no son assets de
+Nintendo). En PowerShell, dentro de galaxy-pc:
+
+    cl /O2 /EHsc /std:c++20 tools\make_synth_strap.cpp
+    .\make_synth_strap.exe assets\LayoutData\WiiRemoteStrap.arc
+
+(mueve antes tu WiiRemoteStrap.arc real a otro sitio si quieres conservarlo)
+Vuelve a arrancar como en el Paso 6: debe verse gris + barras de color en
+la ventana y el EFB probe con nonBlack>0.
+
+Qué me mandas si algo falla
+---------------------------
+1. Las primeras 5 líneas y las últimas 30 de boot.log.
+2. La línea final del ctest (la de "passed").
+3. Si falla la compilación: el primer error completo tal cual.

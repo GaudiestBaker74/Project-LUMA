@@ -764,6 +764,16 @@ namespace MR {
 
     // PC_PORT reconstruction (petari has no body): every sibling helper routes
     // through the root pane controller; startPaneAnim shows the pattern.
+// Game/Util/LayoutUtil.cpp:194 — no-op until the effect system lands (M10).
+// TitleSequenceProduct fires 7 "TitleLogoLight*" emitters per step; the
+// PaneEffectKeeper stub already swallows the keeper side.
+void emitEffect(LayoutActor*, const char* pEffectName) {
+    PL_LOG_DEBUG("game.layout", "emitEffect('%s') — effects stub (M10)", pEffectName);
+}
+
+// Game/Util/LayoutUtil.cpp:197 — no-op (same).
+void deleteEffectAll(LayoutActor*) {}
+
     void startAnim(LayoutActor* pActor, const char* pAnimName, u32 animLayer) {
         LayoutPaneCtrl* pPaneCtrl = pActor->getLayoutManager()->getPaneCtrl(nullptr);
 

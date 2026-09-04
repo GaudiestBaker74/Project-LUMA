@@ -773,6 +773,25 @@ void flushDraw() {
             mvp[c * 4 + 2] = a * mvp[c * 4 + 2] + b * mvp[c * 4 + 3];
         }
     }
+    // PC_PORT (M9.5.3c): NDC Y-flip. GX/GL clip space has Y pointing UP, but
+    // Vulkan's NDC points DOWN and gx_tev_vert.vert passes clip.y straight
+    // through — every GX primitive rendered vertically flipped (the user's
+    // strap screen appeared upside down; pinned by lyt_draw_lands_on_efb's
+    // green top-marker, which rasterized at the EFB BOTTOM rows). Negate row
+    // 1 of the uploaded matrix here — the single point every GX path
+    // (immediate + display lists) funnels through — so the EFB stores
+    // console orientation (row 0 = top), keeping GXCopyDisp's blit,
+    // readRenderTarget probes and GXCopyTex readbacks all console-faithful.
+    // NOTE: a partial GXSetViewport's y offset is bottom-left on GX (GL
+    // convention); the game only ever uses full-screen viewports, whose
+    // mapping is unaffected by the origin. If a partial viewport ever shows
+    // misplaced, flip its y here too: y_vk = y_gx_bottom_left_space.
+    {
+        for (int c = 0; c < 4; ++c) {
+            mvp[c * 4 + 1] = -mvp[c * 4 + 1];
+        }
+    }
+
     // Re-apply the mirrored viewport/scissor: GXSetViewport/GXSetScissor often
     // arrive before the host command buffer is recording (game-boot order sets
     // them during scene init, before beginRender). Renderer drops those early

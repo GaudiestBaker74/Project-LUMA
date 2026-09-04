@@ -74,6 +74,13 @@ JKRHeap* ensureHeap() {
         JKRExpHeap::createRoot(1, true);
     }
     JKRHeap::sRootHeap->becomeCurrentHeap();
+    // Full-suite hygiene (M9.5.3d): the boot test leaves the game heaps
+    // carved out of the root; fall back to the system heap when the root has
+    // no usable block left.
+    if (JKRHeap::sRootHeap->getMaxAllocatableSize(0x20) < 0x10000 && JKRHeap::sSystemHeap != nullptr) {
+        JKRHeap::sSystemHeap->becomeCurrentHeap();
+        return JKRHeap::sSystemHeap;
+    }
     return JKRHeap::sRootHeap;
 }
 

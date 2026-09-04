@@ -510,3 +510,23 @@ s32 KPADRead(s32 chan, KPADStatus samplingBufs[], u32 length) {
 }
 
 } // extern "C"
+
+namespace Platform::CompatInput {
+
+uint32_t getHoldButtons(int chan) {
+    if (chan < 0 || chan >= kChannels) {
+        return 0;
+    }
+    const KpadChannel& c = gChannels[chan];
+    return c.initialized && c.prevConnected ? c.hold : 0;
+}
+
+uint32_t getTrigButtons(int chan) {
+    if (chan < 0 || chan >= kChannels) {
+        return 0;
+    }
+    const KpadChannel& c = gChannels[chan];
+    return c.initialized && c.prevConnected ? c.trig : 0;
+}
+
+} // namespace Platform::CompatInput
