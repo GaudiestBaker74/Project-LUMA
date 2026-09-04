@@ -62,8 +62,6 @@ Note: These screenshots show the current technical boot progress. Gameplay and T
 
 <div align="center">
 
-GAME BOOT
-
 <img src="docs/images/screenshot-gameplay.png" alt="Project LUMA gameplay" width="900">
 
 </div>
