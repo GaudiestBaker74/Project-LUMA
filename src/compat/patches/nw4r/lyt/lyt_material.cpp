@@ -773,10 +773,21 @@ namespace nw4r {
 
                 const TexMap* const pTexMap = GetTexMapAry();
 
+                // PC_PORT: nw4r reuses a single stack GXTexObj for every texmap.
+                // Our host registry is keyed by GXTexObj address, so reusing that
+                // address makes texmap N reprogram the host object belonging to
+                // texmap N-1. In a multi-texture material this destroys/unbinds the
+                // first uploaded texture before the draw, producing the white
+                // fallback (or, before M9.5.3c, a dangling Vulkan descriptor).
+                // Keep one object per texmap so each registry entry has a stable
+                // identity for the duration of SetupGX.
+                GXTexObj texObjs[GX_MAX_TEXMAP];
+                GXTlutObj tlutObjs[GX_MAX_TEXMAP];
+
                 for (int i = 0; i < mGXMemNum.texMap; i++) {
                     const TexMap& rTexMap = pTexMap[i];
 
-                    GXTexObj texObj;
+                    GXTexObj& texObj = texObjs[i];
                     rTexMap.Get(&texObj);
 
                     if (detail::IsCITexelFormat(rTexMap.GetTexelFormat())) {
@@ -789,7 +800,7 @@ namespace nw4r {
 
                         GXInitTexObjTlut(&texObj, tlutName);
 
-                        GXTlutObj tlutObj;
+                        GXTlutObj& tlutObj = tlutObjs[i];
                         rTexMap.Get(&tlutObj);
 
                         GXLoadTlut(&tlutObj, tlutName);
