@@ -1,246 +1,180 @@
 <a id="readme-top"></a>
 
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![License][license-shield]][license-url]
-[![Status][status-shield]][status-url]
+<div align="center">
 
-<!-- PROJECT LOGO --> <br /> <div align="center"> <a href="https://github.com/GaudiestBaker74/Project-LUMA"> <img src="docs/images/luma-logo.png" alt="Project LUMA" width="650"> </a> <h3 align="center">Project LUMA</h3> <p align="center"> Super Mario Galaxy — Native PC Port <br /> A native PC port of Super Mario Galaxy for Windows and Linux. <br /> <br /> <a href="https://github.com/GaudiestBaker74/Project-LUMA/releases"><strong>Download »</strong></a> <br /> <br /> <a href="https://github.com/GaudiestBaker74/Project-LUMA">View Repository</a> &middot; <a href="docs/milestones.md">Roadmap</a> &middot; <a href="https://github.com/GaudiestBaker74/Project-LUMA/issues">Report Bug</a> &middot; <a href="https://github.com/GaudiestBaker74/Project-LUMA/issues">Request Feature</a> </p> </div> <!-- TABLE OF CONTENTS --> <details> <summary>Table of Contents</summary> <ol> <li> <a href="#about-the-project">About The Project</a> <ul> <li><a href="#development-progress">Development Progress</a></li> <li><a href="#features">Features</a></li> <li><a href="#architecture">Architecture</a></li> </ul> </li> <li> <a href="#getting-started">Getting Started</a> <ul> <li><a href="#prerequisites">Prerequisites</a></li> <li><a href="#building">Building</a></li> <li><a href="#game-assets">Game Assets</a></li> </ul> </li> <li><a href="#usage">Usage</a></li> <li><a href="#roadmap">Roadmap</a></li> <li><a href="#documentation">Documentation</a></li> <li><a href="#contributing">Contributing</a></li> <li><a href="#license">License</a></li> <li><a href="#legal">Legal</a></li> <li><a href="#acknowledgments">Acknowledgments</a></li> </ol> </details> <!-- ABOUT THE PROJECT -->
-About The Project
-<div align="center"> <img src="docs/images/screenshot-gameplay.png" alt="Project LUMA Gameplay" width="800"> </div>
-Project LUMA is an independent effort to bring Super Mario Galaxy 1 to modern PCs as a native application rather than running the game through a Wii emulator.
+<img src="docs/images/luma-logo.png" alt="Project LUMA" width="650">
 
-Built around the SMGCommunity/Petari decompilation, LUMA replaces Wii-specific systems with native PC implementations while keeping the original game logic as faithful to the decompiled code as possible.
+# Project LUMA
 
-The project targets:
+### Super Mario Galaxy — Native PC Port
 
-Windows
-Linux
-x86-64
-AArch64
-Vulkan
-How it works
-┌─────────────────────────────┐
-│     Super Mario Galaxy      │
-│        Game Code            │
-└──────────────┬──────────────┘
+**A native, cross-platform reimplementation of Super Mario Galaxy 1 for modern PCs.**
+
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555)](https://github.com/GaudiestBaker74/Project-LUMA)
+[![Architecture](https://img.shields.io/badge/arch-x86--64%20%7C%20AArch64-555)](https://github.com/GaudiestBaker74/Project-LUMA)
+[![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B20-00599C)](https://isocpp.org/)
+[![Graphics](https://img.shields.io/badge/graphics-Vulkan%201.3-AC162C)](https://www.vulkan.org/)
+[![Build](https://img.shields.io/badge/build-CMake-064F8C)](https://cmake.org/)
+[![Status](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/GaudiestBaker74/Project-LUMA)
+[![Platform](https://img.shields.io/badge/Milestone-%20M9-AC162C)](https://github.com/GaudiestBaker74/Project-LUMA)
+
+<br>
+
+[**Documentation**](docs/) ·
+[**Roadmap**](docs/milestones.md) ·
+[**Build Guide**](docs/build.md) ·
+[**Issues**](https://github.com/GaudiestBaker74/Project-LUMA/issues)
+
+</div>
+
+---
+
+## ✨ What is LUMA?
+
+**Project LUMA** is an independent open-source effort to bring **Super Mario Galaxy 1** to modern Windows and Linux systems as a **native application**.
+
+LUMA is **not a Wii emulator**.
+
+Instead of emulating the Wii hardware and running the original executable inside an emulated environment, LUMA recompiles the game's decompiled C/C++ code for modern platforms and replaces the original Wii-specific runtime APIs with native implementations.
+
+The project is built around the excellent **[SMGCommunity/Petari](https://github.com/SMGCommunity/Petari)** decompilation.
+
+The long-term goal is simple:
+
+> **Run Super Mario Galaxy natively on a modern PC while preserving the original game's behaviour as faithfully as possible.**
+
+---
+
+## 🕹️ Boot Progress
+
+<img src="docs/images/screenshots/Boot.jpg" alt="Project LUMA system boot" width="800"> </div>
+
+Project LUMA is currently working through the game's initialization and boot pipeline.
+
+The current milestone is M9 — First Real Boot, with the project progressively reaching more of the original game's startup sequence.
+
+Note: These screenshots show the current technical boot progress. Gameplay and Title Screen has not yet been reached (for now).
+
+
+## 🎮 Screenshots
+
+> Screenshots below are development captures and may change significantly as the renderer and game boot process evolve.
+
+<div align="center">
+
+GAME BOOT
+
+<img src="docs/images/screenshot-gameplay.png" alt="Project LUMA gameplay" width="900">
+
+</div>
+
+### More screenshots coming 
+
+|          Renderer          |          Runtime          |          Debug          |
+| :------------------------: | :-----------------------: | :---------------------: |
+|         Coming Soon        |        Coming Soon        |       Coming Soon       |
+|                            |                           |                         |
+
+---
+
+# 🧭 How does it work?
+
+The most important distinction between LUMA and an emulator is **where the original game code runs**.
+
+A traditional Wii emulator looks roughly like this:
+
+```text
+┌──────────────────────────────┐
+│      Super Mario Galaxy      │
+│       Original Wii code      │
+└──────────────┬───────────────┘
                │
                ▼
-┌─────────────────────────────┐
-│      Wii Compatibility      │
-│ OS • GX • DVD • VI • WPAD  │
-│ KPAD • AX • NAND • ...      │
-└──────────────┬──────────────┘
+┌──────────────────────────────┐
+│        Wii Emulator          │
+│ CPU • GPU • OS • DVD • DSP   │
+│ Memory • Controllers • etc.  │
+└──────────────┬───────────────┘
                │
                ▼
-┌─────────────────────────────┐
-│    Platform Abstraction     │
-│                             │
-│ Input • Audio • Video       │
-│ Filesystem • Threads       │
-└──────────────┬──────────────┘
+          Windows / Linux
+```
+
+LUMA takes a different approach:
+
+```text
+┌──────────────────────────────┐
+│      Super Mario Galaxy      │
+│        Decompiled code       │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│     Wii Compatibility Layer  │
+│ OS • GX • DVD • VI • WPAD    │
+│ KPAD • AX • NAND • JSystem   │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│      Platform Abstraction    │
+│ Filesystem • Input • Audio   │
+│ Threads • Timing • Window    │
+└──────────────┬───────────────┘
                │
         ┌──────┴──────┐
         ▼             ▼
-     Windows        Linux
+     Windows         Linux
         │             │
         └──────┬──────┘
                ▼
-            Vulkan
+          Vulkan / SDL3
+```
 
-The ultimate goal is a fully playable native PC version while preserving the original game's behavior wherever possible.
+### In other words
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- DEVELOPMENT PROGRESS -->
-Development Progress
-<div align="center"> <img src="docs/images/progress-65.svg" alt="Project LUMA 65% progress" width="700">
-65% Technical Progress
-Current Milestone: M9 — First Real Boot 🚧
+The original game expects APIs such as:
 
-</div>
-Note: The 65% figure represents the current state of the technical porting infrastructure. It does not mean that 65% of the original game is playable.
+* `GX`
+* `VI`
+* `DVD`
+* `OS`
+* `WPAD`
+* `KPAD`
+* `PAD`
+* `AX`
+* `NAND`
+* `JSystem`
+* `nw4r`
 
-Current foundations include:
+LUMA provides PC implementations of those systems.
 
-Native PC startup.
-Platform abstraction.
-Vulkan rendering.
-Wii compatibility APIs.
-Input and controller support.
-Filesystem and asset loading.
-RARC / Yaz0 / JKRArchive support.
-Layout and resource systems.
-Audio infrastructure.
-GameSystem startup.
-Scene system.
-Logo scene.
-The current objective is progressing further through the title and game initialization pipeline and reaching the first actual gameplay scene.
+The game logic remains on top:
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- FEATURES -->
-Features
-🖥️ Native PC Runtime
-Native x86-64 support.
-Native AArch64 support.
-Windows support.
-Linux support.
-C++20.
-CMake build system.
-Cross-platform platform abstraction.
-Native PC execution.
-No Wii emulator required.
-🎮 Input System
-LUMA uses SDL3 for its input layer.
+```text
+                  GAME CODE
+                      │
+                      ▼
+             Wii-compatible APIs
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+      Platform                  Renderer
+      systems                  abstraction
+          │                       │
+          ▼                       ▼
+     Windows/Linux              Vulkan
+```
 
-Supported functionality includes:
+This separation makes it possible to replace platform-specific implementations without unnecessarily modifying the decompiled game logic.
 
-Keyboard.
-Mouse.
-Gamepads.
-Xbox controllers.
-DualSense / DualShock controllers.
-Controller hot-plugging.
-Rumble.
-Configurable controls.
-Wii Remote-style input mapping.
-Default Keyboard Controls
-Keyboard	Action
-W A S D	Nunchuk Stick
-SPACE	A
-LEFT CLICK	B
-MOUSE	Pointer
-ARROW KEYS	D-Pad
-+ / -	Wii Plus / Minus
-HOME / ESC	Exit
+---
 
-More information can be found in the [Input Documentation][input-doc].
+# 🏗️ Architecture
 
-🎨 Vulkan Renderer
-Project LUMA uses Vulkan 1.3 as its primary graphics backend.
+LUMA is split into several layers.
 
-The renderer currently provides:
-
-Swapchain management.
-Dynamic rendering.
-VSync.
-Fullscreen support.
-Resizable windows.
-GPU timestamps.
-VRAM reporting.
-Dynamic vertex buffers.
-Texture uploads.
-Render targets.
-Depth buffers.
-Pipeline caching.
-Push constants.
-Uniform buffers.
-Offscreen rendering.
-Renderer tests.
-The original Wii GX API is translated through a dedicated compatibility layer:
-
-Nintendo GX
-     │
-     ▼
-GX Compatibility
-     │
-     ▼
-Renderer Abstraction
-     │
-     ▼
-Vulkan 1.3
-
-See the [Renderer Documentation][renderer-doc] and [GX Documentation][gx-doc].
-
-🧩 Wii Compatibility Layer
-LUMA recreates the Wii APIs expected by the decompiled game.
-
-Current compatibility work includes:
-
-OS
-DVD
-VI
-GX
-WPAD
-KPAD
-PAD
-AX
-NAND
-NWC24
-Memory systems
-Math systems
-JGeometry
-JMath
-nw4r
-JSystem
-📦 Asset & Resource System
-LUMA loads assets extracted from the user's own legitimate copy of Super Mario Galaxy.
-
-The repository does not distribute Nintendo's proprietary game data.
-
-The resource pipeline includes:
-
-Virtual filesystem.
-Wii-style DVD API.
-Directory scanning.
-FST generation.
-Synchronous DVD reads.
-Asynchronous DVD reads.
-DVD worker thread.
-Asset validation.
-RARC archives.
-Yaz0 decompression.
-JKRArchive mounting.
-Host-memory resource loading.
-See the [Asset Documentation][assets-doc].
-
-🔊 Audio
-LUMA contains a native audio compatibility layer based around the original JAudio2 architecture.
-
-Current work includes:
-
-CPU-side DSP / JDSP emulation.
-compat/ai.
-SDL3 audio backend.
-Headless audio mode.
-Native JAudio2 compilation.
-See the [Audio Documentation][audio-doc].
-
-🧪 Testing
-The project is designed around incremental development and automated testing.
-
-Current testing infrastructure includes:
-
-doctest.
-CTest.
-Renderer tests.
-Vulkan headless tests.
-Pixel-accurate rendering tests.
-Compatibility-layer tests.
-Asset tests.
-Input tests.
-Archive tests.
-Layout tests.
-       CODE
-         │
-         ▼
-      BUILD
-         │
-         ▼
-       LINK
-         │
-         ▼
-      CTEST
-         │
-         ▼
-    ┌─────────┐
-    │    ✓    │
-    │  GREEN  │
-    └─────────┘
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- ARCHITECTURE -->
-Architecture
-Project LUMA is divided into several major layers:
-
+```text
 Project-LUMA/
 │
 ├── src/
@@ -258,9 +192,12 @@ Project-LUMA/
 │   ├── compat/
 │   │   ├── os/
 │   │   ├── dvd/
+│   │   ├── vi/
 │   │   ├── gx/
 │   │   ├── wpad/
 │   │   ├── kpad/
+│   │   ├── pad/
+│   │   ├── ax/
 │   │   ├── jsystem/
 │   │   ├── nw4r/
 │   │   └── ...
@@ -273,158 +210,472 @@ Project-LUMA/
 │
 ├── tools/
 ├── docs/
+│   └── images/
+│
 ├── assets/
+│
 └── CMakeLists.txt
+```
 
-The repository separates platform code, Wii compatibility code, tools, tests, third-party dependencies, documentation and user-provided assets.
+### `src/compat/`
 
-This allows Wii-specific implementations to be replaced without unnecessarily modifying the original game logic.
+The **Wii compatibility layer**.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- GETTING STARTED -->
-Getting Started
-To build Project LUMA locally, follow the instructions below.
+This is where LUMA recreates the APIs expected by the decompiled game.
 
-Prerequisites
+Examples:
+
+```text
+OS       → operating-system functionality
+DVD      → Wii disc/file access
+GX       → graphics API
+VI       → video interface
+WPAD     → Wii Remote
+KPAD     → controller abstraction
+AX       → audio interface
+NAND     → Wii filesystem services
+```
+
+---
+
+### `src/platform/`
+
+The **native PC platform layer**.
+
+It provides platform-independent interfaces for:
+
+* Window management
+* Input
+* Audio
+* Filesystem
+* Timing
+* Threads
+* Memory
+* Logging
+* Video
+* Rendering
+
+Platform-specific code lives underneath:
+
+```text
+platform/
+├── windows/
+└── linux/
+```
+
+The goal is that higher-level code doesn't need to care whether it is running on Windows or Linux.
+
+---
+
+### `src/platform/renderer/`
+
+The renderer abstraction.
+
+The initial graphics backend is:
+
+```text
+Nintendo GX
+      │
+      ▼
+GX Compatibility Layer
+      │
+      ▼
+Renderer Abstraction
+      │
+      ▼
+Vulkan 1.3
+      │
+      ▼
+GPU
+```
+
+The renderer is intentionally separated from the GX compatibility layer so that a future backend can be added without rewriting the game's graphics-facing code.
+
+A possible future backend is **D3D12**, but Vulkan is the initial target.
+
+---
+
+# 🎨 Rendering
+
+Super Mario Galaxy was originally designed around Nintendo's **GX** graphics API.
+
+LUMA cannot simply call GX on a PC.
+
+Instead, GX commands are interpreted by the compatibility layer and translated into the renderer abstraction.
+
+```text
+Galaxy game code
+       │
+       ▼
+   GX calls
+       │
+       ▼
+┌─────────────────┐
+│  GX Compat      │
+│                 │
+│ state           │
+│ textures        │
+│ shaders         │
+│ vertex data     │
+│ framebuffers    │
+└────────┬────────┘
+         │
+         ▼
+Renderer API
+         │
+         ▼
+      Vulkan
+```
+
+This is one of the largest technical components of the project.
+
+See:
+
+* [`docs/gx.md`](docs/gx.md)
+* [`docs/renderer.md`](docs/renderer.md)
+
+---
+
+# 🎮 Input
+
+Input is provided through **SDL3** and translated into the interfaces expected by the original game.
+
+Supported PC input includes:
+
+| Input                    | Support |
+| ------------------------ | :-----: |
+| Keyboard                 |    ✅    |
+| Mouse                    |    ✅    |
+| Gamepads                 |    ✅    |
+| Xbox controllers         |    ✅    |
+| DualShock / DualSense    |    ✅    |
+| Hot-plugging             |    ✅    |
+| Rumble                   |    ✅    |
+| Configurable controls    |    🚧   |
+| Wii Remote-style mapping |    🚧   |
+
+### Default keyboard layout
+
+| Key          | Wii-style action |
+| ------------ | ---------------- |
+| `W A S D`    | Nunchuk Stick    |
+| `SPACE`      | A                |
+| `LEFT CLICK` | B                |
+| `MOUSE`      | Pointer          |
+| `ARROW KEYS` | D-Pad            |
+| `+ / -`      | Plus / Minus     |
+| `HOME / ESC` | Exit             |
+
+More information: [`docs/input.md`](docs/input.md)
+
+---
+
+# 📦 Assets
+
+LUMA **does not distribute Nintendo's proprietary game data**.
+
+The repository does not contain:
+
+* ROMs
+* ISOs
+* WADs
+* Nintendo models
+* Textures
+* Music
+* Sound effects
+* Other copyrighted game data
+
+Instead, LUMA expects the user to provide the required data from their **own legitimate copy** of Super Mario Galaxy.
+
+The local layout is:
+
+```text
+Project-LUMA/
+└── assets/
+    ├── ...
+    └── ...
+```
+
+`assets/` is intentionally ignored by Git.
+
+Nothing is downloaded automatically.
+
+The asset pipeline includes support for systems such as:
+
+```text
+Virtual filesystem
+      │
+      ▼
+Wii-style DVD API
+      │
+      ▼
+FST / directory access
+      │
+      ▼
+RARC archives
+      │
+      ▼
+Yaz0 decompression
+      │
+      ▼
+JKRArchive
+      │
+      ▼
+Game resources
+```
+
+See [`docs/assets.md`](docs/assets.md).
+
+---
+
+# 🔊 Audio
+
+The original game uses Nintendo's audio stack.
+
+LUMA is building a native compatibility layer around the original **JAudio2** architecture.
+
+Current areas include:
+
+* CPU-side DSP / JDSP compatibility
+* `compat/ai`
+* SDL3 audio output
+* Headless audio support
+* Native JAudio2 compilation
+
+See [`docs/audio.md`](docs/audio.md).
+
+---
+
+# 🧪 Testing
+
+LUMA is designed around incremental development.
+
+The project uses:
+
+* **doctest**
+* **CTest**
+* Renderer tests
+* Vulkan headless tests
+* Compatibility-layer tests
+* Input tests
+* Asset tests
+* Archive tests
+* Layout tests
+
+The intended development cycle is:
+
+```text
+        ┌──────────┐
+        │   CODE   │
+        └────┬─────┘
+             │
+             ▼
+        ┌──────────┐
+        │   BUILD  │
+        └────┬─────┘
+             │
+             ▼
+        ┌──────────┐
+        │   TEST   │
+        └────┬─────┘
+             │
+             ▼
+       ┌────────────┐
+       │    CTEST   │
+       └─────┬──────┘
+             │
+       ┌─────┴─────┐
+       ▼           ▼
+     PASS         FAIL
+       │           │
+       └─────┬─────┘
+             ▼
+          iterate
+```
+
+---
+
+# 📊 Development Status
+
+LUMA is under active development.
+
+| Milestone | Description                 | Status |
+| :-------: | --------------------------- | :----: |
+|   **M0**  | Analysis & Architecture     |    ✅   |
+|   **M1**  | PC Build + Platform Core    |    ✅   |
+|   **M2**  | Windows Support             |    ✅   |
+|   **M3**  | Window + Vulkan + Game Loop |    ✅   |
+|   **M4**  | Renderer API                |    ✅   |
+|   **M5**  | GX Compatibility            |    ✅   |
+|   **M6**  | Complete Input System       |    ✅   |
+|  **M6.5** | JMath / JGeometry           |    ✅   |
+|   **M7**  | VFS + Assets                |    ✅   |
+|   **M8**  | Audio Core                  |    ✅   |
+|   **M9**  | First Real Boot             |   🚧   |
+|  **M10**  | First Playable Galaxy       |    ⏳   |
+|  **M11**  | Full Game                   |    ⏳   |
+
+> **Important:** milestone percentages describe the state of the technical porting infrastructure. They do **not** mean that the same percentage of the original game is playable.
+
+For the detailed roadmap, see [`docs/milestones.md`](docs/milestones.md).
+
+---
+
+# 🛠️ Building
+
+## Requirements
+
 You will need:
 
-Git
-CMake
-A C++20-compatible compiler
-Vulkan 1.3-capable hardware
-SDL3
-A legitimate copy of Super Mario Galaxy for the required game assets
-For complete dependency and environment information, see the [Build Guide][build-doc].
+* Git
+* CMake
+* A C++20-compatible compiler
+* Vulkan 1.3-capable hardware/driver
+* SDL3
+* A legitimate copy of Super Mario Galaxy for the required assets
 
-Building
-Linux
+For complete instructions:
+
+**→ [`docs/build.md`](docs/build.md)**
+
+---
+
+## Linux
+
+```bash
+git clone https://github.com/GaudiestBaker74/Project-LUMA.git
+cd Project-LUMA
+
+git submodule update --init --recursive
+
 cmake -B build -DPLATFORM=PC
 cmake --build build
-ctest --test-dir build
 
-Windows
+ctest --test-dir build
+```
+
+---
+
+## Windows
+
 Using Visual Studio / MSVC:
+
+```powershell
+git clone https://github.com/GaudiestBaker74/Project-LUMA.git
+cd Project-LUMA
+
+git submodule update --init --recursive
 
 cmake -B build -DPLATFORM=PC
 cmake --build build --config Release
+
 ctest --test-dir build -C Release
+```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- GAME ASSETS -->
-Game Assets
-Project LUMA does not distribute copyrighted Nintendo game assets.
+> Asset extraction and placement is intentionally kept separate from the source build. See [`docs/assets.md`](docs/assets.md).
 
-The repository does not contain or redistribute:
+---
 
-ROMs.
-ISOs.
-WAD files.
-Nintendo models.
-Textures.
-Music.
-Sound effects.
-Other proprietary game data.
-Users must extract the required data from their own legitimate copy of Super Mario Galaxy.
+# 🗺️ Documentation
 
-Extracted data is stored locally in:
+| Document                                  | Description                               |
+| ----------------------------------------- | ----------------------------------------- |
+| [`architecture.md`](docs/architecture.md) | Overall architecture and design decisions |
+| [`build.md`](docs/build.md)               | Building LUMA                             |
+| [`porting.md`](docs/porting.md)           | Porting methodology and conventions       |
+| [`renderer.md`](docs/renderer.md)         | Renderer architecture                     |
+| [`gx.md`](docs/gx.md)                     | GX compatibility layer                    |
+| [`input.md`](docs/input.md)               | Input architecture                        |
+| [`audio.md`](docs/audio.md)               | Audio architecture                        |
+| [`assets.md`](docs/assets.md)             | Asset and resource pipeline               |
+| [`boot.md`](docs/boot.md)                 | Boot process                              |
+| [`milestones.md`](docs/milestones.md)     | Development roadmap                       |
 
-assets/
+---
 
-The directory is ignored by Git.
+# 🤝 Contributing
 
-See the [Asset Documentation][assets-doc] for the complete process.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- USAGE -->
-Usage
-Once built and configured, Project LUMA will initialize the native PC runtime and load the required game resources from the local assets/ directory.
-
-The current development target is M9 — First Real Boot.
-
-As development progresses, the launcher/runtime will move through the game initialization pipeline toward the first playable Galaxy.
-
-Current status: LUMA is an active development project and is not yet a complete playable replacement for the original game.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- ROADMAP -->
-Roadmap
-Milestone	Description	Status
-M0	Analysis & Architecture	✅
-M1	PC Build + Platform Core	✅
-M2	Windows Support	✅
-M3	Window + Vulkan + Game Loop	✅
-M4	Renderer API	✅
-M5	GX Compatibility	✅
-M6	Complete Input System	✅
-M6.5	JMath / JGeometry	✅
-M7	VFS + Assets	✅
-M8	Audio Core	✅
-M9	First Real Boot	🚧
-M10	First Playable Galaxy	⏳
-M11	Full Game	⏳
-
-See the [complete roadmap][roadmap].
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- DOCUMENTATION -->
-Documentation
-All technical documentation is available in the docs/ directory.
-
-[Architecture][architecture-doc]
-[Build Guide][build-doc]
-[Input][input-doc]
-[Renderer][renderer-doc]
-[GX][gx-doc]
-[Assets][assets-doc]
-[Audio][audio-doc]
-[Boot][boot-doc]
-[Milestones][roadmap]
-[Porting][porting-doc]
-Development Notes
-[M9.5.3 Plan][m953-doc]
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- CONTRIBUTING -->
-Contributing
 Contributions, testing, documentation improvements and technical discussion are welcome.
 
-Before contributing:
+Before contributing, please read:
 
-Read the [Architecture Documentation][architecture-doc].
-Read the [Porting Documentation][porting-doc].
-Review the [Milestones][roadmap].
-Keep compatibility behavior as close to the original implementation as possible.
-Add tests when introducing new compatibility functionality.
-Pull Requests
-Fork the Project.
-Create your Feature Branch:
-git checkout -b feature/AmazingFeature
+1. [`docs/architecture.md`](docs/architecture.md)
+2. [`docs/porting.md`](docs/porting.md)
+3. [`docs/milestones.md`](docs/milestones.md)
 
-Commit your Changes:
-git commit -m "Add AmazingFeature"
+### Development principles
 
-Push to the Branch:
-git push origin feature/AmazingFeature
+**Keep the game logic clean.**
 
-Open a Pull Request.
-Contributors
-<a href="https://github.com/GaudiestBaker74/Project-LUMA/graphs/contributors"> <img src="https://contrib.rocks/image?repo=GaudiestBaker74/Project-LUMA" alt="Project LUMA contributors" /> </a> <p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- LICENSE -->
-License
-Project LUMA is distributed under the Unlicense.
+Whenever possible, avoid modifying upstream Petari code unnecessarily.
 
-See the LICENSE file for more information.
+**Prefer compatibility implementations.**
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- LEGAL -->
-Legal
+If the original game expects a Wii API, implement that API in `src/compat/` rather than scattering PC-specific workarounds throughout the game.
+
+**Keep platform code isolated.**
+
+Windows/Linux differences should remain inside the platform abstraction.
+
+**Test new behaviour.**
+
+New compatibility functionality should come with tests whenever practical.
+
+---
+
+# ⚖️ Legal
+
 Project LUMA is an independent fan-made technical project.
 
-It is not affiliated with, endorsed by, or sponsored by Nintendo.
+It is **not affiliated with, endorsed by, or sponsored by Nintendo**.
 
 Nintendo and Super Mario Galaxy are trademarks and/or properties of their respective owners.
 
-Project LUMA does not provide copyrighted game assets and does not facilitate obtaining them.
+This repository does **not** distribute copyrighted Nintendo game assets and does not provide those assets.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- ACKNOWLEDGMENTS -->
-Acknowledgments
-Project LUMA would not be possible without the work of the reverse-engineering and game-decompilation communities.
+The project expects users to supply data obtained from their own legitimate copy of the game.
+
+---
+
+# 📜 Licenses
+
+The Project LUMA source tree is distributed under the **Unlicense**, unless otherwise noted.
+
+The Petari source is included as a third-party dependency/submodule and retains its own licensing.
+
+See:
+
+* [`LICENSE`](LICENSE)
+* [`third_party/petari/LICENSE`](third_party/petari/LICENSE)
+
+---
+
+# 🙏 Acknowledgements
+
+Project LUMA would not exist without the work of the reverse-engineering and game-decompilation community.
 
 Special thanks to:
 
-[SMGCommunity / Petari][petari]
-The contributors to the Super Mario Galaxy decompilation effort.
-The open-source community.
-The developers and maintainers of the libraries used by the project.
-<p align="right">(<a href="#readme-top">back to top</a>)</p> <!-- MARKDOWN LINKS & IMAGES -->
+* **[SMGCommunity / Petari](https://github.com/SMGCommunity/Petari)**
+* The contributors to the Super Mario Galaxy decompilation effort
+* The developers and maintainers of the open-source libraries used by LUMA
+* Everyone contributing research, testing and documentation to the project
+* For now you can only use RMGK01 (Korea's SMG ROM) but in the future will be able to play with every SMG ROM
+
+---
+
+<div align="center">
+
+## ⭐ If you're interested in the project
+
+Watch the repository, follow development, test builds when available, and contribute technical knowledge where you can.
+
+<br>
+
+**Project LUMA**
+
+<br>
+
+[⬆ Back to top](#readme-top)
+
+</div>
