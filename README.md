@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/images/luma-logo.png" alt="Project LUMA" width="650">
+<img src="docs/images/luma-logo.png" alt="Project LUMA" width="300">
 
 # Project LUMA
 
