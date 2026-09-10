@@ -86,6 +86,12 @@ void setCpuFifoRange(void* base, u32 size) {
     sCpuFifoSize = size;
 }
 
+// PC_PORT (M9.5.4 v8): flushDraw's tripwire for primitives drawn while the
+// (unemulated) Z-texture replace op is on.
+bool zTexReplaceActive() {
+    return sZTexOp == GX_ZT_REPLACE;
+}
+
 } // namespace CompatGx
 } // namespace Platform
 

@@ -101,11 +101,21 @@ GXZFmt16 sZFormat = GX_ZC_LINEAR;
 // --- GX -> Platform enum mappings (M5.5) --------------------------------------
 // The Platform enums are Vulkan-semantic; the GX values map onto them here.
 
+// PC_PORT (M9.5.4 v8): GX front faces are CLOCKWISE in screen space — the
+// opposite of the platform renderer's Vulkan default (front = counter-
+// clockwise, Renderer.cpp). Evidence: the SDK's own MainLoopFramework::clearEfb
+// quad (top-left → top-right → bottom-right → bottom-left = clockwise) is drawn
+// under GX_CULL_BACK on the console; libogc's gx.h documents "clockwise to the
+// viewer = front-facing"; Dolphin's Vulkan backend uses VK_FRONT_FACE_CLOCKWISE
+// with the same NDC Y negation flushDraw applies. So GX "back" is the host's
+// "front" and vice versa. Before this swap every J3D material with the usual
+// GX_CULL_BACK rendered inside-out (the title sky dome disappeared). Pinned by
+// gx_cull_front_face_is_clockwise (gx_copy_test.cpp).
 CullMode cullModeFromGx(GXCullMode m) {
     switch (m) {
         case GX_CULL_NONE:  return CullMode::None;
-        case GX_CULL_FRONT: return CullMode::Front;
-        case GX_CULL_BACK:  return CullMode::Back;
+        case GX_CULL_FRONT: return CullMode::Back;   // GX front (CW) = host back
+        case GX_CULL_BACK:  return CullMode::Front;  // GX back (CCW) = host front
         case GX_CULL_ALL:   return CullMode::FrontAndBack;
     }
     return CullMode::None;
@@ -529,6 +539,21 @@ void flushDraw() {
     }
     Platform::Renderer& r = Platform::Renderer::instance();
 
+    // PC_PORT (M9.5.4 v8): the Z-texture op has no host equivalent (the fragment
+    // depth cannot come from a texture). The in-tree users (MainLoopFramework::
+    // clearEfb, DrawUtil's clearZBuffer) draw a full-screen quad whose Z24X8
+    // texel is the far plane — i.e. a depth clear, which the pass already did —
+    // and the host patches skip that quad. Warn once if anything else slips
+    // through: it would write its own rasterized depth instead.
+    if (Platform::CompatGx::zTexReplaceActive()) {
+        static bool sWarnedZTex = false;
+        if (!sWarnedZTex) {
+            sWarnedZTex = true;
+            PL_LOG_WARN("gx", "flushDraw: primitive drawn with GXSetZTexture(GX_ZT_REPLACE) — "
+                              "the host writes rasterized depth, not the Z texture");
+        }
+    }
+
     // PC_PORT (M9.4): draws outside an active pass have no command buffer —
     // e.g. the boot frame loop skipped beginFrame this frame (swapchain
     // out-of-date) or a headless test emits geometry without a pass. Drop the
@@ -663,7 +688,7 @@ void flushDraw() {
     desc.blendOp = (sBlendMode == GX_BM_SUBTRACT) ? Platform::BlendOp::ReverseSubtract
                                                   : Platform::BlendOp::Add;
     desc.dstAlphaEnable = sDstAlphaEnable;
-    desc.dstAlphaValue = sDstAlphaValue / 255.0f;
+    // (the constant alpha itself is dynamic state — set after bindPipeline)
     desc.depthTest = sZTest;
     desc.depthWrite = sZWrite;
     desc.depthCompare = compareFromGx(sZFunc);
@@ -704,6 +729,10 @@ void flushDraw() {
     }
 
     r.bindPipeline(pipe);
+    // PC_PORT M9.5.4: GXSetDstAlpha's constant is a dynamic blend constant, not
+    // part of the pipeline key (clearEfb passes the clear color's alpha every
+    // frame; as pipeline state it would mint a pipeline per distinct value).
+    r.setBlendConstantAlpha(sDstAlphaValue / 255.0f);
 
     // --- textures: TEXMAP0..7 or the white fallback --------------------------
     void* texRaw[8] = {};

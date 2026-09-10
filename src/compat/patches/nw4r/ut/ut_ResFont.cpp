@@ -69,7 +69,21 @@ u32 readBE32(const u8* p) {
 struct HostFont {
     FontInformation* info = nullptr;  // points into storage
     std::vector<u8> storage;
+    u64 sourceHash = 0;               // PC_PORT v7: content fingerprint of the source blob
 };
+
+// PC_PORT (M9.5.4 v7): FNV-1a over the source image. The cache is keyed by
+// the blob address; a blob freed and re-allocated at the same address with a
+// different font (tests do it; a scene heap reuse could too) must not be
+// served the previous conversion.
+u64 hashBlob(const u8* p, u32 size) {
+    u64 h = 1469598103934665603ull;
+    for (u32 i = 0; i < size; ++i) {
+        h ^= p[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
 
 std::unordered_map<void*, HostFont*>& fontCache() {
     static std::unordered_map<void*, HostFont*> cache;
@@ -371,15 +385,20 @@ namespace nw4r {
                 std::lock_guard<std::mutex> lock(fontCacheMutex());
                 auto& cache = fontCache();
                 const auto it = cache.find(brfnt);
+                // Fingerprint the header + first 64 KiB (bounded by the
+                // declared file size, same trust convert() places in it).
+                const u32 srcSize = readBE32(static_cast<u8*>(brfnt) + 8);
+                const u64 srcHash = hashBlob(static_cast<u8*>(brfnt), srcSize < 0x10000 ? srcSize : 0x10000);
                 HostFont* host;
-                if (it != cache.end() && isBeBrfnt(static_cast<u8*>(brfnt))) {
+                if (it != cache.end() && it->second->sourceHash == srcHash) {
                     host = it->second;
                 } else {
                     host = convert(static_cast<u8*>(brfnt));
                     if (host == nullptr) {
                         return false;
                     }
-                    cache[brfnt] = host;  // process-lifetime (see banner)
+                    host->sourceHash = srcHash;
+                    cache[brfnt] = host;  // process-lifetime (see banner; a stale entry is leaked, not freed)
                     PL_LOG_INFO("compat.font", "brfnt converted: %dx%d, encoding %d",
                                 (int)host->info->width, (int)host->info->height,
                                 (int)host->info->encoding);

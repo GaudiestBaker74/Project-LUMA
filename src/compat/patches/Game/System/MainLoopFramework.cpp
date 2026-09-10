@@ -423,6 +423,18 @@ void MainLoopFramework::clearEfb(int param1, int param2, int param3, int param4,
     GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
     GXSetCullMode(GX_CULL_BACK);
 
+    // PC_PORT (M9.5.4 v8): the console clears the EFB by rasterizing this quad
+    // with the colour in TEVREG0 and the depth REPLACED by the Z24X8 texture
+    // texel (0xFFFFFF = far plane). The host cannot take depth from a texture
+    // and the render pass already cleared colour (GXSetCopyClear's colour ==
+    // mClearColor) and depth (far) at beginPass, so the quad is not drawn:
+    // rasterizing it would overwrite the depth buffer with the quad's OWN z
+    // (the near plane) and every later depth-tested draw (the J3D sky) would
+    // fail. Until v8 it was culled by accident: the quad is clockwise (GX
+    // front) and the host treated GX_CULL_BACK with Vulkan's CCW front face —
+    // see cullModeFromGx. The surrounding GX state is still set exactly as on
+    // the console because the following draws inherit it.
+#if 0 // console reference (top-left -> top-right -> bottom-right -> bottom-left)
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     {
         GXPosition2u16(param1, param2);
@@ -438,6 +450,7 @@ void MainLoopFramework::clearEfb(int param1, int param2, int param3, int param4,
         GXTexCoord2u8(0, 1);
     }
     GXEnd();
+#endif
 
     GXSetZTexture(GX_ZT_DISABLE, GX_TF_Z24X8, 0);
     GXSetZCompLoc(GX_TRUE);

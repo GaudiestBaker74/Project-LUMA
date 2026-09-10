@@ -46,11 +46,14 @@
 #include "Game/Screen/SimpleLayout.hpp"
 #include "Game/System/GameSystem.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
+#include "Game/System/Language.hpp"
 #include "Game/System/ScenarioDataParser.hpp"
 #include "Game/System/GalaxyStatusAccessor.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
+#include "compat/audio/AstStream.h"     // v7: streamed BGM
+#include "compat/game/LanguageCompat.h"
 #include "compat/kpad/KPADCompat.h"
 #include "platform/Log/Log.h"
 #include <revolution/kpad.h>
@@ -1436,31 +1439,94 @@ bool testCorePadTriggerAnyWithoutHome(s32 channel) {
     return (Platform::CompatInput::getTrigButtons(channel) & KPAD_BUTTON_MASK) != 0;
 }
 
-// Game/Util/SoundUtil.cpp replacements — the audio director is M10+; the
-// stubs keep the Title nerves moving (isPreparedStageBgm MUST return true or
-// TitleSequenceProduct waits on BgmPrepare forever).
-JAISoundHandle* startStageBGM(const char* pName, bool) {
-    PL_LOG_INFO("game.audio", "startStageBGM('%s') — audio stub (M10)", pName);
+// Game/Util/SoundUtil.cpp replacements.
+//
+// PC_PORT (M9.5.4 v7): the stage BGM is real now. On the console
+// startStageBGM("STM_TITLE") resolves the label through the SMR sound table
+// to /AudioRes/Stream/SMG_title_strm.ast and the JAudio2 stream player
+// (JASStream, not compiled on the host) plays it. The host maps the label with
+// the same table (compat/audio/AstStream.cpp) and streams the .ast straight
+// into Platform::Audio. Semantics kept from the console:
+//   * startStageBGM(name, true) — the second argument is "prepare only": the
+//     stream is opened and decoded but held until unlockStageBGM()
+//     (TitleSequenceProduct: BgmPrepare → LogoFadein → unlockStageBGM, so the
+//     music starts exactly when the logo fades in).
+//   * isPreparedStageBgm() must be true when there is no audio at all, or the
+//     Title nerve waits on BgmPrepare forever (M9.4 note).
+//   * stopStageBGM(frames) fades out over that many 60 Hz frames.
+// Sound effects (startSystemSE/startCSSound) need the sequenced driver +
+// wave banks: still logged, not played.
+namespace {
+    struct PendingBgm {
+        char path[128] = "";
+        bool loop = true;
+        bool pending = false;
+    };
+    PendingBgm sPendingBgm;
+}  // namespace
+
+JAISoundHandle* startStageBGM(const char* pName, bool prepareOnly) {
+    if (pName == nullptr) {
+        return nullptr;
+    }
+
+    char path[128];
+    const bool known = compat::audio::streamPathForLabel(pName, path, sizeof(path));
+
+    if (!known) {
+        PL_LOG_WARN("game.audio", "startStageBGM('%s'): label not in the host stream table — trying '%s'", pName, path);
+    }
+
+    // Stop whatever is playing (console: AudBgmMgr::start rejects the previous BGM).
+    compat::audio::stopStream(0);
+
+    if (prepareOnly) {
+        std::snprintf(sPendingBgm.path, sizeof(sPendingBgm.path), "%s", path);
+        sPendingBgm.loop = true;
+        sPendingBgm.pending = true;
+        PL_LOG_INFO("game.audio", "startStageBGM('%s'): prepared '%s' (starts on unlockStageBGM)", pName, path);
+        return nullptr;
+    }
+
+    sPendingBgm.pending = false;
+    if (compat::audio::startStream(path, true, 0)) {
+        PL_LOG_INFO("game.audio", "startStageBGM('%s'): playing '%s'", pName, path);
+    }
     return nullptr;
 }
 
 void stopStageBGM(u32 frames) {
-    PL_LOG_INFO("game.audio", "stopStageBGM(%u) — audio stub (M10)", frames);
+    sPendingBgm.pending = false;
+    if (compat::audio::isStreamPlaying()) {
+        PL_LOG_INFO("game.audio", "stopStageBGM(%u): fading out '%s'", frames, compat::audio::currentStreamPath());
+    }
+    compat::audio::stopStream(static_cast< int >(frames));
 }
 
-void unlockStageBGM() {}
+void unlockStageBGM() {
+    if (!sPendingBgm.pending) {
+        return;
+    }
+    sPendingBgm.pending = false;
+    if (compat::audio::startStream(sPendingBgm.path, sPendingBgm.loop, 0)) {
+        PL_LOG_INFO("game.audio", "unlockStageBGM: playing '%s'", sPendingBgm.path);
+    }
+}
 
 bool isPreparedStageBgm() {
+    // The host prepare step is synchronous (file read + header check happen
+    // in unlockStageBGM/startStream), so "prepared" is immediate. Also true
+    // without audio: see the header comment.
     return true;
 }
 
 JAISoundHandle* startSystemSE(const char* pName, s32, s32) {
-    PL_LOG_INFO("game.audio", "startSystemSE('%s') — audio stub (M10)", pName);
+    PL_LOG_INFO("game.audio", "startSystemSE('%s') — sound effects not ported yet (sequenced JAudio2 driver)", pName);
     return nullptr;
 }
 
 void startCSSound(const char* pName, const char*, s32) {
-    PL_LOG_INFO("game.audio", "startCSSound('%s') — audio stub (M10)", pName);
+    PL_LOG_INFO("game.audio", "startCSSound('%s') — sound effects not ported yet (sequenced JAudio2 driver)", pName);
 }
 
 // Game/Util/SystemUtil.cpp replacement — PAL60 is impossible on a PC host.
@@ -1473,9 +1539,24 @@ bool tryRumblePadMiddle(const void*, s32) {
     return false;
 }
 
-// Game/System/Language.cpp replacement.
+// Game/System/Language.cpp replacement (M9.5.4 v6: real language table, see
+// compat/game/LanguageCompat.h — the selection comes from --language /
+// GALAXY_LANGUAGE and defaults to UsEnglish). The region is what the vendored
+// LogoScene checks ("Cn" enables the ISBN/logo-censorship branch).
+const char* getCurrentLanguagePrefix() {
+    return compat::getLanguageName();
+}
+
 const char* getCurrentRegionPrefix() {
-    return "US"; // not "Cn": the ISBN/logo-censorship branch is skipped
+    return compat::getLanguageRegion();
+}
+
+u32 getLanguageNum() {
+    return compat::getLanguageNum();
+}
+
+const char* getLanguagePrefixByIndex(u32 index) {
+    return compat::getLanguageNameByIndex(index);
 }
 
 // Game/Util/SystemUtil.cpp additions.

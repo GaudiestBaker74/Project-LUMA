@@ -23,7 +23,13 @@ namespace {
 
 // 16 samples, value = i * 64 (fits the 1.15 volume math without clipping).
 // PCM16 big-endian, as the DSP sees it.
-const uint8_t kPcm16Wave[32] = {
+//
+// M9.5.4: the buffer is padded to 0x1000 samples (zero-filled by aggregate
+// init) because several cases below declare a "long one-shot" voice with
+// `_114 = 0x1000`; the mixer trusts the descriptor's end sample — like the
+// DSP does — and read past the old 32-byte array (ASAN global-buffer-overflow
+// in Mixer::sampleAt). The first 16 samples keep the i * 64 ramp.
+const uint8_t kPcm16Wave[0x1000 * 2] = {
     0x00, 0x00, 0x00, 0x40, 0x00, 0x80, 0x00, 0xC0, 0x01, 0x00, 0x01, 0x40, 0x01, 0x80, 0x01, 0xC0,
     0x02, 0x00, 0x02, 0x40, 0x02, 0x80, 0x02, 0xC0, 0x03, 0x00, 0x03, 0x40, 0x03, 0x80, 0x03, 0xC0,
 };

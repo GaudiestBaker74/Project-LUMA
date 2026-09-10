@@ -21,7 +21,11 @@
 #include "tests/test_runner.h"
 
 #include "Game/Animation/LayoutAnmPlayer.hpp"
+#include "Game/Screen/LayoutActor.hpp"
+#include "Game/Screen/LayoutManager.hpp"
+#include "Game/Screen/LayoutPaneCtrl.hpp"
 #include "Game/System/LayoutHolder.hpp"
+#include "Game/Util/LayoutUtil.hpp"
 
 #include <JSystem/J3DGraphAnimator/J3DAnimation.hpp>
 #include <JSystem/JKernel/JKRArchive.hpp>
@@ -483,3 +487,60 @@ TEST_CASE(j3d_frame_ctrl_stop_and_loop) {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// M9.5.4: the MR:: layout-anim helpers used by TitleSequenceProduct
+// (startAnim / isAnimStopped / setAnimFrameAndStop / stopAnim / getAnimCtrl /
+// setAnimRate / getAnimFrame / getAnimFrameMax) must survive (a) an actor whose
+// arc did not mount — every LayoutManager still owns a root pane controller —
+// and (b) an anim layer index beyond the actor's layer count (LogoLayout has 2
+// layers, SimpleLayout 1; a bad index used to read past mAnmPlayerArray and
+// die silently inside the scene-init worker). Both cases now WARN and no-op;
+// isAnimStopped reports "stopped" so waiting nerves keep flowing.
+// ---------------------------------------------------------------------------
+namespace {
+
+class MissingArcLayout : public LayoutActor {
+public:
+    MissingArcLayout() : LayoutActor("test-missing-arc", true) {
+        // convertFilename=true -> "/LayoutData/__pc_test_no_such_arc__.arc",
+        // which does not exist: initArc logs an error and leaves the layout
+        // empty, exactly like a real arc that failed to mount/decompress.
+        initLayoutManager("__pc_test_no_such_arc__", 2);
+    }
+};
+
+} // namespace
+
+TEST_CASE(layout_anim_helpers_survive_missing_arc_and_bad_layer) {
+    ensureHeap();
+
+    MissingArcLayout actor;
+    REQUIRE(actor.getLayoutManager() != nullptr);
+    CHECK(actor.getLayoutManager()->mLayout == nullptr);            // arc missing
+    REQUIRE(actor.getLayoutManager()->getPaneCtrl(nullptr) != nullptr); // root ctrl always there
+
+    // Valid layers on an empty layout: no transform -> "stopped", no crash.
+    MR::startAnim(&actor, "Appear", 0);
+    MR::startAnim(&actor, "ButtonReaction", 1);
+    CHECK(MR::isAnimStopped(&actor, 0));
+    CHECK(MR::isAnimStopped(&actor, 1));
+    MR::setAnimFrameAndStop(&actor, 0.0f, 1);
+    MR::stopAnim(&actor, 0);
+    CHECK(MR::getAnimCtrl(&actor, 0) != nullptr);
+    CHECK_NEAR(MR::getAnimFrame(&actor, 0), 0.0f, 1e-6f);
+    CHECK(MR::getAnimFrameMax(&actor, "Appear") == 0);
+
+    // Out-of-range layer (the actor has 2): must not touch memory past the
+    // player array. Everything degrades to a WARN + no-op.
+    MR::startAnim(&actor, "Wait", 7);
+    CHECK(MR::isAnimStopped(&actor, 7));
+    MR::stopAnim(&actor, 7);
+    MR::setAnimFrameAndStop(&actor, 3.0f, 7);
+    MR::setAnimRate(&actor, 1.0f, 7);
+    J3DFrameCtrl* pDummy = MR::getAnimCtrl(&actor, 7);
+    REQUIRE(pDummy != nullptr);
+    CHECK(pDummy != MR::getAnimCtrl(&actor, 0));
+    CHECK(pDummy != MR::getAnimCtrl(&actor, 1));
+    CHECK(MR::getAnimFrameMax(&actor, 7u) == 0);
+}

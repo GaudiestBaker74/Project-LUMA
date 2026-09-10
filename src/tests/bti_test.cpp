@@ -2,8 +2,12 @@
 // M5.3: BTI header parse + GX tiled-format decoders (pure, headless).
 //
 // Synthesizes tiled texture data for every supported GX format and verifies
-// the RGBA8 output pixel by pixel, including the hardware swizzle (4x4
-// blocks, RGBA8 two-plane, CMPR 8x4 subtiles) and the paletted formats.
+// the RGBA8 output pixel by pixel, including the hardware swizzle (8x8 tiles
+// for I4/C4/CMPR, 8x4 for I8/IA4/C8, 4x4 for the 16/32-bit formats, RGBA8
+// two-plane, CMPR 4x4 subtiles with MSB-first indices) and the paletted
+// formats. The expected values follow the GX hardware (Dolphin's
+// TextureDecoder) — NOT the encoder in GXCopy.cpp — so an encoder/decoder pair
+// that agrees on a wrong layout cannot pass these (PC_PORT M9.5.4).
 // =============================================================================
 
 #include "tests/test_runner.h"
@@ -76,66 +80,110 @@ TEST_CASE(bti_parse_header) {
     CHECK(!btiParseHeader(nullptr, 32, h));
 }
 
+// PC_PORT M9.5.4: the 4/8-bit formats tile as 8x8 (I4/C4) and 8x4 (I8/IA4/C8),
+// 32 bytes per tile (RVL_SDK __GXGetTexTileShift). The first version of these
+// tests (and of the decoder) assumed 4x4 tiles for every format; the byte
+// totals coincide, so nothing noticed until real disc textures rendered as
+// stripes/noise on the title screen (PicBloom/PicLogoShine I8, PicNintendo
+// IA4, PicTitleLogoJpJa I4).
 TEST_CASE(bti_image_size_table) {
-    CHECK(btiImageSize(4, 4, 0x0) == 8);   // I4
-    CHECK(btiImageSize(4, 4, 0x1) == 16);  // I8
-    CHECK(btiImageSize(4, 4, 0x2) == 16);  // IA4
+    CHECK(btiImageSize(8, 8, 0x0) == 32);  // I4: one 8x8 tile
+    CHECK(btiImageSize(8, 4, 0x1) == 32);  // I8: one 8x4 tile
+    CHECK(btiImageSize(8, 4, 0x2) == 32);  // IA4: one 8x4 tile
     CHECK(btiImageSize(4, 4, 0x3) == 32);  // IA8
     CHECK(btiImageSize(4, 4, 0x4) == 32);  // RGB565
     CHECK(btiImageSize(4, 4, 0x5) == 32);  // RGB5A3
     CHECK(btiImageSize(4, 4, 0x6) == 64);  // RGBA8
     CHECK(btiImageSize(8, 8, 0xE) == 32);  // CMPR (8x8 blocks, w*h/2)
-    CHECK(btiImageSize(4, 4, 0x8) == 8);   // C4
-    CHECK(btiImageSize(4, 4, 0x9) == 16);  // C8
+    CHECK(btiImageSize(8, 8, 0x8) == 32);  // C4: one 8x8 tile
+    CHECK(btiImageSize(8, 4, 0x9) == 32);  // C8: one 8x4 tile
     CHECK(btiImageSize(4, 4, 0xA) == 32);  // C14X2
     CHECK(btiImageSize(4, 4, 0x7F) == 0);  // unknown
+    // Whole-tile padding, like GXGetTexBufferSize: a 4x4 I4 image still
+    // occupies one 32-byte 8x8 tile; the title's 328x32 I4 strip = 41x4 tiles.
+    CHECK(btiImageSize(4, 4, 0x0) == 32);
+    CHECK(btiImageSize(328, 32, 0x0) == 41u * 4u * 32u);
+    CHECK(btiImageSize(24, 16, 0x0) == 3u * 2u * 32u);   // PicTM
+    CHECK(btiImageSize(288, 176, 0x1) == 36u * 44u * 32u); // PicBloomA (I8)
+    CHECK(btiImageSize(168, 24, 0x2) == 21u * 6u * 32u);   // PicNintendo (IA4)
 }
 
 TEST_CASE(bti_decode_i8) {
-    // 4x4 I8: byte = intensity (row-major within the single block).
-    std::vector<uint8_t> src(16);
-    for (int i = 0; i < 16; ++i) src[i] = static_cast<uint8_t>(i * 16);
-    std::vector<uint8_t> out(4 * 4 * 4);
-    CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x1, nullptr, 0, 0, out.data()));
-    CHECK(pxEq(out, 4, 0, 0, 0, 0, 0, 255));
-    CHECK(pxEq(out, 4, 3, 0, 48, 48, 48, 255));
-    CHECK(pxEq(out, 4, 0, 3, 192, 192, 192, 255));
-    CHECK(pxEq(out, 4, 3, 3, 240, 240, 240, 255));
+    // 16x8 I8 = 2x2 tiles of 8x4 texels (32 B each, row-major inside a tile,
+    // tiles left-to-right then top-to-bottom). Byte value = tile*64 + index.
+    std::vector<uint8_t> src(4 * 32);
+    for (int t = 0; t < 4; ++t) {
+        for (int i = 0; i < 32; ++i) src[t * 32 + i] = static_cast<uint8_t>(t * 64 + i);
+    }
+    std::vector<uint8_t> out(16 * 8 * 4);
+    CHECK(btiDecodeToRgba8(src.data(), src.size(), 16, 8, 0x1, nullptr, 0, 0, out.data()));
+    // GX replicates the intensity into all four channels (A = I).
+    CHECK(pxEq(out, 16, 0, 0, 0, 0, 0, 0));            // tile 0, texel (0,0)
+    CHECK(pxEq(out, 16, 7, 0, 7, 7, 7, 7));            // tile 0, texel (7,0)
+    CHECK(pxEq(out, 16, 0, 1, 8, 8, 8, 8));            // tile 0, row 1 starts at byte 8
+    CHECK(pxEq(out, 16, 7, 3, 31, 31, 31, 31));        // tile 0, last texel
+    CHECK(pxEq(out, 16, 8, 0, 64, 64, 64, 64));        // tile 1 (right)
+    CHECK(pxEq(out, 16, 0, 4, 128, 128, 128, 128));    // tile 2 (below)
+    CHECK(pxEq(out, 16, 15, 7, 192 + 31, 192 + 31, 192 + 31, 192 + 31)); // tile 3 end
 }
 
 TEST_CASE(bti_decode_i4) {
-    // 4x4 I4: 8 bytes, high nibble first.
-    std::vector<uint8_t> src(8);
-    src[0] = 0x01; // texel(0,0)=0 -> 0; texel(1,0)=1 -> 17
-    src[7] = 0xF0; // texel(2,3)=15 -> 255; texel(3,3)=0
-    std::vector<uint8_t> out(4 * 4 * 4);
-    CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x0, nullptr, 0, 0, out.data()));
-    CHECK(pxEq(out, 4, 0, 0, 0, 0, 0, 255));
-    CHECK(pxEq(out, 4, 1, 0, 17, 17, 17, 255));
-    CHECK(pxEq(out, 4, 2, 3, 255, 255, 255, 255));
-    CHECK(pxEq(out, 4, 3, 3, 0, 0, 0, 255));
+    // 16x16 I4 = 2x2 tiles of 8x8 texels (32 B each: 8 rows x 4 bytes, high
+    // nibble = even x).
+    std::vector<uint8_t> src(4 * 32, 0);
+    src[0] = 0x01;              // tile 0: texel(0,0)=0, texel(1,0)=1
+    src[4] = 0x20;              // tile 0: row 1 -> texel(0,1)=2
+    src[31] = 0xF0;             // tile 0: row 7, byte 3 -> texel(6,7)=15, texel(7,7)=0
+    src[32] = 0x30;             // tile 1 (x 8..15, y 0..7): texel(8,0)=3
+    src[64] = 0x40;             // tile 2 (x 0..7, y 8..15): texel(0,8)=4
+    src[96 + 31] = 0x0F;        // tile 3: texel(15,15)=15
+    std::vector<uint8_t> out(16 * 16 * 4);
+    CHECK(btiDecodeToRgba8(src.data(), src.size(), 16, 16, 0x0, nullptr, 0, 0, out.data()));
+    CHECK(pxEq(out, 16, 0, 0, 0, 0, 0, 0));            // A = I, like GX
+    CHECK(pxEq(out, 16, 1, 0, 17, 17, 17, 17));
+    CHECK(pxEq(out, 16, 0, 1, 34, 34, 34, 34));
+    CHECK(pxEq(out, 16, 6, 7, 255, 255, 255, 255));
+    CHECK(pxEq(out, 16, 7, 7, 0, 0, 0, 0));
+    CHECK(pxEq(out, 16, 8, 0, 51, 51, 51, 51));
+    CHECK(pxEq(out, 16, 0, 8, 68, 68, 68, 68));
+    CHECK(pxEq(out, 16, 15, 15, 255, 255, 255, 255));
+    // A 4x4 I4 image still lives in a padded 8x8 tile (row stride 4 bytes).
+    std::vector<uint8_t> small(32, 0);
+    small[0] = 0x0F;  // texel(1,0)=15
+    small[12] = 0xF0; // row 3 -> texel(0,3)=15
+    std::vector<uint8_t> out4(4 * 4 * 4);
+    CHECK(btiDecodeToRgba8(small.data(), small.size(), 4, 4, 0x0, nullptr, 0, 0, out4.data()));
+    CHECK(pxEq(out4, 4, 1, 0, 255, 255, 255, 255));
+    CHECK(pxEq(out4, 4, 0, 3, 255, 255, 255, 255));
+    CHECK(pxEq(out4, 4, 0, 0, 0, 0, 0, 0));
 }
 
 TEST_CASE(bti_decode_ia4_ia8) {
-    // IA4: high nibble = intensity, low = alpha (both 4-bit).
+    // IA4: 8x4 tiles; GX byte = ALPHA in the high nibble, intensity in the
+    // low nibble (Dolphin DecodeBytes_IA4).
     {
-        std::vector<uint8_t> src(16);
-        src[0] = 0xF0; // i=15 -> 255, a=0 -> 0
-        src[15] = 0x88; // i=8 -> 136, a=8 -> 136
-        std::vector<uint8_t> out(4 * 4 * 4);
-        CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x2, nullptr, 0, 0, out.data()));
-        CHECK(pxEq(out, 4, 0, 0, 255, 255, 255, 0));
-        CHECK(pxEq(out, 4, 3, 3, 136, 136, 136, 136));
+        std::vector<uint8_t> src(2 * 32, 0);   // 16x4 = two tiles side by side
+        src[0] = 0xF0;      // texel(0,0): a=15 -> 255, i=0 -> 0
+        src[8] = 0x88;      // texel(0,1): row 1 starts at byte 8
+        src[31] = 0x1F;     // texel(7,3): a=1 -> 17, i=15 -> 255
+        src[32] = 0xA5;     // texel(8,0): second tile
+        std::vector<uint8_t> out(16 * 4 * 4);
+        CHECK(btiDecodeToRgba8(src.data(), src.size(), 16, 4, 0x2, nullptr, 0, 0, out.data()));
+        CHECK(pxEq(out, 16, 0, 0, 0, 0, 0, 255));
+        CHECK(pxEq(out, 16, 0, 1, 136, 136, 136, 136));
+        CHECK(pxEq(out, 16, 7, 3, 255, 255, 255, 17));
+        CHECK(pxEq(out, 16, 8, 0, 85, 85, 85, 170));
     }
-    // IA8: (intensity, alpha) byte pair per texel.
+    // IA8: 4x4 tiles; (alpha, intensity) byte pair per texel — alpha FIRST
+    // (Dolphin DecodePixel_IA8: i = val >> 8 of the little-endian load).
     {
         std::vector<uint8_t> src(32);
-        src[0] = 200; src[1] = 100; // texel(0,0)
-        src[30] = 10; src[31] = 250; // texel(3,3)
+        src[0] = 200; src[1] = 100; // texel(0,0): a=200, i=100
+        src[30] = 10; src[31] = 250; // texel(3,3): a=10, i=250
         std::vector<uint8_t> out(4 * 4 * 4);
         CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x3, nullptr, 0, 0, out.data()));
-        CHECK(pxEq(out, 4, 0, 0, 200, 200, 200, 100));
-        CHECK(pxEq(out, 4, 3, 3, 10, 10, 10, 250));
+        CHECK(pxEq(out, 4, 0, 0, 100, 100, 100, 200));
+        CHECK(pxEq(out, 4, 3, 3, 250, 250, 250, 10));
     }
 }
 
@@ -191,61 +239,95 @@ TEST_CASE(bti_decode_cmpr) {
     be16Put(src.data() + 18, 0xF000);
     be16Put(src.data() + 24, 0x001F);
     be16Put(src.data() + 26, 0x001E);
-    // Indices: one byte per row, 4 texels of 2 bits, LSB = leftmost.
-    // Row 0 of the top subtiles: idx0, idx1, idx2, idx3 (0b11100100).
-    src[4] = 0b11'10'01'00;
-    src[12] = 0b11'10'01'00;
+    // Indices: one byte per row, 4 texels of 2 bits, MSB pair = LEFTMOST
+    // texel (GX packs them big-endian, unlike PC DXT1 — Dolphin
+    // DecodeDXTBlock reads `(val >> 6) & 3` then shifts left).
+    // Row 0 of the top subtiles: idx0, idx1, idx2, idx3 (0b00011011).
+    src[4] = 0b00'01'10'11;
+    src[12] = 0b00'01'10'11;
     // Row 3 of the top-left subtile: all idx0 (red) — exercises the byte
     // that the old 8x4 framing read out of bounds (M5.7c fix).
     src[7] = 0x00;
-    // Bottom subtiles: uniform idx0.
+    // Bottom subtiles: uniform idx0, except row 1 of the bottom-left one,
+    // where ONLY the leftmost texel is idx1 (0b01000000): with LSB-first
+    // reading it would land on texel 3 instead.
     src[20] = 0x00;
+    src[21] = 0b01'00'00'00;
     src[28] = 0x00;
 
     std::vector<uint8_t> out(8 * 8 * 4);
     CHECK(btiDecodeToRgba8(src.data(), src.size(), 8, 8, 0xE, nullptr, 0, 0, out.data()));
-    // Top-left: idx0 = red, idx1 = blue, idx2 = (2r+b)/3, idx3 = (r+2b)/3.
+    // Top-left: idx0 = red, idx1 = blue, idx2 = (5r+3b)/8, idx3 = (3r+5b)/8
+    // (GX blends 5/8-3/8, not 2/3-1/3: 255*5/8 = 159, 255*3/8 = 95).
     CHECK(pxEq(out, 8, 0, 0, 255, 0, 0, 255));
     CHECK(pxEq(out, 8, 1, 0, 0, 0, 255, 255));
-    CHECK(pxEq(out, 8, 2, 0, 170, 0, 85, 255));
-    CHECK(pxEq(out, 8, 3, 0, 85, 0, 170, 255));
+    CHECK(pxEq(out, 8, 2, 0, 159, 0, 95, 255));
+    CHECK(pxEq(out, 8, 3, 0, 95, 0, 159, 255));
     // Row 3 (the previously out-of-bounds byte): all idx0 -> red.
     CHECK(pxEq(out, 8, 0, 3, 255, 0, 0, 255));
     CHECK(pxEq(out, 8, 3, 3, 255, 0, 0, 255));
-    // Top-right: idx0 = green, idx1 = white, idx2 = (g+w)/2, idx3 = transparent.
+    // Top-right: idx0 = green, idx1 = white, idx2 = (g+w)/2, idx3 = the same
+    // average color but with alpha 0 (GX keeps the color; PC DXT1 would give
+    // transparent black — matters for bilinear fringes).
     CHECK(pxEq(out, 8, 4, 0, 0, 255, 0, 255));
     CHECK(pxEq(out, 8, 5, 0, 255, 255, 255, 255));
     // 8-bit-space interpolation with truncation: (0+255)/2 = 127, (255+255)/2
     // = 255. (Equivalencia visual; the exact rounding differs from Dolphin's
     // 5/6-bit-space math — documented in gx.md §5.)
     CHECK(pxEq(out, 8, 6, 0, 127, 255, 127, 255));
-    CHECK(pxEq(out, 8, 7, 0, 0, 0, 0, 0));
+    CHECK(pxEq(out, 8, 7, 0, 127, 255, 127, 0));
     // Bottom-left: uniform red; bottom-right: uniform blue (rows 4-7).
     CHECK(pxEq(out, 8, 0, 7, 255, 0, 0, 255));
+    // Row 5 (subtile row 1): texel 0 = idx1 (0xF000 -> dark red), texel 3 = idx0.
+    CHECK(pxEq(out, 8, 0, 5, 247, 0, 0, 255));
+    CHECK(pxEq(out, 8, 3, 5, 255, 0, 0, 255));
+    CHECK(pxEq(out, 8, 1, 5, 255, 0, 0, 255));
     CHECK(pxEq(out, 8, 7, 7, 0, 0, 255, 255));
     CHECK(pxEq(out, 8, 7, 4, 0, 0, 255, 255));
 }
 
 TEST_CASE(bti_decode_c8_paletted) {
-    // C8: byte indices; RGB565 TLUT.
-    std::vector<uint8_t> src(16);
+    // C8: byte indices in 8x4 tiles; RGB565 TLUT. 8x4 image = one tile.
+    std::vector<uint8_t> src(32);
     src[0] = 0;
     src[1] = 1;
-    src[15] = 1;
+    src[31] = 1;  // texel(7,3)
     std::vector<uint8_t> pal(4);
     be16Put(pal.data(), 0xF800);       // entry 0: red
     be16Put(pal.data() + 2, 0x001F);   // entry 1: blue
-    std::vector<uint8_t> out(4 * 4 * 4);
-    CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x9, pal.data(), pal.size(), 0x1,
+    std::vector<uint8_t> out(8 * 4 * 4);
+    CHECK(btiDecodeToRgba8(src.data(), src.size(), 8, 4, 0x9, pal.data(), pal.size(), 0x1,
                            out.data()));
-    CHECK(pxEq(out, 4, 0, 0, 255, 0, 0, 255));
-    CHECK(pxEq(out, 4, 1, 0, 0, 0, 255, 255));
-    CHECK(pxEq(out, 4, 3, 3, 0, 0, 255, 255));
+    CHECK(pxEq(out, 8, 0, 0, 255, 0, 0, 255));
+    CHECK(pxEq(out, 8, 1, 0, 0, 0, 255, 255));
+    CHECK(pxEq(out, 8, 7, 3, 0, 0, 255, 255));
+
+    // C4: nibble indices in 8x8 tiles (high nibble = even x).
+    std::vector<uint8_t> src4(32, 0);
+    src4[0] = 0x10;   // texel(0,0)=1, texel(1,0)=0
+    src4[28] = 0x01;  // row 7 -> texel(1,7)=1
+    std::vector<uint8_t> out4(8 * 8 * 4);
+    CHECK(btiDecodeToRgba8(src4.data(), src4.size(), 8, 8, 0x8, pal.data(), pal.size(), 0x1,
+                           out4.data()));
+    CHECK(pxEq(out4, 8, 0, 0, 0, 0, 255, 255));
+    CHECK(pxEq(out4, 8, 1, 0, 255, 0, 0, 255));
+    CHECK(pxEq(out4, 8, 1, 7, 0, 0, 255, 255));
+
+    // IA8 TLUT (GX_TL_IA8 = 0): entry = (alpha, intensity) bytes, alpha
+    // FIRST, like GX_TF_IA8 (PC_PORT M9.5.4 — was read swapped).
+    std::vector<uint8_t> palIa(4);
+    palIa[0] = 0x40; palIa[1] = 0xC0;   // entry 0: a=64, i=192
+    palIa[2] = 0xFF; palIa[3] = 0x10;   // entry 1: a=255, i=16
+    std::vector<uint8_t> outIa(8 * 4 * 4);
+    CHECK(btiDecodeToRgba8(src.data(), src.size(), 8, 4, 0x9, palIa.data(), palIa.size(), 0x0,
+                           outIa.data()));
+    CHECK(pxEq(outIa, 8, 0, 0, 192, 192, 192, 64));
+    CHECK(pxEq(outIa, 8, 1, 0, 16, 16, 16, 255));
 
     // Missing palette -> zeros (defensive).
-    std::vector<uint8_t> out2(4 * 4 * 4);
-    CHECK(btiDecodeToRgba8(src.data(), src.size(), 4, 4, 0x9, nullptr, 0, 0x1, out2.data()));
-    CHECK(pxEq(out2, 4, 0, 0, 0, 0, 0, 0));
+    std::vector<uint8_t> out2(8 * 4 * 4);
+    CHECK(btiDecodeToRgba8(src.data(), src.size(), 8, 4, 0x9, nullptr, 0, 0x1, out2.data()));
+    CHECK(pxEq(out2, 8, 0, 0, 0, 0, 0, 0));
 }
 
 TEST_CASE(bti_decode_c14x2) {

@@ -53,12 +53,16 @@
 #include <nw4r/lyt/material.h>
 #include <nw4r/lyt/pane.h>
 #include <nw4r/lyt/texMap.h>
+#include <nw4r/lyt/textBox.h>
+#include <nw4r/ut/Font.h>
 
+#include "compat/game/LanguageCompat.h"
 #include "compat/nw4r/LytHost.h"
 #include "platform/Log/Log.h"
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace {
     // SMG's layout/screen coordinate space for 4:3 (see ScreenUtil.cpp).
@@ -115,6 +119,13 @@ LayoutManager::LayoutManager(const char* pName, bool convertFilename, u32 animLa
     initDrawInfo();
     initPaneInfo();
     initGroupCtrlList();
+
+    // M9.5.4 v7: string buffers + fonts + text for every TextBox (console:
+    // LayoutManager::initTextBoxRecursive, called from the ctor with the
+    // layout name for the message lookup).
+    if (mLayout != nullptr && mLayout->mpRootPane != nullptr && mTextBoxBufferLength > 0) {
+        initTextBoxRecursive(mLayout->mpRootPane, mLayout->mpRootPane, pName, mTextBoxBufferLength);
+    }
 }
 
 void LayoutManager::initArc(const char* pArcPath, const char* pLayoutName) {
@@ -160,6 +171,10 @@ void LayoutManager::initArc(const char* pArcPath, const char* pLayoutName) {
         PL_LOG_ERROR("compat.layout", "LayoutManager '%s': Layout::Build failed", mLayoutName != nullptr ? mLayoutName : "?");
         return;
     }
+
+    // Drop the panes of the other languages before anything binds to them
+    // (see removeUnnecessaryPanes).
+    removeUnnecessaryPanes(mLayout->mpRootPane);
 
     mAnimTransNum = mLayoutHolder->mAnimRes.mCount;
 
@@ -235,8 +250,118 @@ void LayoutManager::initGroupCtrlList() {
     }
 }
 
-void LayoutManager::initTextBoxRecursive(nw4r::lyt::Pane*, nw4r::lyt::Pane*, const char*, u32) {
-    logOnceUnsupported("text box buffers (initTextBoxRecursive)");
+namespace {
+    // M9.5.4 v7: the layout message for a text box.
+    //
+    // Console flow (LayoutCoreUtil.cpp initTextBoxPane): the id is
+    // "Layout_<layoutName><paneName>" (e.g. Layout_PressStartTxtStart, minus
+    // the language suffix) and the UTF-16 text comes from
+    // /MessageData/Message.arc (bmg + MessageId.tbl BCSV). The host does not
+    // have the message system yet (MessageHolder/JMapInfo/bmg — all
+    // big-endian binary tables, tracked as an open gap in docs), so the known
+    // ids get an embedded English fallback and everything else keeps the text
+    // baked in the brlyt (txt1 payload) or a visible placeholder.
+    //
+    // "Press both [A] and [B]." — the real message renders the A/B icons via
+    // PictureFont tags (0x1A tag, group 3); without a tag processor and the
+    // picture font wiring they are written as words.
+    struct LayoutMessageFallback {
+        const char* layoutName;
+        const char* panePrefix;  // pane name without the language suffix
+        const wchar_t* text;
+    };
+
+    const LayoutMessageFallback sLayoutMessageFallbacks[] = {
+        {"PressStart", "TxtStart", L"Press A and B."},
+        {"PressStart", "ShaStart", L"Press A and B."},
+    };
+
+    // `pPaneName` may carry a language suffix ("TxtStartUsEn"): match on the
+    // prefix so every language pane gets the same fallback.
+    const wchar_t* findLayoutMessageFallback(const char* pLayoutName, const char* pPaneName) {
+        if (pLayoutName == nullptr || pPaneName == nullptr) {
+            return nullptr;
+        }
+
+        for (const LayoutMessageFallback& entry : sLayoutMessageFallbacks) {
+            if (std::strcmp(entry.layoutName, pLayoutName) != 0) {
+                continue;
+            }
+
+            const size_t prefixLen = std::strlen(entry.panePrefix);
+
+            if (std::strncmp(entry.panePrefix, pPaneName, prefixLen) == 0) {
+                return entry.text;
+            }
+        }
+
+        return nullptr;
+    }
+
+}  // namespace
+
+void LayoutManager::initTextBoxRecursive(nw4r::lyt::Pane* pRoot, nw4r::lyt::Pane* pPane, const char* pLayoutName,
+                                         u32 bufferLength) {
+    if (pPane == nullptr) {
+        return;
+    }
+
+    if (pPane->GetRuntimeTypeInfo()->IsDerivedFrom(&nw4r::lyt::TextBox::typeInfo)) {
+        nw4r::lyt::TextBox* pTextBox = static_cast< nw4r::lyt::TextBox* >(pPane);
+
+        // Console: AllocStringBuffer(len) where the ctor parameter is the
+        // buffer length in characters (PressStart passes 0x100). Growing the
+        // buffer drops the txt1 text the ctor copied from the brlyt, so keep
+        // a copy: it is what the pane shows when no message is known.
+        std::vector< wchar_t > designText;
+
+        if (pTextBox->mTextBuf != nullptr && pTextBox->mTextLen > 0) {
+            designText.assign(pTextBox->mTextBuf, pTextBox->mTextBuf + pTextBox->mTextLen);
+        }
+
+        const u16 chars = static_cast< u16 >(bufferLength > 0xFFFF ? 0xFFFF : bufferLength);
+        pTextBox->AllocStringBuffer(chars);
+
+        // Font: the brlyt names the font (fnl1); LayoutHolder::GetFont resolves
+        // it from the GameSystem font holder (Font.arc). A layout built before
+        // the fonts were loaded (or a name the holder does not have) keeps a
+        // null font and would never draw — fall back to the message font.
+        if (pTextBox->mpFont == nullptr) {
+            const nw4r::ut::Font* pFont = MR::getFontOnCurrentLanguage();
+
+            if (pFont != nullptr) {
+                pTextBox->SetFont(pFont);
+            } else {
+                static bool sWarned = false;
+
+                if (!sWarned) {
+                    sWarned = true;
+                    PL_LOG_WARN("compat.layout",
+                                "LayoutManager '%s': text box '%s' has no font (Font.arc not loaded?) — text stays hidden",
+                                pLayoutName != nullptr ? pLayoutName : "?", pPane->mName);
+                }
+            }
+        }
+
+        const wchar_t* pFallback = findLayoutMessageFallback(pLayoutName, pPane->mName);
+
+        if (pFallback != nullptr) {
+            pTextBox->SetString(pFallback, 0);
+        } else if (!designText.empty()) {
+            pTextBox->SetString(designText.data(), 0, static_cast< u16 >(designText.size()));
+        }
+        // else: no message and no design text — the box stays empty and
+        // DrawSelf draws nothing, like a layout whose message id is missing.
+
+        PL_LOG_INFO("compat.layout", "LayoutManager '%s': text box '%s' font=%p len=%u%s",
+                    pLayoutName != nullptr ? pLayoutName : "?", pPane->mName,
+                    static_cast< const void* >(pTextBox->mpFont), static_cast< unsigned >(pTextBox->mTextLen),
+                    pFallback != nullptr ? " (embedded fallback message)" : "");
+    }
+
+    for (auto it = pPane->mChildList.GetBeginIter(); it != pPane->mChildList.GetEndIter(); ++it) {
+        initTextBoxRecursive(pRoot, &*it, pLayoutName, bufferLength);
+    }
 }
 
 void LayoutManager::animateRecursive(u32&, nw4r::lyt::Pane*) {
@@ -606,8 +731,141 @@ void LayoutManager::replaceIndDummyTexture() {
     // renderer path decides this in M9.5.3c. No-op for now.
 }
 
-void LayoutManager::removeUnnecessaryPanes(nw4r::lyt::Pane*) {
-    // Console memory optimization; keeping every pane is harmless on host.
+// PC_PORT (M9.5.4 v6): language-variant pane filter. petari does not
+// decompile this method; the behaviour is reconstructed from the layout data
+// and the documented game feature (Luma's Workshop, "Layouts"): a pane may
+// come with per-language siblings whose name ends with the first four letters
+// of a language folder ("PicTitleLogoJpJa", "TxtStartUsEn"). When the current
+// language has such a variant, the plain pane and every other variant are
+// dropped; otherwise only the foreign variants are dropped and the plain pane
+// stays. Dropped panes are unlinked from the tree and destroyed (nothing else
+// references them yet: this runs right after Layout::Build, before the brlan
+// transforms are bound and before any pane controller is created).
+namespace {
+    const char* const cLanguagePaneSuffixes[] = {"JpJa", "UsEn", "UsSp", "UsFr", "EuEn", "EuSp",
+                                                 "EuFr", "EuGe", "EuIt", "EuDu", "CnSi", "KrKo"};
+
+    // Returns the language suffix `pName` ends with (nullptr when none).
+    const char* findLanguageSuffix(const char* pName) {
+        const size_t len = strlen(pName);
+
+        if (len <= 4) {
+            return nullptr;
+        }
+
+        for (const char* pSuffix : cLanguagePaneSuffixes) {
+            if (strcmp(pName + len - 4, pSuffix) == 0) {
+                return pSuffix;
+            }
+        }
+
+        return nullptr;
+    }
+
+    // True when `pParent` holds a pane named <base><suffix>.
+    bool hasSibling(nw4r::lyt::Pane* pParent, const char* pBase, size_t baseLen, const char* pSuffix) {
+        for (auto it = pParent->mChildList.GetBeginIter(); it != pParent->mChildList.GetEndIter(); ++it) {
+            const char* pName = it->mName;
+
+            if (strncmp(pName, pBase, baseLen) == 0 && strcmp(pName + baseLen, pSuffix) == 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Collects `pPane` and its whole subtree (Pane::~Pane destroys the
+    // children too, and the groups may reference any of them).
+    void collectSubtree(nw4r::lyt::Pane* pPane, std::vector< nw4r::lyt::Pane* >& rOut) {
+        rOut.push_back(pPane);
+
+        for (auto it = pPane->mChildList.GetBeginIter(); it != pPane->mChildList.GetEndIter(); ++it) {
+            collectSubtree(&*it, rOut);
+        }
+    }
+
+    bool contains(const std::vector< nw4r::lyt::Pane* >& rPanes, const nw4r::lyt::Pane* pPane) {
+        for (const nw4r::lyt::Pane* p : rPanes) {
+            if (p == pPane) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Drops every group link that targets one of `rPanes` (the brlan group
+    // binding walks those links; a dangling target would be a use-after-free).
+    void purgeGroupLinks(nw4r::lyt::GroupContainer* pContainer, const std::vector< nw4r::lyt::Pane* >& rPanes) {
+        if (pContainer == nullptr) {
+            return;
+        }
+
+        for (auto grp = pContainer->mGroupList.GetBeginIter(); grp != pContainer->mGroupList.GetEndIter(); ++grp) {
+            nw4r::lyt::PaneLinkList& links = grp->GetPaneList();
+
+            for (auto it = links.GetBeginIter(); it != links.GetEndIter();) {
+                auto cur = it++;
+
+                if (contains(rPanes, cur->mTarget)) {
+                    links.Erase(cur);
+                    nw4r::lyt::Layout::FreeMemory(&*cur);
+                }
+            }
+        }
+    }
+
+    void destroyPane(nw4r::lyt::Pane* pPane, nw4r::lyt::GroupContainer* pGroups) {
+        std::vector< nw4r::lyt::Pane* > subtree;
+        collectSubtree(pPane, subtree);
+        purgeGroupLinks(pGroups, subtree);
+
+        if (pPane->IsUserAllocated()) {
+            return;
+        }
+
+        pPane->~Pane();
+        nw4r::lyt::Layout::FreeMemory(pPane);
+    }
+};  // namespace
+
+void LayoutManager::removeUnnecessaryPanes(nw4r::lyt::Pane* pPane) {
+    if (pPane == nullptr) {
+        return;
+    }
+
+    const char* pCurrentSuffix = compat::getLanguagePaneSuffix();
+    u32 removedNum = 0;
+
+    for (auto it = pPane->mChildList.GetBeginIter(); it != pPane->mChildList.GetEndIter();) {
+        nw4r::lyt::Pane* pChild = &*it;
+        ++it;
+
+        const char* pSuffix = findLanguageSuffix(pChild->mName);
+        bool remove = false;
+
+        if (pSuffix != nullptr) {
+            // A language variant: keep only the current language's one.
+            remove = strcmp(pSuffix, pCurrentSuffix) != 0;
+        } else if (hasSibling(pPane, pChild->mName, strlen(pChild->mName), pCurrentSuffix)) {
+            // A plain pane shadowed by a variant for the current language.
+            remove = true;
+        }
+
+        if (remove) {
+            pPane->RemoveChild(pChild);
+            destroyPane(pChild, mLayout != nullptr ? mLayout->GetGroupContainer() : nullptr);
+            removedNum++;
+        } else {
+            removeUnnecessaryPanes(pChild);
+        }
+    }
+
+    if (removedNum > 0 && pPane == (mLayout != nullptr ? mLayout->mpRootPane : nullptr)) {
+        PL_LOG_INFO("compat.layout", "LayoutManager '%s': removed language panes under root (current %s)",
+                    mLayoutName != nullptr ? mLayoutName : "?", pCurrentSuffix);
+    }
 }
 
 // =============================================================================
@@ -750,16 +1008,48 @@ namespace MR {
         return 640;
     }
 
+    // PC_PORT (M9.5.4): the console never misses a pane controller (every pane
+    // of the brlyt gets one in initPaneInfoRecursive). On the host only the
+    // root controller exists, and a layout whose arc failed to mount has no
+    // panes at all — so every helper that used to dereference
+    // getPaneCtrl(name) unconditionally now logs once and returns instead of
+    // faulting (the previous behaviour was a null deref inside the scene-init
+    // worker thread, i.e. a silent process crash while the Title loads).
+    static LayoutPaneCtrl* paneCtrlOrWarn(const LayoutActor* pActor, const char* pPaneName, const char* pWhat) {
+        LayoutManager* pManager = pActor != nullptr ? pActor->getLayoutManager() : nullptr;
+        LayoutPaneCtrl* pCtrl = pManager != nullptr ? pManager->getPaneCtrl(pPaneName) : nullptr;
+
+        if (pCtrl == nullptr) {
+            PL_LOG_WARN("game.layout", "%s: no pane controller for '%s' in layout '%s' (ignored)", pWhat,
+                        pPaneName != nullptr ? pPaneName : "<root>",
+                        pManager != nullptr && pManager->mLayoutName != nullptr ? pManager->mLayoutName : "?");
+        }
+
+        return pCtrl;
+    }
+
     void setFollowPos(const TVec2f* pFollowPos, const LayoutActor* pActor, const char* pPaneName) {
-        pActor->getLayoutManager()->getPaneCtrl(pPaneName)->mFollowPos = pFollowPos;
+        LayoutPaneCtrl* pCtrl = paneCtrlOrWarn(pActor, pPaneName, "setFollowPos");
+
+        if (pCtrl != nullptr) {
+            pCtrl->mFollowPos = pFollowPos;
+        }
     }
 
     void setFollowTypeReplace(const LayoutActor* pActor, const char* pPaneName) {
-        pActor->getLayoutManager()->getPaneCtrl(pPaneName)->mFollowType = 0;
+        LayoutPaneCtrl* pCtrl = paneCtrlOrWarn(pActor, pPaneName, "setFollowTypeReplace");
+
+        if (pCtrl != nullptr) {
+            pCtrl->mFollowType = 0;
+        }
     }
 
     void setFollowTypeAdd(const LayoutActor* pActor, const char* pPaneName) {
-        pActor->getLayoutManager()->getPaneCtrl(pPaneName)->mFollowType = 1;
+        LayoutPaneCtrl* pCtrl = paneCtrlOrWarn(pActor, pPaneName, "setFollowTypeAdd");
+
+        if (pCtrl != nullptr) {
+            pCtrl->mFollowType = 1;
+        }
     }
 
     // PC_PORT reconstruction (petari has no body): every sibling helper routes
@@ -774,8 +1064,10 @@ void emitEffect(LayoutActor*, const char* pEffectName) {
 // Game/Util/LayoutUtil.cpp:197 — no-op (same).
 void deleteEffectAll(LayoutActor*) {}
 
+    static LayoutPaneCtrl* rootCtrlWithLayerOrWarn(const LayoutActor* pActor, u32 animLayer, const char* pWhat);
+
     void startAnim(LayoutActor* pActor, const char* pAnimName, u32 animLayer) {
-        LayoutPaneCtrl* pPaneCtrl = pActor->getLayoutManager()->getPaneCtrl(nullptr);
+        LayoutPaneCtrl* pPaneCtrl = rootCtrlWithLayerOrWarn(pActor, animLayer, "startAnim");
 
         if (pPaneCtrl != nullptr) {
             pPaneCtrl->start(pAnimName, animLayer);
@@ -793,8 +1085,44 @@ void deleteEffectAll(LayoutActor*) {}
         setAnimFrameAndStop(pActor, animFrame, animLayer);
     }
 
+    // PC_PORT (M9.5.4): the vendored LayoutUtil helpers dereference
+    // getPaneCtrl(nullptr) and index the layer array unchecked. The root
+    // controller always exists on the host (initPaneInfo), but a layer index
+    // beyond the actor's animLayerNum (LogoLayout has 2 layers, SimpleLayout
+    // 1) would read past mAnmPlayerArray — a silent crash inside the
+    // scene-init worker while the Title screen loads. Validate both and fall
+    // back to a process-wide dummy frame controller so callers that only
+    // poke frame/rate keep working; the WARN in the log says what happened.
+    static LayoutPaneCtrl* rootCtrlWithLayerOrWarn(const LayoutActor* pActor, u32 animLayer, const char* pWhat) {
+        LayoutPaneCtrl* pCtrl = paneCtrlOrWarn(pActor, nullptr, pWhat);
+
+        if (pCtrl == nullptr) {
+            return nullptr;
+        }
+
+        if (animLayer >= static_cast< u32 >(pCtrl->mAnmPlayerArray.size())) {
+            LayoutManager* pManager = pActor != nullptr ? pActor->getLayoutManager() : nullptr;
+            PL_LOG_WARN("game.layout", "%s: anim layer %u out of range (layout '%s' has %d layer(s)) (ignored)", pWhat,
+                        static_cast< unsigned >(animLayer),
+                        pManager != nullptr && pManager->mLayoutName != nullptr ? pManager->mLayoutName : "?",
+                        pCtrl->mAnmPlayerArray.size());
+            return nullptr;
+        }
+
+        return pCtrl;
+    }
+
     J3DFrameCtrl* getAnimCtrl(const LayoutActor* pActor, u32 animLayer) {
-        return pActor->getLayoutManager()->getPaneCtrl(nullptr)->getFrameCtrl(animLayer);
+        LayoutPaneCtrl* pCtrl = rootCtrlWithLayerOrWarn(pActor, animLayer, "getAnimCtrl");
+
+        if (pCtrl == nullptr) {
+            // Never hand out null: vendored callers (setAnimFrameAndStop,
+            // setAnimRate, ...) dereference the result unconditionally.
+            static J3DFrameCtrl sDummyFrameCtrl(0);
+            return &sDummyFrameCtrl;
+        }
+
+        return pCtrl->getFrameCtrl(animLayer);
     }
 
     void setAnimFrameAndStop(LayoutActor* pActor, f32 animFrame, u32 animLayer) {
@@ -813,7 +1141,19 @@ void deleteEffectAll(LayoutActor*) {}
     }
 
     s16 getAnimFrameMax(const LayoutActor* pActor, const char* pAnimName) {
-        return pActor->getLayoutManager()->getAnimTransform(pAnimName)->GetFrameSize();
+        // PC_PORT (M9.5.4): mirrors vendored LayoutUtil.cpp:304 but tolerates
+        // a missing brlan (getAnimTransform returns null on the host when the
+        // arc lacks the animation) instead of dereferencing null.
+        nw4r::lyt::AnimTransform* pTransform = pActor->getLayoutManager()->getAnimTransform(pAnimName);
+
+        if (pTransform == nullptr) {
+            PL_LOG_WARN("game.layout", "getAnimFrameMax: no animation '%s' in layout '%s' (returning 0)",
+                        pAnimName != nullptr ? pAnimName : "?",
+                        pActor->getLayoutManager()->mLayoutName != nullptr ? pActor->getLayoutManager()->mLayoutName : "?");
+            return 0;
+        }
+
+        return static_cast< s16 >(pTransform->GetFrameSize());
     }
 
     void setAnimFrameAndStopAtEnd(LayoutActor* pActor, u32 animLayer) {
@@ -829,11 +1169,20 @@ void deleteEffectAll(LayoutActor*) {}
     }
 
     void stopAnim(LayoutActor* pActor, u32 animLayer) {
-        pActor->getLayoutManager()->getPaneCtrl(nullptr)->stop(animLayer);
+        LayoutPaneCtrl* pCtrl = rootCtrlWithLayerOrWarn(pActor, animLayer, "stopAnim");
+
+        if (pCtrl != nullptr) {
+            pCtrl->stop(animLayer);
+        }
     }
 
     bool isAnimStopped(const LayoutActor* pActor, u32 animLayer) {
-        return pActor->getLayoutManager()->getPaneCtrl(nullptr)->isAnimStopped(animLayer);
+        LayoutPaneCtrl* pCtrl = rootCtrlWithLayerOrWarn(pActor, animLayer, "isAnimStopped");
+
+        // PC_PORT: nothing can be playing on a missing controller/layer —
+        // report "stopped" so nerves waiting on the animation move on
+        // instead of hanging (the vendored code would have crashed here).
+        return pCtrl == nullptr || pCtrl->isAnimStopped(animLayer);
     }
 
     void invalidateParentAnim(LayoutActor* pActor) {

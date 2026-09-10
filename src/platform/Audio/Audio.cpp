@@ -142,11 +142,21 @@ bool init(const Config& config) {
         const char* name = SDL_GetAudioDeviceName(dev);
         g.deviceName = name ? name : "?";
     }
+    // PC_PORT (M9.5.4 v7): SDL3 opens device streams PAUSED
+    // (SDL_OpenAudioDeviceStream docs: "the device starts paused; call
+    // SDL_ResumeAudioStreamDevice to start playback"). Nothing ever resumed
+    // it, so the get-callback never ran and every push() drained into a ring
+    // nobody read — the audio path was "working" by every counter while the
+    // speakers stayed silent.
+    if (!SDL_ResumeAudioStreamDevice(g.stream)) {
+        PL_LOG_WARN("Audio", "SDL_ResumeAudioStreamDevice failed: %s", SDL_GetError());
+    }
+
     g.enabled = true;
     g.virtualMode = false;
     g.status = "enabled";
-    PL_LOG_INFO("Audio", "audio device '%s' opened (game %d Hz → device %d Hz, %d ch)",
-                g.deviceName.c_str(), config.inputFreq, g.deviceFreqOut, g.deviceChannelsOut);
+    PL_LOG_INFO("Audio", "audio device '%s' opened (game %d Hz → device %d Hz, %d ch, ring %d ms)",
+                g.deviceName.c_str(), config.inputFreq, g.deviceFreqOut, g.deviceChannelsOut, config.latencyMs);
     return true;
 }
 
@@ -174,6 +184,7 @@ const char* statusString() { return g.status.c_str(); }
 int deviceFreq() { return g.deviceFreqOut; }
 int deviceChannels() { return g.deviceChannelsOut; }
 const char* deviceName() { return g.deviceName.c_str(); }
+int inputFreq() { return g.initialized ? g.inputFreq : 0; }
 
 void push(const int16_t* interleaved, int frames) {
     if (!g.initialized || interleaved == nullptr || frames <= 0) {
@@ -194,6 +205,7 @@ uint64_t framesPushed() { return g.framesPushed.load(std::memory_order_relaxed);
 uint64_t framesDropped() { return g.framesDropped.load(std::memory_order_relaxed); }
 uint64_t framesConsumed() { return g.framesConsumed.load(std::memory_order_relaxed); }
 int queuedFrames() { return g.initialized ? static_cast<int>(g.ring->available() / 2) : 0; }
+int capacityFrames() { return g.initialized ? static_cast<int>(g.ring->capacity() / 2) : 0; }
 
 void pause() { g.isPaused.store(true, std::memory_order_relaxed); }
 void resume() { g.isPaused.store(false, std::memory_order_relaxed); }

@@ -19,6 +19,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -132,12 +133,16 @@ bool roundTripGray(uint8_t gxFmt, int tol) {
                                               nullptr, 0, 0, dec.data())) {
         return false;
     }
+    // PC_PORT M9.5.4: the intensity-only formats (I4/I8) have no alpha
+    // channel — GX replicates I into A, so the decoded alpha equals the gray.
+    const bool alphaIsIntensity = (gxFmt == GX_TF_I4 || gxFmt == GX_TF_I8);
     for (uint32_t y = 0; y < h; ++y) {
         for (uint32_t x = 0; x < w; ++x) {
             const uint8_t* a = &rgba[(y * w + x) * 4];
             const uint8_t* b = &dec[(y * w + x) * 4];
             for (int c = 0; c < 4; ++c) {
-                if (std::abs(int(a[c]) - int(b[c])) > tol) {
+                const int expected = (c == 3 && alphaIsIntensity) ? a[0] : a[c];
+                if (std::abs(expected - int(b[c])) > tol) {
                     return false;
                 }
             }
@@ -263,11 +268,19 @@ TEST_CASE(gx_copy_sdk_formulas) {
     CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGB565, GX_FALSE, 1), 8192u);
     CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGBA8, GX_FALSE, 1), 16384u);
     CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_CMPR, GX_FALSE, 1), 2048u);
-    // Mipmap chain (maxLod levels 1..8, w/h floored at 1):
-    //   base 16384 + 4096 + 1024 + 256 + 64 + 16 + 4 + 4 + 4 = 21852
-    CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGBA8, GX_TRUE, 8), 21852u);
-    // With maxLod 6 the chain ends at 2x2: 16384+4096+1024+256+64+16+4 = 21844.
-    CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGBA8, GX_TRUE, 6), 21844u);
+    // Mipmap chain, SDK semantics (PC_PORT M9.5.4: verified against
+    // RVL_SDK GXTexture.c): `maxLod` levels INCLUDING the base, each rounded
+    // up to whole 32/64-byte tiles, stopping after the 1x1 level:
+    //   64x64 16384 + 32x32 4096 + 16x16 1024 + 8x8 256 + 4x4 64
+    //   + 2x2 (one 64 B tile) + 1x1 (one 64 B tile) = 21952
+    CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGBA8, GX_TRUE, 8), 21952u);
+    // With maxLod 6 the chain ends at 2x2: 16384+4096+1024+256+64+64 = 21888.
+    CHECK_EQ(GXGetTexBufferSize(64, 64, GX_TF_RGBA8, GX_TRUE, 6), 21888u);
+    // Whole-tile rounding for the 4/8-bit formats (8x8 and 8x4 tiles): the
+    // title's 328x32 I4 strip is 41x4 tiles, PicNintendo 168x24 IA4 21x6.
+    CHECK_EQ(GXGetTexBufferSize(328, 32, GX_TF_I4, GX_FALSE, 1), 41u * 4u * 32u);
+    CHECK_EQ(GXGetTexBufferSize(168, 24, GX_TF_IA4, GX_FALSE, 1), 21u * 6u * 32u);
+    CHECK_EQ(GXGetTexBufferSize(4, 4, GX_TF_I4, GX_FALSE, 1), 32u);
     // Unknown format -> 0.
     CHECK_EQ(GXGetTexBufferSize(64, 64, 0x77, GX_FALSE, 1), 0u);
 }
@@ -425,6 +438,257 @@ TEST_CASE(gx_copy_efb_present_and_readback) {
     r.endFrame();
     GXCompatEndFrame();
 
+    GXCompatShutdown();
+    Platform::Renderer::shutdown();
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+// PC_PORT M9.5.4: title-screen regression (Windows boot.log, v3). Two bugs:
+//   1. the pipeline-cache key changed every frame (VertexAttrib padding bytes
+//      hashed; also GXSetDstAlpha's constant was pipeline state) -> one new
+//      Vulkan pipeline per frame;
+//   2. the per-pipeline descriptor pool was fixed at 64 pipelines -> from the
+//      65th on, every draw logged "bindFragmentTextures: no textured pipeline
+//      bound" / "uploadFragmentUbo: no fragmentUbo pipeline bound".
+// Renders many frames with a per-frame dst-alpha constant (must NOT grow the
+// cache) and then more than 64 genuinely distinct pipeline states (must all
+// draw: the pool grows). Verified with readbacks, not only with counters.
+// NOTE: lavapipe (CI) does not enforce descriptor-pool limits, so there the
+// old code only failed the size checks; strict drivers (NVIDIA/AMD/Intel on
+// Windows — the user's machine) also dropped every draw past pipeline #64.
+TEST_CASE(gx_pipeline_cache_stable_across_frames_and_grows_past_64) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        SKIP("SDL_Init failed (no video subsystem)");
+        return;
+    }
+    SDL_Window* window = SDL_CreateWindow("galaxy-pc-test-plcache", 128, 128,
+                                          SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+    if (!window) {
+        SDL_Quit();
+        SKIP("SDL_CreateWindow (hidden, Vulkan) failed");
+        return;
+    }
+    Platform::RendererConfig cfg{};
+    cfg.appName = "galaxy-pc-tests";
+    cfg.enableValidation = SDL_getenv("PL_GPU_TEST_VALIDATION") != nullptr;
+    cfg.vsync = false;
+    if (!Platform::Renderer::init(window, cfg)) {
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        SKIP("Platform::Renderer init failed (no Vulkan surface/ICD)");
+        return;
+    }
+    Platform::Renderer& r = Platform::Renderer::instance();
+    REQUIRE(r.isInitialized());
+
+    setupGxDraw();
+    GXSetViewport(0.0f, 0.0f, 640.0f, 448.0f, 0.0f, 1.0f);
+    GXSetCopyClear(GXColor{40, 60, 80, 255}, 0xFFFFFF);
+
+    auto* efb = static_cast<Platform::RenderTargetHandle>(Platform::CompatGx::getEfbRenderTarget());
+    auto renderFrame = [&](int frame, bool dstAlphaOn) {
+        REQUIRE(r.beginFrame());
+        GXClear(GX_CLEAR_COLOR);
+        r.beginPass(efb);
+        REQUIRE(r.inPass());
+        // clearEfb-style: the constant alpha changes every frame.
+        GXSetDstAlpha(dstAlphaOn ? GX_TRUE : GX_FALSE, static_cast<u8>(frame & 0xFF));
+        drawFullScreenQuad();
+        r.endPass();
+        GXCopyDisp(nullptr, GX_TRUE);
+        r.endFrame();
+        GXCompatEndFrame();
+    };
+
+    // Phase 1: 40 frames, identical pipeline state except the dst-alpha
+    // constant. The cache must settle after the first frame.
+    renderFrame(0, true);
+    const size_t afterFirst = r.pipelineCacheSize();
+    CHECK(afterFirst >= 1);
+    for (int f = 1; f < 40; ++f) {
+        renderFrame(f, true);
+    }
+    CHECK_EQ(r.pipelineCacheSize(), afterFirst);
+
+    // Phase 2: > 64 distinct pipeline states (blend factor x depth compare x
+    // cull) — each mints a pipeline and each must still draw the red quad.
+    const GXBlendFactor srcs[] = {GX_BL_ONE, GX_BL_SRCALPHA, GX_BL_SRCCLR, GX_BL_DSTALPHA};
+    const GXCompare cmps[] = {GX_ALWAYS, GX_LEQUAL, GX_GEQUAL, GX_NEVER, GX_EQUAL, GX_NEQUAL};
+    const GXCullMode culls[] = {GX_CULL_NONE, GX_CULL_FRONT, GX_CULL_BACK};
+    int distinct = 0;
+    int okDraws = 0;
+    for (GXBlendFactor src : srcs) {
+        for (GXCompare cmp : cmps) {
+            for (GXCullMode cull : culls) {
+                REQUIRE(r.beginFrame());
+                GXClear(GX_CLEAR_COLOR);
+                r.beginPass(efb);
+                // Blend ONE/ZERO with the red opaque quad keeps the result red
+                // for every factor combination used here; depth test is off
+                // (GXSetZMode compare disabled) so the compare op only changes
+                // the key. The quad's winding is fixed by the vertex order
+                // (counter-clockwise = a GX BACK face, see
+                // gx_cull_front_face_is_clockwise), so with GX_CULL_BACK
+                // nothing is drawn — verify accordingly.
+                GXSetBlendMode(GX_BM_BLEND, src, GX_BL_ZERO, GX_LO_CLEAR);
+                GXSetZMode(GX_FALSE, cmp, GX_FALSE);
+                GXSetCullMode(cull);
+                GXSetDstAlpha(GX_TRUE, 0xFF);
+                drawFullScreenQuad();
+                r.endPass();
+                r.flushFrame();
+                std::vector<uint8_t> rgba(4 * 4 * 4, 0);
+                CHECK(r.readRenderTarget(efb, 320, 224, 4, 4, rgba.data()));
+                const bool red = std::abs(int(rgba[0]) - 255) <= 8 && rgba[1] <= 8 && rgba[2] <= 8;
+                const bool clear = std::abs(int(rgba[0]) - 40) <= 4 && std::abs(int(rgba[1]) - 60) <= 4;
+                // Either the quad or the clear color: a dropped draw with the
+                // clear color is only legal for the culled orientation.
+                if (red || clear) {
+                    ++okDraws;
+                }
+                GXCopyDisp(nullptr, GX_TRUE);
+                r.endFrame();
+                GXCompatEndFrame();
+                ++distinct;
+            }
+        }
+    }
+    CHECK_EQ(distinct, 72);
+    CHECK_EQ(okDraws, distinct);
+    // Every state combination is a distinct pipeline: the cache grew by 72
+    // (well past the old 64-pipeline descriptor pool) and no more.
+    CHECK_EQ(r.pipelineCacheSize(), afterFirst + 72);
+
+    // Which orientation is visible: at least the non-culled ones must be red.
+    {
+        REQUIRE(r.beginFrame());
+        GXClear(GX_CLEAR_COLOR);
+        r.beginPass(efb);
+        GXSetBlendMode(GX_BM_BLEND, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+        GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+        GXSetCullMode(GX_CULL_NONE);
+        drawFullScreenQuad();
+        r.endPass();
+        r.flushFrame();
+        std::vector<uint8_t> rgba(4 * 4 * 4, 0);
+        CHECK(r.readRenderTarget(efb, 320, 224, 4, 4, rgba.data()));
+        CHECK(std::abs(int(rgba[0]) - 255) <= 8);
+        CHECK(rgba[1] <= 8);
+        GXCopyDisp(nullptr, GX_TRUE);
+        r.endFrame();
+        GXCompatEndFrame();
+        // Re-using a cached state creates nothing new.
+        CHECK_EQ(r.pipelineCacheSize(), afterFirst + 72);
+    }
+
+    // Restore the state the other GPU tests expect.
+    GXSetBlendMode(GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+    GXSetDstAlpha(GX_FALSE, 0);
+    GXSetCullMode(GX_CULL_NONE);
+
+    GXCompatShutdown();
+    Platform::Renderer::shutdown();
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+// PC_PORT (M9.5.4 v8): GX front faces are CLOCKWISE in screen space (the
+// SDK's MainLoopFramework::clearEfb quad — top-left, top-right, bottom-right,
+// bottom-left — is drawn under GX_CULL_BACK on the console; libogc documents
+// "clockwise = front"; Dolphin's Vulkan backend uses VK_FRONT_FACE_CLOCKWISE).
+// The host renderer's front face is counter-clockwise, so cullModeFromGx swaps
+// FRONT/BACK. Before the swap every J3D material with GX_CULL_BACK rendered
+// inside-out (the title sky dome vanished) and the clear quad was culled.
+// Verified with readbacks: a CW triangle survives GX_CULL_BACK and dies under
+// GX_CULL_FRONT; a CCW one the other way round.
+TEST_CASE(gx_cull_front_face_is_clockwise) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        SKIP("SDL_Init failed (no video subsystem)");
+        return;
+    }
+    SDL_Window* window = SDL_CreateWindow("galaxy-pc-test-cull", 128, 128,
+                                          SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+    if (!window) {
+        SDL_Quit();
+        SKIP("SDL_CreateWindow (hidden, Vulkan) failed");
+        return;
+    }
+    Platform::RendererConfig cfg{};
+    cfg.appName = "galaxy-pc-tests";
+    cfg.enableValidation = SDL_getenv("PL_GPU_TEST_VALIDATION") != nullptr;
+    cfg.vsync = false;
+    if (!Platform::Renderer::init(window, cfg)) {
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        SKIP("Platform::Renderer init failed (no Vulkan surface/ICD)");
+        return;
+    }
+    Platform::Renderer& r = Platform::Renderer::instance();
+    REQUIRE(r.isInitialized());
+
+    setupGxDraw();
+    GXSetViewport(0.0f, 0.0f, 640.0f, 448.0f, 0.0f, 1.0f);
+    GXSetCopyClear(GXColor{40, 60, 80, 255}, 0xFFFFFF);
+    // Identity projection: the array positions are clip-space (GX Y up).
+    const f32 ident[4][4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
+    GXSetProjection(ident, GX_ORTHOGRAPHIC);
+
+    // Bottom-left -> top -> bottom-right: clockwise with Y up (GX front).
+    static const float kCw[3][3] = {{-0.9f, -0.9f, 0.0f}, {0.0f, 0.9f, 0.0f}, {0.9f, -0.9f, 0.0f}};
+    static const float kCcw[3][3] = {{-0.9f, -0.9f, 0.0f}, {0.9f, -0.9f, 0.0f}, {0.0f, 0.9f, 0.0f}};
+    // The clearEfb quad in clip space: TL, TR, BR, BL (clockwise).
+    static const float kClearQuad[4][3] = {{-1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f},
+                                           {1.0f, -1.0f, 0.0f}, {-1.0f, -1.0f, 0.0f}};
+    static const uint8_t kRed4[4][4] = {{255, 0, 0, 255}, {255, 0, 0, 255},
+                                        {255, 0, 0, 255}, {255, 0, 0, 255}};
+    GXSetArray(GX_VA_CLR0, kRed4, sizeof(kRed4[0]));
+
+    auto* efb = static_cast<Platform::RenderTargetHandle>(Platform::CompatGx::getEfbRenderTarget());
+    bool frameOk = true;   // beginFrame/readback failures are reported after the lambda
+    auto drawAndProbe = [&](const void* pos, int stride, GXPrimitive prim, int nverts,
+                            GXCullMode cull) -> bool {
+        if (!r.beginFrame()) {
+            frameOk = false;
+            return false;
+        }
+        GXClear(GX_CLEAR_COLOR);
+        r.beginPass(efb);
+        GXSetArray(GX_VA_POS, pos, static_cast<u8>(stride));
+        GXSetCullMode(cull);
+        GXBegin(prim, GX_VTXFMT0, static_cast<u16>(nverts));
+        for (int i = 0; i < nverts; ++i) {
+            GXPosition1x16(static_cast<u16>(i));
+            GXColor1x8(static_cast<u8>(i));
+        }
+        GXEnd();
+        r.endPass();
+        r.flushFrame();
+        std::vector<uint8_t> rgba(4 * 4 * 4, 0);
+        const bool ok = r.readRenderTarget(efb, 320, 224, 4, 4, rgba.data());
+        GXCopyDisp(nullptr, GX_TRUE);
+        r.endFrame();
+        GXCompatEndFrame();
+        if (!ok) {
+            frameOk = false;
+            return false;
+        }
+        return std::abs(int(rgba[0]) - 255) <= 8 && rgba[1] <= 8 && rgba[2] <= 8;
+    };
+    const int s3 = static_cast<int>(sizeof(kCw[0]));
+    CHECK(drawAndProbe(kCw, s3, GX_TRIANGLES, 3, GX_CULL_NONE));
+    CHECK(drawAndProbe(kCw, s3, GX_TRIANGLES, 3, GX_CULL_BACK));     // front face survives
+    CHECK(!drawAndProbe(kCw, s3, GX_TRIANGLES, 3, GX_CULL_FRONT));   // ...and is culled here
+    CHECK(!drawAndProbe(kCcw, s3, GX_TRIANGLES, 3, GX_CULL_BACK));   // back face culled
+    CHECK(drawAndProbe(kCcw, s3, GX_TRIANGLES, 3, GX_CULL_FRONT));
+    CHECK(!drawAndProbe(kCw, s3, GX_TRIANGLES, 3, GX_CULL_ALL));
+    // The SDK clear quad (GX_QUADS, drawn with GX_CULL_BACK on the console).
+    CHECK(drawAndProbe(kClearQuad, s3, GX_QUADS, 4, GX_CULL_BACK));
+    CHECK(!drawAndProbe(kClearQuad, s3, GX_QUADS, 4, GX_CULL_FRONT));
+    CHECK(frameOk);
+
+    // Restore the state the other GPU tests expect.
+    GXSetCullMode(GX_CULL_NONE);
     GXCompatShutdown();
     Platform::Renderer::shutdown();
     SDL_DestroyWindow(window);

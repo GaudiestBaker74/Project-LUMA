@@ -193,14 +193,18 @@ struct PipelineDesc {
     bool logicOpEnable = false;
     LogicOp logicOp = LogicOp::Copy;
     // GXSetDstAlpha: when enabled, the DSTALPHA/INVDSTALPHA factors read the
-    // constant alpha value instead of the framebuffer alpha.
+    // constant alpha value instead of the framebuffer alpha. The constant
+    // itself is NOT pipeline state (PC_PORT M9.5.4): it is a dynamic blend
+    // constant set per draw with Renderer::setBlendConstantAlpha(), so a
+    // changing alpha never mints a new pipeline.
     bool dstAlphaEnable = false;
-    float dstAlphaValue = 0.0f;
     // GXSetZMode / GXSetZCompLoc.
     bool depthTest = false;            // GXSetZMode(compare_enable, ...)
     bool depthWrite = false;           // GXSetZMode(..., update_enable)
     CompareOp depthCompare = CompareOp::LessEqual;
-    // GXSetCullMode (front faces are CCW).
+    // GXSetCullMode. Front faces are CCW (Vulkan default); GX's front faces
+    // are CW, so the compat layer maps GX_CULL_BACK -> Front and
+    // GX_CULL_FRONT -> Back (GXCompat.cpp cullModeFromGx).
     CullMode cullMode = CullMode::None;
     // GXSetColorUpdate / GXSetAlphaUpdate -> color write masks.
     bool colorWrite = true;
@@ -226,6 +230,12 @@ struct PipelineDesc {
     bool fragmentUbo = false;
 
     bool operator==(const PipelineDesc&) const; // for the cache
+    // Cache key. PC_PORT M9.5.4: hashed FIELD BY FIELD — never the raw bytes
+    // of a struct. VertexAttrib has 3 padding bytes; hashing them mixed in
+    // stack garbage (MSVC leaves the padding of the braced-init-list array
+    // uninitialised), so the key changed every frame at the title screen,
+    // one new Vulkan pipeline per frame, until the descriptor pool ran dry.
+    uint64_t hash() const;
 };
 
 using PipelineHandle = void*;     // owned by the cache (never freed individually)
@@ -362,9 +372,19 @@ public:
 
     // --- pipeline cache -----------------------------------------------------
     // Returns a cached pipeline for `desc` (hash key); identical descs share
-    // one Vulkan pipeline. Shaders are compiled at first use.
+    // one Vulkan pipeline. Shaders are compiled at first use. Returns nullptr
+    // when creation fails (the caller drops the draw) — PC_PORT M9.5.4: that
+    // now includes descriptor-set allocation failures, which used to produce a
+    // pipeline whose every bind logged "no textured pipeline bound".
     PipelineHandle getOrCreatePipeline(const PipelineDesc& desc);
     void bindPipeline(PipelineHandle pipeline);
+    // PC_PORT M9.5.4: GXSetDstAlpha constant (0..1) — the CONSTANT_ALPHA blend
+    // factor value. Dynamic state (VK_DYNAMIC_STATE_BLEND_CONSTANTS): applied
+    // to the currently bound pipeline and remembered for later binds. Call
+    // after bindPipeline(), before draw.
+    void setBlendConstantAlpha(float alpha);
+    // Number of pipelines currently cached (tests / triage).
+    size_t pipelineCacheSize() const { return mPipelineCache.size(); }
 
     // --- uniforms (M4.1: push constants, vertex stage) ----------------------
     // Binds a small per-draw uniform block (≤ 128 bytes). compat/gx packs
@@ -430,7 +450,13 @@ private:
     void* mCommandPool = nullptr;        // VkCommandPool (persistent, M4.1)
     void* mCmd = nullptr;                // VkCommandBuffer (current frame)
     void* mPassImageView = nullptr;      // VkImageView of the acquired swapchain image
-    void* mDescriptorPool = nullptr;     // VkDescriptorPool (M4.2, textured pipelines)
+    void* mDescriptorPool = nullptr;     // VkDescriptorPool (M4.2, textured pipelines):
+                                         // the CURRENT pool for per-pipeline sets
+    std::vector<void*> mDescriptorPools; // PC_PORT M9.5.4: every pool created so far
+                                         // (a fresh one is added when the current is
+                                         // exhausted; all destroyed at shutdown)
+    float mBlendConstAlpha = 0.0f;       // PC_PORT M9.5.4: dynamic blend constant
+    bool mPipelineCacheGrowthWarned = false; // one-shot "cache growing" warning
     void* mFrameTexSetPool = nullptr;    // VkDescriptorPool (M9.5.3c: per-draw texture
                                          // sets; reset in endFrame after the frame fence)
     // M5.4 (TEV): per-frame fragment-UBO arena (host-visible, one region per

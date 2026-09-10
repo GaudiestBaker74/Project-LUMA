@@ -37,6 +37,7 @@ const char* statusString();
 int deviceFreq();     // actual device output rate (0 when virtual)
 int deviceChannels();
 const char* deviceName();
+int inputFreq();      // rate the producers push at (Config::inputFreq)
 
 // Producer side (called by the audio/ai thread; non-blocking):
 // appends interleaved s16 frames (inputFreq Hz, stereo). Frames beyond the
@@ -46,7 +47,8 @@ void push(const int16_t* interleaved, int frames);
 uint64_t framesPushed();
 uint64_t framesDropped();
 uint64_t framesConsumed();
-int queuedFrames(); // s16 samples in the ring
+int queuedFrames(); // stereo frames currently in the ring
+int capacityFrames(); // ring capacity in stereo frames (0 before init)
 
 void pause();
 void resume();

@@ -55,9 +55,11 @@
 #include "Game/Util/SystemUtil.hpp"         // MR::startFunctionAsyncExecute decls
 #include "Game/NameObj/NameObjHolder.hpp"   // NameObjHolder::add (M9.4 tree)
 #include <JSystem/JKernel/JKRAram.hpp>
+#include <JSystem/JKernel/JKRMemArchive.hpp>   // v7: Font.arc (GameSystemFontHolder)
 #include <JSystem/JKernel/JKRUnitHeap.hpp>
 #include <JSystem/JKernel/JKRSolidHeap.hpp>
 #include <JSystem/JUtility/JUTXfb.hpp>
+#include <nw4r/ut/ResFont.h>                   // v7: the brfnt fonts of Font.arc
 #include <nw4r/lyt/init.h>
 #include <nw4r/lyt/layout.h>
 #include <revolution.h>
@@ -206,20 +208,127 @@ GameSystemFontHolder::GameSystemFontHolder()
 }
 
 nw4r::ut::Font* GameSystemFontHolder::getMessageFont() const {
-    // PC_PORT member is nw4r::ut::ResFont* (incomplete from this header); cast
-    // via void* — the real font is null until M9.5 anyway.
-    return static_cast< nw4r::ut::Font* >(static_cast< void* >(mMessageFont));
+    // Upstream GameSystemFontHolder.cpp: the embedded (error-window) font wins
+    // while it exists, then the Font.arc message font.
+    if (mEmbeddedMessageFont != nullptr) {
+        return mEmbeddedMessageFont;
+    }
+
+    return mMessageFont;
 }
 
 void GameSystemFontHolder::createFontFromEmbeddedData() {
-    // TODO(PC_PORT, M9.5): ResFont over the embedded font image.
+    // TODO(PC_PORT, M9.5): ResFont over the embedded font image
+    // (ErrorMessageArchive.arc → <Lang>/LayoutData/EmbeddedFont.arc). Only the
+    // error window needs it; the title/menus use createFontFromFile().
     mEmbeddedMessageFont = nullptr;
 }
 
+namespace {
+    // PC_PORT (M9.5.4 v7): one ResFont over a brfnt of the mounted Font.arc.
+    // Same steps as upstream (getResource with the leading '/', which resolves
+    // from the archive root; SetResource; SetAlternateChar('?')), plus the
+    // null checks the console never needed: a missing/foreign brfnt leaves
+    // that slot empty and logs instead of faulting in SetResource.
+    nw4r::ut::ResFont* createFontFromArchive(JKRMemArchive* pArchive, const char* pResPath) {
+        void* pBrfnt = pArchive->getResource(pResPath);
+
+        if (pBrfnt == nullptr) {
+            PL_LOG_WARN("compat.font", "Font.arc: '%s' not found (text using it will not draw)", pResPath);
+            return nullptr;
+        }
+
+        // Plain `new` → host allocator (JKRHeap.cpp operator new policy). The
+        // fonts live for the whole process, exactly like the console ones.
+        nw4r::ut::ResFont* pFont = new nw4r::ut::ResFont();
+
+        if (!pFont->SetResource(pBrfnt)) {
+            PL_LOG_WARN("compat.font", "Font.arc: '%s' is not a usable brfnt (text using it will not draw)", pResPath);
+            delete pFont;
+            return nullptr;
+        }
+
+        pFont->SetAlternateChar('?');
+        return pFont;
+    }
+}  // namespace
+
 void GameSystemFontHolder::createFontFromFile() {
-    // TODO(PC_PORT, M9.5): ResFont over the staged FontFile (JKRMemArchive).
-    mMessageFont = nullptr;
+    // PC_PORT (M9.5.4 v7): the real thing. The console receives Font.arc from
+    // the stationed-archive loader (MR::receiveArchive); the host loader stub
+    // is "instantly done", so the arc is mounted here, synchronously, through
+    // the same MR::mountArchive the layouts use. JKRArchive::mount allocates
+    // the archive image from the current heap, which at this point is the
+    // stationed heap (persists across scene transitions — the fonts must
+    // outlive every scene, like on the console).
+    //
+    // Why this matters: LayoutHolder::GetFont() resolves the brlyt font names
+    // ("MessageFont26.brfnt", ...) against this holder. With a null holder the
+    // PressStart textboxes had no font and TextBox::DrawSelf bailed out — the
+    // "Press A+B" that never showed up on the title screen.
+    static const char* const cFontArcPath = "/LayoutData/Font.arc";
+
+    if (!MR::isFileExist(cFontArcPath, false)) {
+        PL_LOG_WARN("compat.font", "%s missing from the assets tree: layout text will not draw", cFontArcPath);
+        return;
+    }
+
+    JKRMemArchive* pArchive = MR::mountArchive(cFontArcPath, nullptr);
+
+    if (pArchive == nullptr) {
+        PL_LOG_WARN("compat.font", "cannot mount %s: layout text will not draw", cFontArcPath);
+        return;
+    }
+
+    _4 = pArchive;  // kept mounted for the process lifetime (the fonts reference its data)
+
+    mMessageFont = createFontFromArchive(pArchive, "/MessageFont26.brfnt");
+    mPictureFont = createFontFromArchive(pArchive, "/PictureFont.brfnt");
+    mMenuFont = createFontFromArchive(pArchive, "/MenuFont64.brfnt");
+    mNumberFont = createFontFromArchive(pArchive, "/NumberFont.brfnt");
+    mCinemaFont = createFontFromArchive(pArchive, "/CinemaFont26.brfnt");
+
+    PL_LOG_INFO("compat.font", "Font.arc mounted: message=%s picture=%s menu=%s number=%s cinema=%s",
+                mMessageFont != nullptr ? "ok" : "MISSING", mPictureFont != nullptr ? "ok" : "MISSING",
+                mMenuFont != nullptr ? "ok" : "MISSING", mNumberFont != nullptr ? "ok" : "MISSING",
+                mCinemaFont != nullptr ? "ok" : "MISSING");
 }
+
+// Game/Util/SystemUtil.cpp font getters (that file is not compiled on the
+// host; these are verbatim except for the null-safety of the holder itself).
+namespace MR {
+    namespace {
+        GameSystemFontHolder* getFontHolder() {
+            GameSystem* pSystem = SingletonHolder< GameSystem >::get();
+            return pSystem != nullptr ? pSystem->mFontHolder : nullptr;
+        }
+    }  // namespace
+
+    nw4r::ut::Font* getFontOnCurrentLanguage() {
+        GameSystemFontHolder* pHolder = getFontHolder();
+        return pHolder != nullptr ? pHolder->getMessageFont() : nullptr;
+    }
+
+    nw4r::ut::Font* getPictureFontNW4R() {
+        GameSystemFontHolder* pHolder = getFontHolder();
+        return pHolder != nullptr ? pHolder->mPictureFont : nullptr;
+    }
+
+    nw4r::ut::Font* getMenuFontNW4R() {
+        GameSystemFontHolder* pHolder = getFontHolder();
+        return pHolder != nullptr ? pHolder->mMenuFont : nullptr;
+    }
+
+    nw4r::ut::Font* getNumberFontNW4R() {
+        GameSystemFontHolder* pHolder = getFontHolder();
+        return pHolder != nullptr ? pHolder->mNumberFont : nullptr;
+    }
+
+    nw4r::ut::Font* getCinemaFontNW4R() {
+        GameSystemFontHolder* pHolder = getFontHolder();
+        return pHolder != nullptr ? pHolder->mCinemaFont : nullptr;
+    }
+}  // namespace MR
 
 // =============================================================================
 // GameSequenceDirector (real: M9.4 — sequence functions + save data)
@@ -261,11 +370,36 @@ void GameSequenceDirector::executeJustBeforeSave() {}
 GameSystemStationedArchiveLoader::GameSystemStationedArchiveLoader()
     : NerveExecutor("GameSystemStationedArchiveLoader"), mHeapHolder(nullptr), _C(false) {
     // TODO(PC_PORT, M9.4): loads the staged archives for real (system/player/
-    // others over VFS + JKRMemArchive). Until then: "done".
+    // others over VFS + JKRMemArchive). Until then: "done" — except for the
+    // one step the title screen needs (see update()).
 }
 
-void GameSystemStationedArchiveLoader::update() {}
-bool GameSystemStationedArchiveLoader::isDone() const { return true; }
+void GameSystemStationedArchiveLoader::update() {
+    // PC_PORT (M9.5.4 v7): the console loader ends in exeInitializeGameData():
+    //   GameSystemFunction::initAfterStationedResourceLoaded();  // fonts, wipes, scene inits
+    //   HeapMemoryWatcher::setCurrentHeapToGameHeap(); adjustStationedHeaps();
+    //   GameSystemFunction::setSceneNameObjHolderToNameObjRegister();
+    // The host loader skipped all of it, so GameSystemFontHolder::
+    // createFontFromFile() never ran, LayoutHolder::GetFont() had nothing to
+    // hand out and every layout text box (the title's "Press A+B") stayed
+    // invisible. Run the first line once, on the first update after the
+    // stationed heap became current (GameSystem::startToLoadSystemArchive →
+    // LoadStationedArchive nerve → this): the same heap the console uses for
+    // Font.arc. The heap/holder lines stay out: the host keeps the stationed
+    // heap current for now (the scene heaps are not carved out on the host).
+    if (_C) {
+        return;
+    }
+    _C = true;
+
+    GameSystem* pSystem = SingletonHolder< GameSystem >::get();
+    if (pSystem != nullptr && pSystem->isExecuteLoadSystemArchive()) {
+        PL_LOG_INFO("boot", "stationed archives: host loader — initAfterStationedResourceLoaded (Font.arc)");
+        GameSystemFunction::initAfterStationedResourceLoaded();
+    }
+}
+
+bool GameSystemStationedArchiveLoader::isDone() const { return _C; }
 bool GameSystemStationedArchiveLoader::isPreparedReset() const { return false; }
 void GameSystemStationedArchiveLoader::prepareReset() {}
 void GameSystemStationedArchiveLoader::requestChangeArchivePlayer(bool) {}
@@ -684,10 +818,57 @@ void zeroMemory(void* pDst, u32 size) {
 }
 
 // SystemUtil.cpp additions (M9.4: the real scene controller's transition
-// machinery). The boot path only needs presence + "no-op/empty" semantics.
+// machinery).
+//
+// PC_PORT (M9.5.4) — ROOT CAUSE of the "crash when the title screen is about
+// to load" (TitleSequenceProduct::appear on a dead `this`, called from
+// TitleScene::exeTitle on the main thread right after "TitleSequenceProduct
+// created"):
+//
+// The console SystemUtil.cpp implements this as
+//     if (isEndFunctionAsyncExecute(name)) { waitForEndFunctionAsyncExecute(name); return true; }
+// i.e. it POLLS the job and, once finished, RETIRES it (waitForEnd removes the
+// FunctionAsyncExecInfo from the executor's list). The M9.4 host version only
+// polled — it never retired the job, so every finished job stayed in
+// FunctionAsyncExecutor::mHolders forever. Scene transitions reuse the same
+// job names ("シーン破棄" = destroy scene, "シーン初期化" = initialize scene);
+// FunctionAsyncExecutor::isEnd() answers for the FIRST entry with that name,
+// and the first "シーン初期化" entry is the LOGO's init, which finished ages
+// ago. Consequence at the Logo -> Title transition:
+//
+//   * exeInitializeScene step 0 starts initializeScene("Title") on a worker
+//     and asks tryEnd(...) in the same frame; the stale Logo entry says
+//     "done" -> the controller jumps to InvalidateSystemWipe/ReadyToStart
+//     while the worker is still running (or hasn't even started).
+//   * GameSequenceDirector::update sees isReadyToStartScene() and calls
+//     startScene() -> Normal, and the same frame updateScene() calls
+//     mScene->update() on the Title scene. On the main thread `mScene` may
+//     be null (Intermission runs instead — harmless) or point at a
+//     TitleScene whose init() is mid-flight: mTitle is still null or the
+//     object is being built by the worker -> TitleScene::exeTitle derefs
+//     mTitle -> TitleSequenceProduct::appear+0x0 reading garbage `this`.
+//     Whether this reads null, a half-built object or a torn pointer is
+//     purely a matter of scheduling — which is why the Linux (glibc/Xvfb)
+//     runs survived and MSVC/Windows died every time.
+//
+// Fix: restore the console semantics (poll, then retire). Retiring frees the
+// per-job info through the executor's own heaps (waitForEnd) so the entries
+// no longer accumulate either. The same stale-entry bug also masked the
+// destroy-scene wait ("シーン破棄"), so scene teardown could overlap the next
+// scene's init — fixed by the same change.
 bool tryEndFunctionAsyncExecute(const char* pName) {
     FunctionAsyncExecutor* pExecutor = SingletonHolder< GameSystem >::get()->mObjHolder->mFunctionAsyncExecutor;
-    return pExecutor != nullptr && pExecutor->isEnd(pName);
+
+    if (pExecutor == nullptr) {
+        return false;
+    }
+
+    if (!pExecutor->isEnd(pName)) {
+        return false;
+    }
+
+    pExecutor->waitForEnd(pName);
+    return true;
 }
 
 void setRandomSeedFromStageName() {

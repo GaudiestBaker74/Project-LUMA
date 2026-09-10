@@ -7,6 +7,8 @@
 #include "platform/Renderer/Format.h"
 #include "platform/Renderer/Renderer.h"
 
+#include <cstring>
+
 TEST_CASE(renderer_vertex_format_mapping) {
     using VF = Platform::VertexFormat;
 
@@ -59,6 +61,70 @@ TEST_CASE(renderer_pipeline_desc_equality) {
     b = a;
     b.vertexLayout.attribs[1].offset = 12;
     CHECK(!(a == b));
+}
+
+// PC_PORT M9.5.4: the pipeline-cache key must depend only on the pipeline
+// state — never on struct padding or per-draw values. The old FNV mixed the
+// raw 12 bytes of each VertexAttrib (3 of them padding): on MSVC the padding
+// of the per-draw braced-init attribute list held stack garbage, so the title
+// screen minted one Vulkan pipeline per frame (boot.log `pipeline cache insert
+// #10..#1108`) until the descriptor pool ran dry and every draw failed with
+// "no textured pipeline bound".
+TEST_CASE(renderer_pipeline_desc_hash_ignores_padding_and_dynamic_state) {
+    using VF = Platform::VertexFormat;
+
+    Platform::PipelineDesc a;
+    a.vertexLayout.stride = 20;
+    a.vertexLayout.attribs = {{0, 0, VF::R32G32B32_SFLOAT}, {1, 12, VF::R32G32_SFLOAT}};
+    a.textureCount = 8;
+    a.fragmentUbo = true;
+
+    // b: identical fields, but every byte of the attribute storage (padding
+    // included) poisoned first — exactly what an uninitialised stack
+    // initializer_list array looks like on MSVC. VertexAttrib is an
+    // implicit-lifetime aggregate, so memset + member stores are well-defined.
+    Platform::PipelineDesc b = a;
+    static_assert(sizeof(Platform::VertexAttrib) > 2 * sizeof(uint32_t) + sizeof(VF),
+                  "VertexAttrib has no padding any more — adapt this test");
+    std::memset(b.vertexLayout.attribs.data(), 0xA5,
+                b.vertexLayout.attribs.size() * sizeof(Platform::VertexAttrib));
+    for (size_t i = 0; i < a.vertexLayout.attribs.size(); ++i) {
+        b.vertexLayout.attribs[i].location = a.vertexLayout.attribs[i].location;
+        b.vertexLayout.attribs[i].offset = a.vertexLayout.attribs[i].offset;
+        b.vertexLayout.attribs[i].format = a.vertexLayout.attribs[i].format;
+    }
+    // (defaulted operator== compares fields only — the descs compare equal)
+    CHECK(a == b);
+    CHECK_EQ(a.hash(), b.hash());
+
+    // Real state changes DO change the key.
+    Platform::PipelineDesc c = a;
+    c.vertexLayout.attribs[1].offset = 16;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.vertexLayout.attribs.pop_back();
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.blendEnable = true;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.dstAlphaEnable = true;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.depthCompare = Platform::CompareOp::Always;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.cullMode = Platform::CullMode::Back;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.textureCount = 0;
+    CHECK(a.hash() != c.hash());
+    c = a;
+    c.depthFormat = Platform::TextureFormat::D24_UNORM_S8_UINT;
+    CHECK(a.hash() != c.hash());
+
+    // The key is a pure function of the fields (stable across calls).
+    CHECK_EQ(a.hash(), a.hash());
 }
 
 TEST_CASE(renderer_texture_format_mapping) {

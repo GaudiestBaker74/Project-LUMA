@@ -1,0 +1,72 @@
+#pragma once
+// =============================================================================
+// compat/j3d — TitleSky: host stand-in for the FileSelectSky actor
+// (M9.5.4 v8).
+//
+// The console title screen draws the "CometNearOrbitSky" J3D model (blue
+// cloud dome + cyan sea band) behind the logo layouts. FileSelectSky
+// (Game/Map/FileSelectSky.cpp) is a LiveActor: it needs the ModelManager,
+// the draw-buffer holder, the effect keeper and the nerve machinery, none of
+// which are ported. This class reproduces just what the actor does:
+//   * mounts /ObjectData/CometNearOrbitSky.arc and loads the bmd/bdl + the
+//     "CometNearOrbitSky" btk/bck (MR::initModelManagerWithAnm +
+//     startBck/startBtk),
+//   * scale 0.8, base matrix = inverse(rotY(angleY) * rotX(angleX)) with
+//     angleY += 0.001 rad/frame and angleX = (1 - cos(8·step·π/3000)) ·
+//     1.5 · π/4 (exeWait, JMACosShort on s16 angle units),
+//   * ProjmapEffectMtxSetter::updateMtxUseBaseMtx → effect matrix =
+//     inverse(base matrix),
+//   * the title camera of FileSelectCameraController::exeTitle (position
+//     (0, 15000, 15000) looking at (0, 15800, 0), up +Y, fovy 60) with
+//     CameraContext's near/far 100/800000 — the sky ignores the camera
+//     translation (Sky actors follow the camera).
+//
+// draw() sets the whole GX state it needs and leaves the layout pass to
+// restore its own (TitleScene::draw calls MR::drawInitFor2DModel afterwards).
+// =============================================================================
+
+#include <revolution/types.h>
+#include <revolution/mtx.h>
+
+#include <memory>
+#include <string>
+
+namespace compat::j3d {
+
+class BmdRenderer;
+
+class TitleSky {
+public:
+    TitleSky();
+    ~TitleSky();
+
+    /// Mounts the archive and loads the model/animations. Returns false (and
+    /// logs once) when the archive is missing; draw() is then a no-op.
+    bool init(const char* archivePath = "/ObjectData/CometNearOrbitSky.arc");
+    bool loaded() const { return mLoaded; }
+
+    /// One game frame (60 Hz): FileSelectSky::exeWait + calcAnim.
+    void update();
+    /// Draws the dome for the current frame (GX state fully set here).
+    void draw();
+
+    /// Diagnostics/tests.
+    f32 angleX() const { return mAngleX; }
+    f32 angleY() const { return mAngleY; }
+    const BmdRenderer* renderer() const { return mRenderer.get(); }
+    BmdRenderer* renderer() { return mRenderer.get(); }
+    /// Computes the base matrix for the given step/angles (FileSelectSky::exeWait).
+    static void calcBaseMtx(f32 angleX, f32 angleY, Mtx out);
+    static f32 calcAngleX(u32 step);
+
+private:
+    std::unique_ptr<BmdRenderer> mRenderer;
+    bool mLoaded = false;
+    u32 mStep = 0;
+    f32 mAngleX = 0.0f;
+    f32 mAngleY = 0.0f;
+    Mtx mBaseMtx;
+    std::string mModelName;
+};
+
+} // namespace compat::j3d

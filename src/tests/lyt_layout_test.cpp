@@ -25,6 +25,7 @@
 
 #include "tests/test_runner.h"
 
+#include "compat/game/LanguageCompat.h"
 #include "compat/gx/GXCompat.h"
 #include "compat/gx/TplHost.h"
 #include "compat/nw4r/LytHost.h"
@@ -32,16 +33,25 @@
 
 #include <SDL3/SDL.h>
 
+#include <nw4r/lyt/common.h>
 #include <nw4r/lyt/drawInfo.h>
+#include <nw4r/lyt/group.h>
 #include <nw4r/lyt/layout.h>
+#include <nw4r/lyt/material.h>
 #include <nw4r/lyt/pane.h>
 #include <nw4r/lyt/resourceAccessor.h>
 #include <nw4r/lyt/textBox.h>
+#include <nw4r/lyt/window.h>
 #include <nw4r/ut/Font.h>
 #include <nw4r/ut/ResFont.h>
+#include <nw4r/ut/TextWriterBase.h>
 
 #include <revolution/mem/allocator.h>
 #include <revolution/mtx.h>
+
+#include "Game/Screen/LayoutActor.hpp"
+#include "Game/Screen/LayoutManager.hpp"
+#include "Game/System/Language.hpp"
 
 #include <JSystem/JKernel/JKRExpHeap.hpp>
 #include <JSystem/JKernel/JKRHeap.hpp>
@@ -50,6 +60,7 @@
 #include <memory>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -647,10 +658,20 @@ TEST_CASE(lyt_swapper_converts_all_sections) {
     CHECK_EQ(get32(p + lyt.mat1 + 12), static_cast<u32>(16));
     const u8* m = p + lyt.material;
     CHECK(std::memcmp(m, "mat_test", 8) == 0);
-    // tevCols are swapped as 32-bit words, so each pair of s16s lands
-    // word-reversed in memory: [20]=s16[1], [22]=s16[0].
-    CHECK_EQ(static_cast<int>(get16(m + 20)), 201);
-    CHECK_EQ(static_cast<int>(get16(m + 22)), 200);
+    // tevCols are 12 consecutive s16 (3 x GXColorS10 r,g,b,a) and must be
+    // swapped as 16-bit units so that every register keeps its channel order.
+    // (v6 regression: they were swapped as 32-bit words, landing r<->g and
+    // b<->a reversed -> GXSetTevColorS10 got permuted registers and the title
+    // logo's I4 panes drew opaque yellow boxes.)
+    CHECK_EQ(static_cast<int>(get16(m + 20)), 200);  // reg0.r
+    CHECK_EQ(static_cast<int>(get16(m + 22)), 201);  // reg0.g
+    CHECK_EQ(static_cast<int>(get16(m + 24)), 202);  // reg0.b
+    CHECK_EQ(static_cast<int>(get16(m + 26)), 203);  // reg0.a
+    CHECK_EQ(static_cast<int>(get16(m + 42)), 203);  // reg2.a (last s16)
+    // tevKCols are GXColor bytes: untouched by the swapper.
+    CHECK_EQ(static_cast<int>(m[44]), 0);
+    CHECK_EQ(static_cast<int>(m[45]), 1);
+    CHECK_EQ(static_cast<int>(m[59]), 15);
     CHECK_EQ(get32(m + 60), static_cast<u32>(0x00040111));
     CHECK_EQ(get16(m + 64), static_cast<u16>(1));  // TexMap.texIdx
     CHECK_NEAR(getF32(m + 68), 3.0f, 1e-6);        // TexSRT.translate.x
@@ -826,6 +847,22 @@ TEST_CASE(lyt_build_full_chain_pic_txt_wnd) {
     CHECK_EQ(static_cast<int>(texMap->GetTexelFormat()), 4);  // GX_TF_RGB565
     CHECK(texMap->mImage != nullptr);
 
+    // v6: the TEV colour registers reach the Material in channel order
+    // (the builder writes r,g,b,a = 200..203 for every register).
+    {
+        const GXColorS10 reg0 = pic->mpMaterial->GetTevColor(0);
+        const GXColorS10 reg2 = pic->mpMaterial->GetTevColor(2);
+        CHECK_EQ(static_cast<int>(reg0.r), 200);
+        CHECK_EQ(static_cast<int>(reg0.g), 201);
+        CHECK_EQ(static_cast<int>(reg0.b), 202);
+        CHECK_EQ(static_cast<int>(reg0.a), 203);
+        CHECK_EQ(static_cast<int>(reg2.a), 203);
+        // tevKCols are byte colours: the builder wrote 0..15.
+        CHECK_EQ(static_cast<int>(pic->mpMaterial->mTevKCols[0].r), 0);
+        CHECK_EQ(static_cast<int>(pic->mpMaterial->mTevKCols[0].a), 3);
+        CHECK_EQ(static_cast<int>(pic->mpMaterial->mTevKCols[3].a), 15);
+    }
+
     // Offset semantics pinned: the material's texIdx=1 must have asked for
     // the txl1's SECOND declared name ("tex1.tpl"), resolved relative to the
     // entry array (M9.5.3c — the old test blob used the wrong base).
@@ -947,6 +984,249 @@ TEST_CASE(lyt_build_survives_out_of_range_texidx) {
     CHECK(askedEmpty);
 }
 
+// ---------------------------------------------------------------------------
+// M9.5.4 hardening regression: two more Build-time faults only reachable with
+// real (or damaged) arcs — a textbox whose materialIdx is outside mat1
+// (upstream indexes the offset table blindly and the Material ctor then reads
+// a wild pointer) and a named group block that appears BEFORE any pane (the
+// vendored Group ctor calls pRootPane->FindPaneByName on a null root). Both
+// must degrade (no material / group skipped) and Build must complete.
+// ---------------------------------------------------------------------------
+TEST_CASE(lyt_build_survives_bad_textbox_material_and_early_group) {
+    BrlytBuilder b;
+    const u32 lyt1 = b.beginBlock("lyt1");
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putF32(b.raw(), 640.0f);
+    putF32(b.raw(), 480.0f);
+    b.endBlock(lyt1);
+
+    // mat1: exactly ONE material (no texmaps, 1 tev stage).
+    const u32 mat1 = b.beginBlock("mat1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 16);
+    putFixedStr(b.raw(), "mat_only", 20);
+    for (int i = 0; i < 3; ++i) {
+        for (int c = 0; c < 4; ++c) {
+            put16(b.raw(), 255);
+        }
+    }
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), 0);
+    }
+    put32(b.raw(), 0x00040000);  // tevStage 1<<18, no texmaps
+    const u8 tevStage[16] = {0, 4, 0, 0, 0xFF, 0x8F, 0x00, 0x61, 0x77, 0x47, 0x00, 0x81, 0, 0, 0, 0};
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), tevStage[i]);
+    }
+    b.endBlock(mat1);
+
+    // grp1 root + grs1 + a NAMED group before any pane exists (malformed on
+    // purpose): without the guard Build hands a null root pane to the group
+    // (undefined behaviour; not reliably a crash on every build).
+    const u32 grpRootEarly = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "RootGroup", 16);
+    put16(b.raw(), 0); put16(b.raw(), 0);
+    b.endBlock(grpRootEarly);
+    const u32 grs1Early = b.beginBlock("grs1");
+    b.endBlock(grs1Early);
+    const u32 grpEarly = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "EarlyGroup", 16);
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    putFixedStr(b.raw(), "textbox", 16);  // pane name entry (16 B)
+    b.endBlock(grpEarly);
+    const u32 gre1Early = b.beginBlock("gre1");
+    b.endBlock(gre1Early);
+
+    const u32 rootPan = b.beginBlock("pan1");
+    putPaneBody(b.raw(), "root_pane", 0, 0, 0, 1, 1, 640, 480);
+    b.endBlock(rootPan);
+    const u32 pas1 = b.beginBlock("pas1");
+    b.endBlock(pas1);
+
+    // txt1 with materialIdx 5 (mat1 holds 1) and no fnl1 at all.
+    const u32 txt1 = b.beginBlock("txt1");
+    putPaneBody(b.raw(), "textbox", 0, 0, 0, 1, 1, 200, 30);
+    put16(b.raw(), 64);  // textBufBytes
+    put16(b.raw(), 8);   // textStrBytes
+    put16(b.raw(), 5);   // materialIdx — OUT OF RANGE
+    put16(b.raw(), 0);   // fontIdx (no fnl1 → guarded already)
+    put8(b.raw(), 0);    // textPosition
+    put8(b.raw(), 0);    // textAlignment
+    put8(b.raw(), 0); put8(b.raw(), 0);
+    put32(b.raw(), 116);  // textStrOffset (block-relative)
+    put32(b.raw(), 0xFFFFFFFF);  // textCols[0]
+    put32(b.raw(), 0x80808080);  // textCols[1]
+    putF32(b.raw(), 16.0f);      // fontSize.w
+    putF32(b.raw(), 16.0f);      // fontSize.h
+    putF32(b.raw(), 0.5f);       // charSpace
+    putF32(b.raw(), 2.0f);       // lineSpace
+    const u8 hi[] = {0x00, 'H', 0x00, 'i', 0x00, '!', 0x00, 0x00};  // UTF-16BE
+    putBytes(b.raw(), hi, sizeof(hi));
+    b.endBlock(txt1);
+
+    const u32 pae1 = b.beginBlock("pae1");
+    b.endBlock(pae1);
+
+    std::vector<u8> file = b.finish();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file.data(), static_cast<u32>(file.size())));
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+    StubResourceAccessor accessor;
+
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(file.data(), &accessor));  // regression guard (UB without the two patches)
+    REQUIRE(layout.mpRootPane != nullptr);
+
+    nw4r::lyt::Pane* pText = layout.mpRootPane->FindPaneByName("textbox", true);
+    REQUIRE(pText != nullptr);
+    CHECK(pText->GetMaterial() == nullptr);  // degraded: no material bound
+
+    // The early named group was skipped; the container itself exists.
+    REQUIRE(layout.GetGroupContainer() != nullptr);
+    CHECK(layout.GetGroupContainer()->FindGroupByName("EarlyGroup") == nullptr);
+
+    // Drawing the degraded textbox must be a no-op, not a fault.
+    nw4r::lyt::DrawInfo drawInfo;
+    layout.CalculateMtx(drawInfo);
+    layout.Draw(drawInfo);
+}
+
+// ---------------------------------------------------------------------------
+// M9.5.4 hardening regression (Picture/Window): the same materialIdx faults
+// as the textbox case, for the two pane kinds the real Title arcs are made
+// of. Layout: a pic1 that appears BEFORE mat1 (pMaterialList still null),
+// a pic1 with materialIdx 7 (mat1 holds 1), and a wnd1 whose content index
+// is valid but whose single frame points at material 9. All three must
+// degrade (no material / no frames) and Build + Draw must complete.
+// ---------------------------------------------------------------------------
+TEST_CASE(lyt_build_survives_bad_picture_and_window_material) {
+    BrlytBuilder b;
+    const u32 lyt1 = b.beginBlock("lyt1");
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putF32(b.raw(), 640.0f);
+    putF32(b.raw(), 480.0f);
+    b.endBlock(lyt1);
+
+    // Root pane + a picture BEFORE mat1 exists (malformed on purpose).
+    const u32 rootPan = b.beginBlock("pan1");
+    putPaneBody(b.raw(), "root_pane", 0, 0, 0, 1, 1, 640, 480);
+    b.endBlock(rootPan);
+    const u32 pas1 = b.beginBlock("pas1");
+    b.endBlock(pas1);
+
+    const u32 picEarly = b.beginBlock("pic1");
+    putPaneBody(b.raw(), "pic_early", 0, 0, 0, 1, 1, 64, 64);
+    for (int i = 0; i < 4; ++i) {
+        put32(b.raw(), 0xFFFFFFFF);  // vtxCols
+    }
+    put16(b.raw(), 0);  // materialIdx 0 — but there is no mat1 yet
+    put8(b.raw(), 0);   // texCoordNum
+    put8(b.raw(), 0);
+    b.endBlock(picEarly);
+
+    // mat1: exactly ONE material (no texmaps, 1 tev stage).
+    const u32 mat1 = b.beginBlock("mat1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 16);
+    putFixedStr(b.raw(), "mat_only", 20);
+    for (int i = 0; i < 3; ++i) {
+        for (int c = 0; c < 4; ++c) {
+            put16(b.raw(), 255);
+        }
+    }
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), 0);
+    }
+    put32(b.raw(), 0x00040000);  // tevStage 1<<18, no texmaps
+    const u8 tevStage[16] = {0, 4, 0, 0, 0xFF, 0x8F, 0x00, 0x61, 0x77, 0x47, 0x00, 0x81, 0, 0, 0, 0};
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), tevStage[i]);
+    }
+    b.endBlock(mat1);
+
+    // pic1 with materialIdx 7 (mat1 holds 1).
+    const u32 picBad = b.beginBlock("pic1");
+    putPaneBody(b.raw(), "pic_bad", 0, 0, 0, 1, 1, 64, 64);
+    for (int i = 0; i < 4; ++i) {
+        put32(b.raw(), 0xFFFFFFFF);
+    }
+    put16(b.raw(), 7);  // materialIdx — OUT OF RANGE
+    put8(b.raw(), 0);
+    put8(b.raw(), 0);
+    b.endBlock(picBad);
+
+    // pic1 that is fine (materialIdx 0) — the guard must not reject it.
+    const u32 picOk = b.beginBlock("pic1");
+    putPaneBody(b.raw(), "pic_ok", 0, 0, 0, 1, 1, 64, 64);
+    for (int i = 0; i < 4; ++i) {
+        put32(b.raw(), 0xFFFFFFFF);
+    }
+    put16(b.raw(), 0);
+    put8(b.raw(), 0);
+    put8(b.raw(), 0);
+    b.endBlock(picOk);
+
+    // wnd1: content material 0 (valid), 1 frame @108 pointing at material 9.
+    // Same geometry as makeRichBrlyt: frame table @104, frame @108,
+    // content @112 (WindowContent 20 B, no texcoords).
+    const u32 wnd1 = b.beginBlock("wnd1");
+    putPaneBody(b.raw(), "window", 0, 0, 0, 1, 1, 300, 200);
+    putF32(b.raw(), 10.0f); putF32(b.raw(), 10.0f);  // inflation L R
+    putF32(b.raw(), 10.0f); putF32(b.raw(), 10.0f);  // inflation T B
+    put8(b.raw(), 1);  // frameNum
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    put32(b.raw(), 112);  // contentOffset (block-relative)
+    put32(b.raw(), 104);  // frameOffsetTableOffset
+    put32(b.raw(), 108);  // frame[0] offset
+    put16(b.raw(), 9);    // WindowFrame.materialIdx — OUT OF RANGE
+    put8(b.raw(), 0); put8(b.raw(), 0);
+    for (int i = 0; i < 4; ++i) {
+        put32(b.raw(), 0xFFFFFFFF);  // WindowContent.vtxCols
+    }
+    put16(b.raw(), 0);  // WindowContent.materialIdx (valid)
+    put8(b.raw(), 0);   // texCoordNum
+    put8(b.raw(), 0);
+    b.endBlock(wnd1);
+
+    const u32 pae1 = b.beginBlock("pae1");
+    b.endBlock(pae1);
+
+    std::vector<u8> file = b.finish();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file.data(), static_cast<u32>(file.size())));
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+    StubResourceAccessor accessor;
+
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(file.data(), &accessor));  // regression guard (UB without the two patches)
+    REQUIRE(layout.mpRootPane != nullptr);
+
+    nw4r::lyt::Pane* pEarly = layout.mpRootPane->FindPaneByName("pic_early", true);
+    REQUIRE(pEarly != nullptr);
+    CHECK(pEarly->GetMaterial() == nullptr);  // no mat1 yet -> degraded
+
+    nw4r::lyt::Pane* pBad = layout.mpRootPane->FindPaneByName("pic_bad", true);
+    REQUIRE(pBad != nullptr);
+    CHECK(pBad->GetMaterial() == nullptr);  // out of range -> degraded
+
+    nw4r::lyt::Pane* pOk = layout.mpRootPane->FindPaneByName("pic_ok", true);
+    REQUIRE(pOk != nullptr);
+    CHECK(pOk->GetMaterial() != nullptr);  // valid index still binds
+
+    nw4r::lyt::Pane* pWnd = layout.mpRootPane->FindPaneByName("window", true);
+    REQUIRE(pWnd != nullptr);
+    REQUIRE(pWnd->GetRuntimeTypeInfo() == &nw4r::lyt::Window::typeInfo);
+    auto* pWindow = static_cast<nw4r::lyt::Window*>(pWnd);
+    CHECK(pWindow->GetContentMaterial() != nullptr);  // content index was valid
+    CHECK(pWindow->mFrameNum == 0);                    // bad frame -> frames dropped
+    CHECK(pWindow->GetFrameMaterial(0) == nullptr);
+
+    // Drawing the degraded panes must be a no-op, not a fault.
+    nw4r::lyt::DrawInfo drawInfo;
+    layout.CalculateMtx(drawInfo);
+    layout.Draw(drawInfo);
+}
+
 TEST_CASE(lyt_draw_full_chain_headless) {
     // M9.5.3c: the Draw half of the layout engine. CalculateMtx fills the
     // global matrices; Draw runs the whole GX submit path headless: the
@@ -1006,6 +1286,293 @@ TEST_CASE(lyt_draw_full_chain_headless) {
     pic->mFlag = static_cast<u8>(pic->mFlag & ~1u);
     CHECK(!pic->IsVisible());
     layout.Draw(info);
+}
+
+// ---------------------------------------------------------------------------
+// v6: language-variant panes. SMG layouts ship per-language siblings named
+// <base><LangSuffix> (TitleLogo: PicTitleLogoJpJa, PicRJpJa; PressStart:
+// TxtStart, TxtStartJpJa, TxtStartUsEn, ...). LayoutManager::
+// removeUnnecessaryPanes keeps only the current language's variant — and drops
+// the plain pane when a variant for the current language exists.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::vector<u8> makeLanguageBrlyt() {
+    BrlytBuilder b;
+
+    const u32 lyt1 = b.beginBlock("lyt1");
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putF32(b.raw(), 640.0f);
+    putF32(b.raw(), 480.0f);
+    b.endBlock(lyt1);
+
+    const u32 root = b.beginBlock("pan1");
+    putPaneBody(b.raw(), "RootPane", 0, 0, 0, 1, 1, 640, 480);
+    b.endBlock(root);
+
+    const u32 pas1 = b.beginBlock("pas1");
+    b.endBlock(pas1);
+
+    // Title-logo style: a Japanese-only pane with no plain sibling, plus a
+    // nested null pane holding a plain/JpJa/UsEn trio and an unrelated pane
+    // whose name merely ENDS like a suffix inside a longer word ("Bloom").
+    const char* names[] = {"PicTitleLogoJpJa", "PicRJpJa", "PicTM", "N_Text"};
+    for (const char* n : names) {
+        const u32 blk = b.beginBlock("pan1");
+        putPaneBody(b.raw(), n, 0, 0, 0, 1, 1, 10, 10);
+        b.endBlock(blk);
+    }
+    const u32 pas2 = b.beginBlock("pas1");  // children of N_Text
+    b.endBlock(pas2);
+    const char* nested[] = {"TxtStart", "TxtStartJpJa", "TxtStartUsEn", "TxtStartKrKo", "PicBloomA"};
+    for (const char* n : nested) {
+        const u32 blk = b.beginBlock("pan1");
+        putPaneBody(b.raw(), n, 0, 0, 0, 1, 1, 10, 10);
+        b.endBlock(blk);
+    }
+    const u32 pae2 = b.beginBlock("pae1");
+    b.endBlock(pae2);
+
+    const u32 pae1 = b.beginBlock("pae1");
+    b.endBlock(pae1);
+
+    const u32 grpRoot = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "RootGroup", 16);
+    put16(b.raw(), 0); put16(b.raw(), 0);
+    b.endBlock(grpRoot);
+
+    const u32 grs1 = b.beginBlock("grs1");
+    b.endBlock(grs1);
+
+    // A group referencing panes of every kind: its links to removed panes
+    // must be purged (the brlan group binding walks them).
+    const u32 grpA = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "G_Lang", 16);
+    put16(b.raw(), 3); put16(b.raw(), 0);
+    putFixedStr(b.raw(), "PicTitleLogoJpJa", 16);
+    putFixedStr(b.raw(), "TxtStartUsEn", 16);
+    putFixedStr(b.raw(), "PicTM", 16);
+    b.endBlock(grpA);
+
+    const u32 gre1 = b.beginBlock("gre1");
+    b.endBlock(gre1);
+
+    return b.finish();
+}
+
+// A LayoutManager over a missing arc (empty layout) — the filter method only
+// needs the language selection and the group container of the layout we hand
+// it, so the test adopts a hand-built Layout into the manager.
+class LanguageProbeLayout : public LayoutActor {
+public:
+    LanguageProbeLayout() : LayoutActor("test-language-panes", true) {
+        initLayoutManager("__pc_test_no_such_arc__", 1);
+    }
+};
+
+int countChildren(nw4r::lyt::Pane* pPane) {
+    int n = 0;
+    for (auto it = pPane->mChildList.GetBeginIter(); it != pPane->mChildList.GetEndIter(); ++it) {
+        ++n;
+    }
+    return n;
+}
+
+int countGroupLinks(nw4r::lyt::Layout& layout, const char* pGroup) {
+    nw4r::lyt::Group* g = layout.GetGroupContainer()->FindGroupByName(pGroup);
+    if (g == nullptr) {
+        return -1;
+    }
+    int n = 0;
+    for (auto it = g->GetPaneList().GetBeginIter(); it != g->GetPaneList().GetEndIter(); ++it) {
+        ++n;
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST_CASE(lyt_language_variant_panes_are_filtered) {
+    if (JKRHeap::sRootHeap == nullptr) {
+        JKRExpHeap::createRoot(1, true);
+    }
+    JKRHeap::sRootHeap->becomeCurrentHeap();
+
+    const char* previous = compat::getLanguageName();
+    REQUIRE(compat::setLanguage("UsEnglish"));
+    CHECK(std::strcmp(compat::getLanguagePaneSuffix(), "UsEn") == 0);
+    CHECK(std::strcmp(compat::getLanguageRegion(), "Us") == 0);
+    CHECK(std::strcmp(MR::getCurrentLanguagePrefix(), "UsEnglish") == 0);
+    CHECK(!compat::setLanguage("Klingon"));
+
+    std::vector<u8> file = makeLanguageBrlyt();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file.data(), static_cast<u32>(file.size())));
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+    StubResourceAccessor accessor;
+
+    LanguageProbeLayout actor;
+    LayoutManager* mgr = actor.getLayoutManager();
+    REQUIRE(mgr != nullptr);
+    REQUIRE(mgr->mLayout == nullptr);  // arc missing -> the method must tolerate that
+
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(file.data(), &accessor));
+    nw4r::lyt::Pane* root = layout.mpRootPane;
+    REQUIRE(root != nullptr);
+    CHECK_EQ(countChildren(root), 4);
+    CHECK_EQ(countGroupLinks(layout, "G_Lang"), 3);
+
+    // Adopt the layout so the group purge sees its container, then filter.
+    mgr->mLayout = &layout;
+    mgr->removeUnnecessaryPanes(root);
+
+    // Root: PicTitleLogoJpJa + PicRJpJa gone (foreign variants, no plain
+    // sibling needed); PicTM and N_Text stay.
+    CHECK_EQ(countChildren(root), 2);
+    CHECK(root->FindPaneByName("PicTitleLogoJpJa", true) == nullptr);
+    CHECK(root->FindPaneByName("PicRJpJa", true) == nullptr);
+    CHECK(root->FindPaneByName("PicTM", true) != nullptr);
+    nw4r::lyt::Pane* nText = root->FindPaneByName("N_Text", true);
+    REQUIRE(nText != nullptr);
+
+    // Nested: TxtStartUsEn wins over TxtStart; JpJa/KrKo variants dropped;
+    // PicBloomA (no real suffix) untouched.
+    CHECK_EQ(countChildren(nText), 2);
+    CHECK(root->FindPaneByName("TxtStartUsEn", true) != nullptr);
+    CHECK(root->FindPaneByName("TxtStart", true) == nullptr);
+    CHECK(root->FindPaneByName("TxtStartJpJa", true) == nullptr);
+    CHECK(root->FindPaneByName("TxtStartKrKo", true) == nullptr);
+    CHECK(root->FindPaneByName("PicBloomA", true) != nullptr);
+
+    // Group links to the removed pane were purged; the survivors remain.
+    CHECK_EQ(countGroupLinks(layout, "G_Lang"), 2);
+
+    // Second pass is a no-op (idempotent).
+    mgr->removeUnnecessaryPanes(root);
+    CHECK_EQ(countChildren(root), 2);
+    CHECK_EQ(countChildren(nText), 2);
+
+    // A language WITHOUT a variant keeps the plain pane.
+    mgr->mLayout = nullptr;
+    std::vector<u8> file2 = makeLanguageBrlyt();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file2.data(), static_cast<u32>(file2.size())));
+    nw4r::lyt::Layout layout2;
+    REQUIRE(layout2.Build(file2.data(), &accessor));
+    REQUIRE(compat::setLanguage("EuGerman"));
+    mgr->mLayout = &layout2;
+    mgr->removeUnnecessaryPanes(layout2.mpRootPane);
+    CHECK(layout2.mpRootPane->FindPaneByName("TxtStart", true) != nullptr);
+    CHECK(layout2.mpRootPane->FindPaneByName("TxtStartUsEn", true) == nullptr);
+    CHECK(layout2.mpRootPane->FindPaneByName("TxtStartJpJa", true) == nullptr);
+    CHECK(layout2.mpRootPane->FindPaneByName("PicTitleLogoJpJa", true) == nullptr);
+    CHECK_EQ(countGroupLinks(layout2, "G_Lang"), 1);  // only PicTM survives
+
+    // Japanese: the JpJa panes are the ones that stay.
+    mgr->mLayout = nullptr;
+    std::vector<u8> file3 = makeLanguageBrlyt();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file3.data(), static_cast<u32>(file3.size())));
+    nw4r::lyt::Layout layout3;
+    REQUIRE(layout3.Build(file3.data(), &accessor));
+    REQUIRE(compat::setLanguage("JpJapanese"));
+    CHECK(std::strcmp(MR::getCurrentRegionPrefix(), "Jp") == 0);
+    mgr->mLayout = &layout3;
+    mgr->removeUnnecessaryPanes(layout3.mpRootPane);
+    CHECK(layout3.mpRootPane->FindPaneByName("PicTitleLogoJpJa", true) != nullptr);
+    CHECK(layout3.mpRootPane->FindPaneByName("PicRJpJa", true) != nullptr);
+    CHECK(layout3.mpRootPane->FindPaneByName("TxtStartJpJa", true) != nullptr);
+    CHECK(layout3.mpRootPane->FindPaneByName("TxtStart", true) == nullptr);
+    CHECK(layout3.mpRootPane->FindPaneByName("TxtStartUsEn", true) == nullptr);
+
+    // The manager does not own the stack layouts.
+    mgr->mLayout = nullptr;
+    REQUIRE(compat::setLanguage(previous));
+}
+
+// ---------------------------------------------------------------------------
+// v6 regression (title logo "yellow boxes"): picture vertex colours must reach
+// the GX vertex stream in r,g,b,a order. nw4r hands ut::Color to GXColor1u32
+// through its u32 view; upstream that view is a raw reinterpret of the four
+// bytes, which is 0xRRGGBBAA only on a big-endian console. The compat
+// override of nw4r/ut/Color.h makes the u32 view canonical on every host.
+// ---------------------------------------------------------------------------
+TEST_CASE(lyt_vertex_colors_keep_channel_order) {
+    // 1) The u32 view of ut::Color is canonical 0xRRGGBBAA, both ways.
+    {
+        nw4r::ut::Color c(0x11223344u);
+        CHECK_EQ(static_cast<int>(c.r), 0x11);
+        CHECK_EQ(static_cast<int>(c.g), 0x22);
+        CHECK_EQ(static_cast<int>(c.b), 0x33);
+        CHECK_EQ(static_cast<int>(c.a), 0x44);
+        CHECK_EQ(static_cast<u32>(c), 0x11223344u);
+
+        GXColor raw;  // (not `gx`: GXTypes.h #defines that name)
+        raw.r = 255; raw.g = 255; raw.b = 255; raw.a = 0;
+        nw4r::ut::Color d(raw);
+        CHECK_EQ(static_cast<u32>(d), 0xFFFFFF00u);
+        CHECK(d != nw4r::ut::Color::WHITE);      // what IsModulateVertexColor tests
+        CHECK(nw4r::ut::Color() == nw4r::ut::Color::WHITE);
+        CHECK_EQ(static_cast<u32>(nw4r::ut::Color(0xFFFFFFFFu)), 0xFFFFFFFFu);
+
+        // MultipleAlpha writes the byte member; the u32 view must follow.
+        nw4r::ut::Color e = nw4r::lyt::detail::MultipleAlpha(nw4r::ut::Color(0xFFFFFFFFu), 128);
+        CHECK_EQ(static_cast<int>(e.a), 128);
+        CHECK_EQ(static_cast<u32>(e), 0xFFFFFF80u);
+    }
+
+    // 2) End to end: a picture whose corner colours are white with alpha 0
+    //    (the title logo's TM/(R) panes fade that way) must capture as
+    //    (1,1,1,0) per vertex — NOT (0,1,1,1), the pre-fix reversed word that
+    //    drew opaque yellow/cyan boxes.
+    RichLayout lyt = makeRichBrlyt();
+    // pic1 body: pane(76) + vtxCols @76 (4 x u32 0xRRGGBBAA, big-endian on
+    // disk like every other word).
+    for (int i = 0; i < 4; ++i) {
+        u8* col = lyt.file.data() + lyt.pic1 + 76 + i * 4;
+        col[0] = 255; col[1] = 255; col[2] = 255; col[3] = 0;  // FF FF FF 00
+    }
+    REQUIRE(Platform::CompatLyt::convertBrlyt(lyt.file.data(),
+                                              static_cast<u32>(lyt.file.size())));
+    // The swapper converts them as u32 words: the host word must read
+    // 0xFFFFFF00 (the Picture ctor assigns it through ut::Color::operator=(u32)).
+    CHECK_EQ(get32(lyt.file.data() + lyt.pic1 + 76), 0xFFFFFF00u);
+    CHECK_EQ(get32(lyt.file.data() + lyt.txt1 + 96), 0x80808080u);  // textCols[1]
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+    StubResourceAccessor accessor;
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(lyt.file.data(), &accessor));
+    nw4r::lyt::Pane* pic = layout.mpRootPane->FindPaneByName("picture", true);
+    REQUIRE(pic != nullptr);
+    CHECK_EQ(static_cast<u32>(pic->GetVtxColor(0)), 0xFFFFFF00u);
+    CHECK_EQ(static_cast<int>(pic->GetVtxColorElement(3)), 0);  // corner 0 alpha
+    CHECK_EQ(static_cast<int>(pic->GetVtxColorElement(4)), 255);  // corner 1 red
+
+    // Draw only the picture: hide the other panes so the LAST captured
+    // primitive is the picture quad (the debug snapshot keeps the last one).
+    for (auto it = layout.mpRootPane->mChildList.GetBeginIter();
+         it != layout.mpRootPane->mChildList.GetEndIter(); ++it) {
+        if (&*it != pic) {
+            it->mFlag = static_cast<u8>(it->mFlag & ~1u);
+        }
+    }
+    nw4r::lyt::DrawInfo info;
+    info.mViewRect = nw4r::ut::Rect(-304.0f, 228.0f, 304.0f, -228.0f);
+    layout.CalculateMtx(info);
+    layout.Draw(info);
+
+    int count = 0, stride = 0;
+    const float* verts = GXCompatDebugVertices(&count, &stride);
+    REQUIRE(verts != nullptr);
+    REQUIRE(count == 4);
+    // VCD order (detail::SetVertexFormat): POS xy, CLR0 rgba, TEX0 st.
+    REQUIRE(stride == 8);
+    for (int v = 0; v < 4; ++v) {
+        CHECK_NEAR(verts[v * stride + 2], 1.0f, 1e-6);  // r
+        CHECK_NEAR(verts[v * stride + 3], 1.0f, 1e-6);  // g
+        CHECK_NEAR(verts[v * stride + 4], 1.0f, 1e-6);  // b
+        CHECK_NEAR(verts[v * stride + 5], 0.0f, 1e-6);  // a (pre-fix: 1.0 -> opaque)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1595,4 +2162,259 @@ TEST_CASE(resfont_setresource_be_brfnt) {
     nw4r::ut::ResFont bad;
     CHECK(!bad.SetResource(garbage));
     CHECK(!bad.SetResource(nullptr));
+}
+
+// ---------------------------------------------------------------------------
+// v7: text through a UTF-16 font on the host. MessageFont26 & co. are UTF-16
+// brfnts; the game feeds them host wchar_t strings. The upstream
+// CharStrmReader::ReadNextCharUTF16 steps a u16 per character — right on the
+// console (wchar_t = 2 bytes), wrong on Linux (4 bytes: every character was
+// followed by a phantom 0 code). The patched reader steps one wchar_t.
+// ---------------------------------------------------------------------------
+namespace {
+
+// The synthetic brfnt with its FINF encoding switched to UTF-16 (same
+// layout as makeBrfnt(): the encoding byte sits at FINF data + 7 = file 31).
+std::vector<u8> makeUtf16Brfnt() {
+    std::vector<u8> v = makeBrfnt();
+    v[31] = 1;  // FONT_ENCODING_UTF16
+    return v;
+}
+
+}  // namespace
+
+TEST_CASE(utf16_font_reads_host_wchar_strings) {
+    std::vector<u8> font = makeUtf16Brfnt();
+    nw4r::ut::ResFont resFont;
+    REQUIRE(resFont.SetResource(font.data()));
+    CHECK_EQ(static_cast<int>(resFont.GetEncoding()), static_cast<int>(nw4r::ut::FONT_ENCODING_UTF16));
+
+    // The reader must yield exactly the codes of the wchar_t string, one per
+    // character, and land on the terminator.
+    const wchar_t text[] = L" !\"";
+    nw4r::ut::CharStrmReader reader = resFont.GetCharStrmReader();
+    reader.Set(text);
+    CHECK_EQ(static_cast<int>(reader.Next()), 0x20);
+    CHECK_EQ(static_cast<int>(reader.Next()), 0x21);
+    CHECK_EQ(static_cast<int>(reader.Next()), 0x22);
+    CHECK(reader.GetCurrentPos() == static_cast<const void*>(text + 3));
+    CHECK_EQ(static_cast<int>(reader.Next()), 0);
+
+    // String width through the wide text writer: widths {7,5,9} at scale 1
+    // (SetFontSize(8,16) == native size) → 21, independent of sizeof(wchar_t).
+    nw4r::ut::TextWriterBase<wchar_t> writer;
+    writer.SetFont(resFont);
+    writer.SetFontSize(8.0f, 16.0f);
+    writer.SetCharSpace(0.0f);
+    CHECK_NEAR(writer.CalcStringWidth(text, 3), 21.0f, 1e-4);
+
+    // A code the font lacks maps to the alternate glyph (index 0 → width 7),
+    // and the tag range (< 0x20) does not derail the walk: "\x01 " is a tag
+    // (default processor: no-op) followed by a space.
+    const wchar_t tagged[] = {0x0001, 0x0020, 0};
+    CHECK_NEAR(writer.CalcStringWidth(tagged, 2), 7.0f, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// v7: LayoutManager::initTextBoxRecursive — the "Press A+B" path. The
+// layout's text boxes get the game-sized string buffer, keep/receive a font,
+// and either the embedded fallback message (PressStart/TxtStart*) or the
+// design text baked in the brlyt.
+// ---------------------------------------------------------------------------
+namespace {
+
+// A PressStart-shaped brlyt: fnl1 + mat1 (untextured), a root with two
+// txt1 panes — "TxtStartUsEn" (empty design text, the real one is filled
+// from the message system) and "TxtOther" (design text "Hi!").
+std::vector<u8> makePressStartBrlyt() {
+    BrlytBuilder b;
+
+    const u32 lyt1 = b.beginBlock("lyt1");
+    put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putF32(b.raw(), 640.0f);
+    putF32(b.raw(), 480.0f);
+    b.endBlock(lyt1);
+
+    const u32 fnl1 = b.beginBlock("fnl1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 8); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0); put8(b.raw(), 0);
+    putNulStr(b.raw(), "MessageFont26.brfnt"); padTo4(b.raw());
+    b.endBlock(fnl1);
+
+    // mat1: one material without textures/tev stages (resNum = 0).
+    const u32 mat1 = b.beginBlock("mat1");
+    put16(b.raw(), 1); put16(b.raw(), 0);
+    put32(b.raw(), 16);
+    putFixedStr(b.raw(), "mat_text", 20);
+    for (int i = 0; i < 3; ++i) {
+        for (int c = 0; c < 4; ++c) {
+            put16(b.raw(), 0);
+        }
+    }
+    for (int i = 0; i < 16; ++i) {
+        put8(b.raw(), 0xFF);
+    }
+    put32(b.raw(), 0);  // resNum
+    b.endBlock(mat1);
+
+    const u32 root = b.beginBlock("pan1");
+    putPaneBody(b.raw(), "RootPane", 0, 0, 0, 1, 1, 640, 480);
+    b.endBlock(root);
+
+    const u32 pas1 = b.beginBlock("pas1");
+    b.endBlock(pas1);
+
+    auto putTextBox = [&](const char* name, const u8* text, u16 textBytes) {
+        const u32 txt1 = b.beginBlock("txt1");
+        putPaneBody(b.raw(), name, 0, 0, 0, 1, 1, 200, 30);
+        put16(b.raw(), 8);          // textBufBytes: tiny on purpose (3 chars)
+        put16(b.raw(), textBytes);  // textStrBytes
+        put16(b.raw(), 0);          // materialIdx
+        put16(b.raw(), 0);          // fontIdx
+        put8(b.raw(), 0);           // textPosition
+        put8(b.raw(), 0);           // textAlignment
+        put8(b.raw(), 0); put8(b.raw(), 0);
+        put32(b.raw(), 116);        // textStrOffset
+        put32(b.raw(), 0xFFFFFFFF);
+        put32(b.raw(), 0x80808080);
+        putF32(b.raw(), 26.0f);
+        putF32(b.raw(), 26.0f);
+        putF32(b.raw(), 0.0f);
+        putF32(b.raw(), 0.0f);
+        if (textBytes > 0) {
+            putBytes(b.raw(), text, textBytes);
+        }
+        b.endBlock(txt1);
+    };
+
+    putTextBox("TxtStartUsEn", nullptr, 0);
+    const u8 hi[] = {0x00, 'H', 0x00, 'i', 0x00, '!', 0x00, 0x00};
+    putTextBox("TxtOther", hi, sizeof(hi));
+
+    const u32 pae1 = b.beginBlock("pae1");
+    b.endBlock(pae1);
+
+    const u32 grp1 = b.beginBlock("grp1");
+    putFixedStr(b.raw(), "RootGroup", 16);
+    put16(b.raw(), 0); put16(b.raw(), 0);
+    b.endBlock(grp1);
+
+    return b.finish();
+}
+
+class PressStartProbeLayout : public LayoutActor {
+public:
+    PressStartProbeLayout() : LayoutActor("test-pressstart", true) {
+        // 0x100 = the buffer length TitleSequenceProduct passes for PressStart.
+        initLayoutManagerWithTextBoxBufferLength("__pc_test_no_such_arc__", 0x100, 1);
+    }
+};
+
+}  // namespace
+
+TEST_CASE(layout_text_boxes_get_buffers_fonts_and_fallback_message) {
+    if (JKRHeap::sRootHeap == nullptr) {
+        JKRExpHeap::createRoot(1, true);
+    }
+    JKRHeap::sRootHeap->becomeCurrentHeap();
+
+    std::vector<u8> file = makePressStartBrlyt();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file.data(), static_cast<u32>(file.size())));
+
+    nw4r::lyt::Layout::mspAllocator = &sTestAllocator;
+
+    // Accessor serving a UTF-16 brfnt for 'font' (GetFont stays null like a
+    // LayoutHolder without a GameSystem — the textbox then allocates its own
+    // ResFont over the resource, exactly the Build path of the real arcs).
+    class Utf16Accessor : public StubResourceAccessor {
+    public:
+        Utf16Accessor() { mUtf16 = makeUtf16Brfnt(); }
+        void* GetResource(nw4r::lyt::ResType type, const char* name, u32* pSize) override {
+            if (type == 'font') {
+                if (pSize != nullptr) {
+                    *pSize = static_cast<u32>(mUtf16.size());
+                }
+                return mUtf16.data();
+            }
+            return StubResourceAccessor::GetResource(type, name, pSize);
+        }
+    private:
+        std::vector<u8> mUtf16;
+    } accessor;
+
+    nw4r::lyt::Layout layout;
+    REQUIRE(layout.Build(file.data(), &accessor));
+    nw4r::lyt::Pane* root = layout.mpRootPane;
+    REQUIRE(root != nullptr);
+
+    nw4r::lyt::Pane* startPane = root->FindPaneByName("TxtStartUsEn", true);
+    nw4r::lyt::Pane* otherPane = root->FindPaneByName("TxtOther", true);
+    REQUIRE(startPane != nullptr);
+    REQUIRE(otherPane != nullptr);
+    REQUIRE(startPane->GetRuntimeTypeInfo()->IsDerivedFrom(&nw4r::lyt::TextBox::typeInfo));
+    auto* start = static_cast<nw4r::lyt::TextBox*>(startPane);
+    auto* other = static_cast<nw4r::lyt::TextBox*>(otherPane);
+
+    // Build state: tiny buffers (3 chars), design text only on TxtOther,
+    // fonts resolved from the resource.
+    CHECK_EQ(static_cast<int>(start->GetStringBufferLength()), 3);
+    CHECK_EQ(static_cast<int>(start->mTextLen), 0);
+    CHECK_EQ(static_cast<int>(other->mTextLen), 3);
+    REQUIRE(start->mpFont != nullptr);
+    REQUIRE(other->mpFont != nullptr);
+    CHECK_EQ(static_cast<int>(start->mpFont->GetEncoding()), static_cast<int>(nw4r::ut::FONT_ENCODING_UTF16));
+    const nw4r::ut::Font* startFontBefore = start->mpFont;
+
+    PressStartProbeLayout actor;
+    LayoutManager* mgr = actor.getLayoutManager();
+    REQUIRE(mgr != nullptr);
+    CHECK_EQ(static_cast<unsigned>(mgr->mTextBoxBufferLength), 0x100u);
+
+    mgr->mLayout = &layout;
+    mgr->initTextBoxRecursive(root, root, "PressStart", mgr->mTextBoxBufferLength);
+
+    // Buffers grew to the game size, the fonts were kept, TxtStart* got the
+    // embedded fallback message and TxtOther kept its design text.
+    CHECK_EQ(static_cast<int>(start->GetStringBufferLength()), 0x100);
+    CHECK_EQ(static_cast<int>(other->GetStringBufferLength()), 0x100);
+    CHECK(start->mpFont == startFontBefore);
+    REQUIRE(start->mTextBuf != nullptr);
+    CHECK(std::wcscmp(start->mTextBuf, L"Press A and B.") == 0);
+    CHECK_EQ(static_cast<int>(start->mTextLen), 14);
+    REQUIRE(other->mTextBuf != nullptr);
+    CHECK(std::wcscmp(other->mTextBuf, L"Hi!") == 0);
+    CHECK_EQ(static_cast<int>(other->mTextLen), 3);
+
+    // Idempotent: a second pass neither grows nor clobbers.
+    mgr->initTextBoxRecursive(root, root, "PressStart", mgr->mTextBoxBufferLength);
+    CHECK(std::wcscmp(start->mTextBuf, L"Press A and B.") == 0);
+    CHECK(std::wcscmp(other->mTextBuf, L"Hi!") == 0);
+
+    // The text draw rect of the fallback string is non-empty (the width comes
+    // from the UTF-16 reader walking host wchar_t — the v7 reader patch).
+    nw4r::ut::TextWriterBase<wchar_t> writer;
+    const nw4r::ut::Rect rect = start->GetTextDrawRect(&writer);
+    CHECK(rect.GetWidth() > 0.0f);
+    CHECK(rect.GetHeight() > 0.0f);
+
+    // Headless draw of the whole thing runs to completion (DrawSelf needs
+    // buffer + font + material — all three are there now).
+    nw4r::lyt::DrawInfo info;
+    info.mViewRect = nw4r::ut::Rect(-304.0f, 228.0f, 304.0f, -228.0f);
+    layout.CalculateMtx(info);
+    layout.Draw(info);
+
+    // A different layout name gets no fallback: empty box stays empty.
+    std::vector<u8> file2 = makePressStartBrlyt();
+    REQUIRE(Platform::CompatLyt::convertBrlyt(file2.data(), static_cast<u32>(file2.size())));
+    nw4r::lyt::Layout layout2;
+    REQUIRE(layout2.Build(file2.data(), &accessor));
+    mgr->mLayout = &layout2;
+    mgr->initTextBoxRecursive(layout2.mpRootPane, layout2.mpRootPane, "SomethingElse", mgr->mTextBoxBufferLength);
+    auto* start2 = static_cast<nw4r::lyt::TextBox*>(layout2.mpRootPane->FindPaneByName("TxtStartUsEn", true));
+    REQUIRE(start2 != nullptr);
+    CHECK_EQ(static_cast<int>(start2->mTextLen), 0);
+    CHECK_EQ(static_cast<int>(start2->GetStringBufferLength()), 0x100);
+
+    mgr->mLayout = nullptr;
 }

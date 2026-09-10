@@ -113,6 +113,7 @@ Las ~165 funciones GX usadas, clasificadas:
 - Excepciones conocidas donde la Wii tiene comportamiento distinto al estándar (a documentar en `porting.md`): conversiones `float→int` truncantes (`OSf32tou8`), orden de z vs alpha test (`GXSetZCompLoc`), y el gamma de la copia EFB→XFB (el juego asume gamma 1.0 en el copy por defecto).
 - El **dithering** GX es de 6 bits → se puede ignorar inicialmente (`TODO(PC_PORT)`) sin pérdida visual apreciable en la mayoría de escenas, o emular con dither en shader.
 - **CMPR (M5.7c)**: el decodificador de Bti.cpp se corrigió al framing GX/DXT1 estándar (8×8 = 4 subtiles de 8 bytes, tamaño w·h/2); el antiguo framing 8×4 leía la fila 3 fuera del subtile y duplicaba el tamaño. Ver §J.
+- **Tiles y orden de bytes reales (PC_PORT M9.5.4)**: los formatos de 4/8 bits **no** usan tiles 4×4: I4/C4/CMPR van en tiles **8×8** y I8/IA4/C8 en tiles **8×4** (todos de 32 B; RGBA8 64 B en dos planos AR/GB), redondeando cada nivel a tiles enteros (`__GXGetTexTileShift`/`GXGetTexBufferSize` del SDK). Además: I4/I8 replican la intensidad en **A** (A = I); IA4 = **alfa en el nibble alto**, intensidad en el bajo; IA8 y las entradas TLUT IA8 = **byte de alfa primero**, intensidad después; los índices CMPR van **MSB-first** (el par de bits más significativo es el texel izquierdo), las mezclas son 5/8·3/8 y en modo 3 colores el índice 3 es el color medio con alfa 0. Referencias: Dolphin `TextureDecoder_Generic.cpp`, noclip `gx_texture.rs`. Los tests de `bti_test.cpp` usan datos sintéticos fijos con estas expectativas (un round-trip codificador↔decodificador no detecta un layout equivocado compartido).
 
 ## 6. Formatos de textura GX → Vulkan (tabla inicial)
 
@@ -186,9 +187,10 @@ Xvfb con `--gpu-debug` sin VUIDs.
   TEV etapa 0); TEXMAP1..7 se guardan pero no se consumen (TEV real en M5.4).
 - **BTI** (`Bti.h/.cpp`, puro y testeable): parse del header de 32 bytes (BE) y
   decodificadores por formato — I4/I8/IA4/IA8/RGB565/RGB5A3/RGBA8/CMPR/C4/C8/
-  C14X2 — con el swizzle 4x4 (RGBA8 en dos planos AR/GB, CMPR 8x4 con subtiles
-  DXT1) y TLUT (IA8/RGB565/RGB5A3). Todos se decodifican a RGBA8 en carga
-  (equivalencia visual; véase §5).
+  C14X2 — con el swizzle real de GX (tiles 8×8 para I4/C4/CMPR, 8×4 para
+  I8/IA4/C8, 4×4 para los de 16/32 bits; RGBA8 en dos planos AR/GB, CMPR con
+  subtiles DXT1 e índices MSB-first) y TLUT (IA8/RGB565/RGB5A3). Todos se
+  decodifican a RGBA8 en carga (equivalencia visual; véase §5).
 - **Texgen**: `GXSetTexCoordGen2` + `GXLoadTexMtxImm` se resuelven **en CPU** por
   vértice (matriz 2x4/3x4 sobre TEX0..7 o POS; `GX_IDENTITY` pasa UV sin tocar).
   BUMP*/SRTG, TLUT management y mipmaps quedan documentados como TODO (M5.7).
@@ -265,7 +267,13 @@ aplica en `flushDraw` → `PipelineDesc` del renderer):
 
 - `GXSetCullMode` — mirror completo (`GX_CULL_NONE/BACK/FRONT/ALL`), default
   `GX_CULL_BACK`; `flushDraw` → `PipelineDesc.cullMode` (mapa
-  `cullModeFromGx` → `VkCullModeFlags`).
+  `cullModeFromGx` → `VkCullModeFlags`). **M9.5.4 v8**: las caras frontales de
+  GX son las *horarias* en pantalla (el quad de `clearEfb` del SDK se dibuja con
+  `GX_CULL_BACK`; libogc: "clockwise = front"; Dolphin Vulkan usa
+  `VK_FRONT_FACE_CLOCKWISE`), y el renderer host usa `COUNTER_CLOCKWISE`, así
+  que el mapa intercambia `GX_CULL_BACK → CullMode::Front` y `GX_CULL_FRONT →
+  CullMode::Back` (test GPU `gx_cull_front_face_is_clockwise`). Antes, todo
+  material J3D con `GX_CULL_BACK` se dibujaba del revés.
 - `GXSetBlendMode(mode, src, dst, logic)` — mirror completo. `GX_BM_NONE` no
   mezcla; `GX_BM_BLEND` activa blend con los factores (los 8 factores GX →
   `VkBlendFactor`, `blendFactorFromGx`; `GX_BL_SRCCLR` → `SRC_COLOR`,

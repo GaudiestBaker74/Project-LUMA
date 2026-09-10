@@ -333,6 +333,48 @@ TEST_CASE(gx_texcoord_gen_matrix) {
     CHECK_NEAR(data[4], 3.5f, 1e-5f); // 2*0.25 + 3
 }
 
+TEST_CASE(gx_texcoord_gen_mtx2x4_does_not_overread) {
+    // PC_PORT regression (M9.5.4): GXLoadTexMtxImm used to memcpy a full 3x4
+    // (48 bytes) regardless of the GXTexMtxType, over-reading 16 bytes past a
+    // 2x4 caller buffer (ASAN stack-buffer-overflow). Load a 3x4 first so a
+    // stale third row would be observable, then load a 2x4 on top and check
+    // that GX_TG_MTX3x4 texgen sees an identity third row (q == 1 -> no
+    // perspective divide) and the 2x4 rows are honoured.
+    GXInit(nullptr, 0);
+    GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+    GXSetVtxDesc(GX_VA_TEX0, GX_DIRECT);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+
+    const f32 m3[3][4] = {{1.0f, 0.0f, 0.0f, 0.0f},
+                          {0.0f, 1.0f, 0.0f, 0.0f},
+                          {7.0f, 7.0f, 7.0f, 7.0f}}; // poison third row
+    GXLoadTexMtxImm(m3, GX_TEXMTX1, GX_MTX3x4);
+
+    // Heap-allocate exactly two rows so any over-read is a real OOB access
+    // under ASAN rather than a silent stack read.
+    f32(*m2)[4] = new f32[2][4];
+    m2[0][0] = 3.0f; m2[0][1] = 0.0f; m2[0][2] = 0.0f; m2[0][3] = 1.0f;
+    m2[1][0] = 0.0f; m2[1][1] = 3.0f; m2[1][2] = 0.0f; m2[1][3] = 2.0f;
+    GXLoadTexMtxImm(m2, GX_TEXMTX1, GX_MTX2x4);
+    delete[] m2;
+
+    GXSetTexCoordGen2(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_TEXMTX1, GX_FALSE,
+                      GX_PTIDENTITY);
+    GXBegin(GX_TRIANGLES, GX_VTXFMT0, 1);
+    GXPosition3f32(0.0f, 0.0f, 0.0f);
+    GXTexCoord2f32(1.0f, 1.0f);
+    GXEnd();
+
+    int count = 0, stride = 0;
+    const float* data = GXCompatDebugVertices(&count, &stride);
+    REQUIRE(data != nullptr);
+    CHECK(count == 1);
+    CHECK(stride == 5);
+    CHECK_NEAR(data[3], 4.0f, 1e-5f); // 3*1 + 1
+    CHECK_NEAR(data[4], 5.0f, 1e-5f); // 3*1 + 2
+}
+
 TEST_CASE(gx_texcoord_gen_identity) {
     // GX_IDENTITY matrix: uv passes through unchanged.
     GXInit(nullptr, 0);

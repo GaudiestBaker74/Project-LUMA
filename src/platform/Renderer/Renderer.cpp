@@ -178,55 +178,20 @@ uint32_t findMemoryType(VkPhysicalDevice physical, uint32_t typeBits, VkMemoryPr
     return UINT32_MAX;
 }
 
-// FNV-1a over the pipeline state — the cache key. (Equality is still checked
-// on the stored desc to resolve collisions.)
-uint64_t hashPipelineDesc(const PipelineDesc& d) {
-    uint64_t h = 14695981039346656037ull;
-    const auto mix = [&h](const void* p, size_t n) {
-        const auto* b = static_cast<const uint8_t*>(p);
-        for (size_t i = 0; i < n; ++i) {
-            h ^= b[i];
-            h *= 1099511628211ull;
-        }
-    };
-    mix(&d.topology, sizeof(d.topology));
-    mix(&d.vertexLayout.stride, sizeof(d.vertexLayout.stride));
-    for (const auto& a : d.vertexLayout.attribs) {
-        mix(&a, sizeof(a));
-    }
-    mix(&d.blendEnable, sizeof(d.blendEnable));
-    mix(&d.srcBlendFactor, sizeof(d.srcBlendFactor));
-    mix(&d.dstBlendFactor, sizeof(d.dstBlendFactor));
-    mix(&d.blendOp, sizeof(d.blendOp));
-    mix(&d.logicOpEnable, sizeof(d.logicOpEnable));
-    mix(&d.logicOp, sizeof(d.logicOp));
-    mix(&d.dstAlphaEnable, sizeof(d.dstAlphaEnable));
-    mix(&d.dstAlphaValue, sizeof(d.dstAlphaValue));
-    mix(&d.depthTest, sizeof(d.depthTest));
-    mix(&d.depthWrite, sizeof(d.depthWrite));
-    mix(&d.depthCompare, sizeof(d.depthCompare));
-    mix(&d.cullMode, sizeof(d.cullMode));
-    mix(&d.colorWrite, sizeof(d.colorWrite));
-    mix(&d.alphaWrite, sizeof(d.alphaWrite));
-    mix(&d.colorFormat, sizeof(d.colorFormat));
-    mix(&d.depthFormat, sizeof(d.depthFormat));
-    mix(&d.textureCount, sizeof(d.textureCount));
-    mix(&d.fragmentUbo, sizeof(d.fragmentUbo));
-    mix(&d.vertSpvSize, sizeof(d.vertSpvSize));
-    mix(&d.fragSpvSize, sizeof(d.fragSpvSize));
-    // A few words of each shader pin the version in the hash.
-    if (d.vertSpv && d.vertSpvSize >= 8) mix(d.vertSpv, 8);
-    if (d.fragSpv && d.fragSpvSize >= 8) mix(d.fragSpv, 8);
-    return h;
-}
-
-uint64_t hashSamplerDesc(const SamplerDesc& d) {
-    uint64_t h = 14695981039346656037ull;
-    const auto* b = reinterpret_cast<const uint8_t*>(&d);
-    for (size_t i = 0; i < sizeof(d); ++i) {
+// FNV-1a helper shared by the pipeline / sampler cache keys.
+inline void fnvMix(uint64_t& h, const void* p, size_t n) {
+    const auto* b = static_cast<const uint8_t*>(p);
+    for (size_t i = 0; i < n; ++i) {
         h ^= b[i];
         h *= 1099511628211ull;
     }
+}
+
+uint64_t hashSamplerDesc(const SamplerDesc& d) {
+    // SamplerDesc is five uint8_t enums — no padding, raw bytes are fine.
+    static_assert(sizeof(SamplerDesc) == 5, "SamplerDesc grew: hash it field by field");
+    uint64_t h = 14695981039346656037ull;
+    fnvMix(h, &d, sizeof(d));
     return h;
 }
 
@@ -248,6 +213,69 @@ struct RendererAccess {
         VkDeviceMemory mem = VK_NULL_HANDLE;
         vkAllocateMemory(VKDEV, &mai, nullptr, &mem);
         return mem;
+    }
+
+    // PC_PORT M9.5.4: per-pipeline descriptor pool. Sized for 64 GX pipelines
+    // (each takes one 8-sampler texture set + one dynamic-UBO set); a new pool
+    // is created whenever the current one is exhausted, so a legitimately large
+    // number of pipeline permutations (real galaxies) never fails allocation.
+    // Returns false when Vulkan refuses to create the pool.
+    static bool createPipelineDescriptorPool() {
+        Renderer& r = Renderer::instance();
+        constexpr uint32_t kPipelinesPerPool = 64;
+        VkDescriptorPoolSize poolSizes[2]{};
+        poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        poolSizes[0].descriptorCount = kPipelinesPerPool * 8;
+        poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        poolSizes[1].descriptorCount = kPipelinesPerPool;
+        VkDescriptorPoolCreateInfo dpci{};
+        dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dpci.maxSets = kPipelinesPerPool * 2;
+        dpci.poolSizeCount = 2;
+        dpci.pPoolSizes = poolSizes;
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+        const VkResult res = vkCreateDescriptorPool(VKDEV, &dpci, nullptr, &pool);
+        if (res != VK_SUCCESS || pool == VK_NULL_HANDLE) {
+            PL_LOG_ERROR("renderer", "vkCreateDescriptorPool (pipeline sets) failed (%d)",
+                         static_cast<int>(res));
+            return false;
+        }
+        r.mDescriptorPool = reinterpret_cast<void*>(pool);
+        r.mDescriptorPools.push_back(r.mDescriptorPool);
+        if (r.mDescriptorPools.size() > 1) {
+            PL_LOG_INFO("renderer", "pipeline descriptor pool #%zu created (%zu pipelines cached)",
+                        r.mDescriptorPools.size(), r.mPipelineCache.size());
+        }
+        return true;
+    }
+
+    // Allocates one per-pipeline set from the current pool, adding a pool when
+    // the current one is exhausted/fragmented. VK_NULL_HANDLE on failure.
+    static VkDescriptorSet allocatePipelineSet(VkDescriptorSetLayout layout) {
+        Renderer& r = Renderer::instance();
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            if (!r.mDescriptorPool && !createPipelineDescriptorPool()) {
+                return VK_NULL_HANDLE;
+            }
+            VkDescriptorSetAllocateInfo dsai{};
+            dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            dsai.descriptorPool = reinterpret_cast<VkDescriptorPool>(r.mDescriptorPool);
+            dsai.descriptorSetCount = 1;
+            dsai.pSetLayouts = &layout;
+            VkDescriptorSet set = VK_NULL_HANDLE;
+            const VkResult res = vkAllocateDescriptorSets(VKDEV, &dsai, &set);
+            if (res == VK_SUCCESS && set != VK_NULL_HANDLE) {
+                return set;
+            }
+            if (res != VK_ERROR_OUT_OF_POOL_MEMORY && res != VK_ERROR_FRAGMENTED_POOL) {
+                PL_LOG_ERROR("renderer", "vkAllocateDescriptorSets (pipeline set) failed (%d)",
+                             static_cast<int>(res));
+                return VK_NULL_HANDLE;
+            }
+            // Pool exhausted: open a new one and retry once.
+            r.mDescriptorPool = nullptr;
+        }
+        return VK_NULL_HANDLE;
     }
 
     // M9.4: immediate destruction of a retired render target's GPU resources
@@ -279,7 +307,6 @@ bool PipelineDesc::operator==(const PipelineDesc& o) const {
            logicOpEnable == o.logicOpEnable &&
            logicOp == o.logicOp &&
            dstAlphaEnable == o.dstAlphaEnable &&
-           dstAlphaValue == o.dstAlphaValue &&
            depthTest == o.depthTest &&
            depthWrite == o.depthWrite &&
            depthCompare == o.depthCompare &&
@@ -292,6 +319,48 @@ bool PipelineDesc::operator==(const PipelineDesc& o) const {
            fragmentUbo == o.fragmentUbo &&
            vertSpv == o.vertSpv && vertSpvSize == o.vertSpvSize &&
            fragSpv == o.fragSpv && fragSpvSize == o.fragSpvSize;
+}
+
+// FNV-1a over the pipeline state — the cache key. (Equality is still checked
+// on the stored desc to resolve collisions.)
+//
+// PC_PORT M9.5.4: every field is mixed INDIVIDUALLY. The previous version
+// hashed each VertexAttrib with `mix(&a, sizeof(a))` — 12 bytes of which 3
+// are padding after the uint8_t format. compat/gx builds the attribute list
+// from a braced initializer every draw; MSVC materialises that list on the
+// stack with the padding left uninitialised, so the key picked up whatever the
+// layout-animation code had left there: at the title screen a NEW pipeline was
+// created every frame (boot.log: `pipeline cache insert #10..#1108`, all
+// hashes distinct) until the per-pipeline descriptor pool ran dry at #65 and
+// every later draw failed with "no textured pipeline bound". GCC happened to
+// zero the same bytes, which is why Linux boots only ever showed 5 inserts.
+uint64_t PipelineDesc::hash() const {
+    uint64_t h = 14695981039346656037ull;
+    const auto mixU32 = [&h](uint32_t v) { fnvMix(h, &v, sizeof(v)); };
+    const auto mixU64 = [&h](uint64_t v) { fnvMix(h, &v, sizeof(v)); };
+    mixU32(static_cast<uint32_t>(topology));
+    mixU32(vertexLayout.stride);
+    mixU32(static_cast<uint32_t>(vertexLayout.attribs.size()));
+    for (const VertexAttrib& a : vertexLayout.attribs) {
+        mixU32(a.location);
+        mixU32(a.offset);
+        mixU32(static_cast<uint32_t>(a.format));
+    }
+    // Pixel-engine state: pack the small enums/bools so the key is compact.
+    mixU32((blendEnable ? 1u : 0u) | (logicOpEnable ? 2u : 0u) | (dstAlphaEnable ? 4u : 0u) |
+           (depthTest ? 8u : 0u) | (depthWrite ? 16u : 0u) | (colorWrite ? 32u : 0u) |
+           (alphaWrite ? 64u : 0u) | (fragmentUbo ? 128u : 0u));
+    mixU32(static_cast<uint32_t>(srcBlendFactor) | (static_cast<uint32_t>(dstBlendFactor) << 8) |
+           (static_cast<uint32_t>(blendOp) << 16) | (static_cast<uint32_t>(logicOp) << 24));
+    mixU32(static_cast<uint32_t>(depthCompare) | (static_cast<uint32_t>(cullMode) << 8) |
+           (static_cast<uint32_t>(colorFormat) << 16) | (static_cast<uint32_t>(depthFormat) << 24));
+    mixU32(textureCount);
+    mixU64(static_cast<uint64_t>(vertSpvSize));
+    mixU64(static_cast<uint64_t>(fragSpvSize));
+    // A few words of each shader pin the version in the hash.
+    if (vertSpv && vertSpvSize >= 8) fnvMix(h, vertSpv, 8);
+    if (fragSpv && fragSpvSize >= 8) fnvMix(h, fragSpv, 8);
+    return h;
 }
 
 // --- debug labels -----------------------------------------------------------
@@ -499,17 +568,15 @@ bool Renderer::init(SDL_Window* window, const RendererConfig& config) {
     }
 
     // --- descriptor pool (textured pipelines M4.2 + TEV UBO M5.4) ------------
-    VkDescriptorPoolSize poolSizes[2]{};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = 512;
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    poolSizes[1].descriptorCount = 64;
-    VkDescriptorPoolCreateInfo dpci{};
-    dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    dpci.maxSets = 128;
-    dpci.poolSizeCount = 2;
-    dpci.pPoolSizes = poolSizes;
-    vkCreateDescriptorPool(VKDEV, &dpci, nullptr, reinterpret_cast<VkDescriptorPool*>(&r.mDescriptorPool));
+    // PC_PORT M9.5.4: one pool holds the per-pipeline sets of 64 pipelines;
+    // getOrCreatePipeline adds another pool when it runs out (see
+    // RendererAccess::createPipelineDescriptorPool) instead of silently
+    // handing out null sets.
+    r.mDescriptorPool = nullptr;
+    r.mDescriptorPools.clear();
+    r.mBlendConstAlpha = 0.0f;
+    r.mPipelineCacheGrowthWarned = false;
+    RendererAccess::createPipelineDescriptorPool();
 
     // --- M9.5.3c: per-draw texture descriptor-set pool -----------------------
     // bindFragmentTextures used to UPDATE the pipeline's single texture set on
@@ -626,10 +693,12 @@ void Renderer::shutdown() {
     }
     r.mSamplerCache.clear();
 
-    if (r.mDescriptorPool) {
-        vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(r.mDescriptorPool), nullptr);
-        r.mDescriptorPool = nullptr;
+    for (void* pool : r.mDescriptorPools) {
+        vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(pool), nullptr);
     }
+    r.mDescriptorPools.clear();
+    r.mDescriptorPool = nullptr;
+    r.mBoundEntry = nullptr;
     if (r.mFrameTexSetPool) {
         vkDestroyDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(r.mFrameTexSetPool), nullptr);
         r.mFrameTexSetPool = nullptr;
@@ -2200,10 +2269,22 @@ bool Renderer::readRenderTarget(RenderTargetHandle target, uint32_t x, uint32_t 
 // --- pipeline cache ----------------------------------------------------------
 
 PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
-    const uint64_t hash = hashPipelineDesc(desc);
-    const auto it = mPipelineCache.find(hash);
-    if (it != mPipelineCache.end() && it->second.desc == desc) {
-        return reinterpret_cast<PipelineHandle>(it->second.pipeline);
+    // Key = field-wise FNV-1a of the desc (PipelineDesc::hash). A different
+    // desc under the same 64-bit key is astronomically unlikely, but it must
+    // not replace the cached entry (mPipelineByHandle points into the map):
+    // probe linearly to the next free key instead.
+    uint64_t hash = desc.hash();
+    for (;;) {
+        const auto it = mPipelineCache.find(hash);
+        if (it == mPipelineCache.end()) {
+            break;
+        }
+        if (it->second.desc == desc) {
+            return reinterpret_cast<PipelineHandle>(it->second.pipeline);
+        }
+        PL_LOG_WARN("renderer", "pipeline cache key collision (%llx) — probing next key",
+                    static_cast<unsigned long long>(hash));
+        ++hash;
     }
 
     // --- per-pipeline layout: push constants + optional set 0 ----------------
@@ -2225,13 +2306,20 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
         dsci.bindingCount = 1;
         dsci.pBindings = &texBinding;
         vkCreateDescriptorSetLayout(VKDEV, &dsci, nullptr, &descriptorSetLayout);
-
-        VkDescriptorSetAllocateInfo dsai{};
-        dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        dsai.descriptorPool = reinterpret_cast<VkDescriptorPool>(mDescriptorPool);
-        dsai.descriptorSetCount = 1;
-        dsai.pSetLayouts = &descriptorSetLayout;
-        vkAllocateDescriptorSets(VKDEV, &dsai, &descriptorSet);
+        if (!descriptorSetLayout) {
+            PL_LOG_ERROR("renderer", "getOrCreatePipeline: texture set layout creation failed");
+            return nullptr;
+        }
+        // PC_PORT M9.5.4: grows the pool instead of returning a null set (which
+        // made every later bindFragmentTextures fail with "no textured
+        // pipeline bound").
+        descriptorSet = RendererAccess::allocatePipelineSet(descriptorSetLayout);
+        if (!descriptorSet) {
+            PL_LOG_ERROR("renderer", "getOrCreatePipeline: texture descriptor set allocation "
+                                     "failed — draw dropped");
+            vkDestroyDescriptorSetLayout(VKDEV, descriptorSetLayout, nullptr);
+            return nullptr;
+        }
     }
 
     // M5.4 (TEV): set 1 = per-draw fragment UBO (dynamic). One descriptor per
@@ -2250,13 +2338,16 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
         dsci.bindingCount = 1;
         dsci.pBindings = &uboBinding;
         vkCreateDescriptorSetLayout(VKDEV, &dsci, nullptr, &uboSetLayout);
-
-        VkDescriptorSetAllocateInfo dsai{};
-        dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        dsai.descriptorPool = reinterpret_cast<VkDescriptorPool>(mDescriptorPool);
-        dsai.descriptorSetCount = 1;
-        dsai.pSetLayouts = &uboSetLayout;
-        if (vkAllocateDescriptorSets(VKDEV, &dsai, &uboSet) == VK_SUCCESS) {
+        uboSet = uboSetLayout ? RendererAccess::allocatePipelineSet(uboSetLayout) : VK_NULL_HANDLE;
+        if (!uboSet) {
+            PL_LOG_ERROR("renderer", "getOrCreatePipeline: fragment-UBO descriptor set allocation "
+                                     "failed — draw dropped");
+            if (uboSetLayout) vkDestroyDescriptorSetLayout(VKDEV, uboSetLayout, nullptr);
+            if (descriptorSetLayout) vkDestroyDescriptorSetLayout(VKDEV, descriptorSetLayout, nullptr);
+            // (the texture set, if any, stays in its pool until the pool is destroyed)
+            return nullptr;
+        }
+        {
             VkDescriptorBufferInfo bufInfo{};
             bufInfo.buffer = reinterpret_cast<VkBuffer>(mUboBuffer);
             bufInfo.offset = 0;
@@ -2379,7 +2470,9 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     cb.attachmentCount = 1;
     cb.pAttachments = &blend;
-    cb.blendConstants[3] = desc.dstAlphaValue; // CONSTANT_ALPHA factor value
+    // CONSTANT_ALPHA factor value: dynamic state (setBlendConstantAlpha) —
+    // PC_PORT M9.5.4, it is no longer part of the pipeline key.
+    cb.blendConstants[3] = 0.0f;
     if (desc.logicOpEnable) {
         // Logic op replaces blending (Vulkan: blending is disabled when the
         // logic op is enabled). GXLogicOp values are 1:1 with VkLogicOp.
@@ -2407,10 +2500,11 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     ds.depthWriteEnable = (desc.depthWrite && hasDepthAtt) ? VK_TRUE : VK_FALSE;
     ds.depthCompareOp = compareOpToVk(desc.depthCompare);
 
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                                      VK_DYNAMIC_STATE_BLEND_CONSTANTS};
     VkPipelineDynamicStateCreateInfo dyn{};
     dyn.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dyn.dynamicStateCount = 2;
+    dyn.dynamicStateCount = 3;
     dyn.pDynamicStates = dynamicStates;
 
     // Dynamic rendering: declare the color (+ optional depth) attachment
@@ -2461,9 +2555,31 @@ PipelineHandle Renderer::getOrCreatePipeline(const PipelineDesc& desc) {
     mPipelineCache[hash] = entry;
     mPipelineByHandle[reinterpret_cast<void*>(pipeline)] = &mPipelineCache[hash];
     // M9.5.3d triage: new-pipeline inserts rehash the cache; log the growth.
-    PL_LOG_INFO("renderer", "pipeline cache insert #%zu (hash %llx)", mPipelineCache.size(),
-                static_cast< unsigned long long >(hash));
+    // PC_PORT M9.5.4: INFO for the first 64 (a boot needs ~5, a galaxy a few
+    // dozen), then one WARN — a cache that keeps growing means some per-draw
+    // value leaked into the key again (that bug rendered the title screen
+    // black on Windows); after that only every 256th insert is logged.
+    const size_t n = mPipelineCache.size();
+    if (n <= 64) {
+        PL_LOG_INFO("renderer", "pipeline cache insert #%zu (hash %llx)", n,
+                    static_cast< unsigned long long >(hash));
+    } else if (!mPipelineCacheGrowthWarned) {
+        mPipelineCacheGrowthWarned = true;
+        PL_LOG_WARN("renderer", "pipeline cache insert #%zu — cache keeps growing; further "
+                                "inserts logged every 256", n);
+    } else if ((n % 256) == 0) {
+        PL_LOG_WARN("renderer", "pipeline cache insert #%zu (still growing)", n);
+    }
     return reinterpret_cast<PipelineHandle>(pipeline);
+}
+
+void Renderer::setBlendConstantAlpha(float alpha) {
+    mBlendConstAlpha = alpha;
+    if (!mBoundEntry || !mCmd || !mFrameRecording) {
+        return; // remembered; applied by the next bindPipeline()
+    }
+    const float constants[4] = {0.0f, 0.0f, 0.0f, alpha};
+    vkCmdSetBlendConstants(reinterpret_cast<VkCommandBuffer>(mCmd), constants);
 }
 
 void Renderer::bindPipeline(PipelineHandle pipeline) {
@@ -2478,6 +2594,10 @@ void Renderer::bindPipeline(PipelineHandle pipeline) {
     mBoundEntry = it->second;
     vkCmdBindPipeline(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
                       reinterpret_cast<VkPipeline>(pipeline));
+    // PC_PORT M9.5.4: blend constants are dynamic state and must be set for
+    // every bound pipeline before a draw (undefined otherwise).
+    const float constants[4] = {0.0f, 0.0f, 0.0f, mBlendConstAlpha};
+    vkCmdSetBlendConstants(reinterpret_cast<VkCommandBuffer>(mCmd), constants);
 }
 
 void Renderer::setUniforms(const void* data, uint32_t size) {

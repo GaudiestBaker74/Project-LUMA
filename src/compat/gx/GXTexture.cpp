@@ -771,15 +771,30 @@ GXBool GXGetTexObjMipMap(const GXTexObj* obj) {
     return (d && d->mipmap) ? GX_TRUE : GX_FALSE;
 }
 
-void GXLoadTexMtxImm(const f32 mtx[][4], u32 id, GXTexMtxType /*type*/) {
+void GXLoadTexMtxImm(const f32 mtx[][4], u32 id, GXTexMtxType type) {
     using namespace Platform::CompatGx;
     if (id < GX_TEXMTX0 || id > GX_TEXMTX9 || !mtx) {
         PL_LOG_WARN("gx", "GXLoadTexMtxImm: invalid id %u", id);
         return;
     }
     const int idx = static_cast<int>((id - GX_TEXMTX0) / 3);
-    std::memcpy(sTexMtx[idx], mtx, sizeof(sTexMtx[idx]));
-    PL_LOG_TRACE("gx", "GXLoadTexMtxImm -> TEXMTX%d", idx);
+    // PC_PORT (M9.5.4): honour `type`. A GX_MTX2x4 caller only owns two rows
+    // (32 bytes); copying sizeof(sTexMtx[idx]) == 48 bytes over-read 16 bytes
+    // past the caller's buffer (ASAN stack-buffer-overflow, e.g. the 2x4
+    // matrices in OceanBowl/WaterRoad and the gx_texcoord_gen_matrix test).
+    // The third row is synthesised as the identity row, which is what the
+    // hardware effectively uses for 2x4 texgen.
+    if (type == GX_MTX2x4) {
+        std::memcpy(sTexMtx[idx], mtx, sizeof(f32) * 2 * 4);
+        sTexMtx[idx][2][0] = 0.0f;
+        sTexMtx[idx][2][1] = 0.0f;
+        sTexMtx[idx][2][2] = 1.0f;
+        sTexMtx[idx][2][3] = 0.0f;
+    } else {
+        std::memcpy(sTexMtx[idx], mtx, sizeof(sTexMtx[idx]));
+    }
+    PL_LOG_TRACE("gx", "GXLoadTexMtxImm -> TEXMTX%d (%s)", idx,
+                 type == GX_MTX2x4 ? "2x4" : "3x4");
 }
 
 } // extern "C"

@@ -20,15 +20,22 @@
 //     "foo.tpl" and "foo" hit the same entry. TPL/brfnt big-endian conversion
 //     happens lazily inside the M9.5.2 hosts (TexMap::ReplaceImage /
 //     ResFont::SetResource), so blobs are served raw here.
-//   * GetFont returns null for now: SMG fonts live in the global
-//     /LayoutData/Font.arc (GameSystemFontHolder), whose host wiring lands
-//     with text drawing in M9.5.3c. TextBox falls back to
-//     GetResource('font', name) for arcs that carry their own brfnt.
+//   * GetFont (v7) resolves the brlyt font names against the global
+//     GameSystemFontHolder (/LayoutData/Font.arc: MessageFont26, PictureFont,
+//     MenuFont64, NumberFont, CinemaFont26; unknown names -> message font,
+//     as on the console). Null when the holder/arc is unavailable, and then
+//     TextBox falls back to GetResource('font', name) for arcs that carry
+//     their own brfnt.
 //   * mount(char*) was only ever seen called as mount(nullptr) from the
 //     commented-out initializeArc; reconstructed as a documented no-op.
 // =============================================================================
 #include "Game/System/LayoutHolder.hpp"
+#include "Game/System/GameSystem.hpp"            // v7: the global font holder
+#include "Game/System/GameSystemFontHolder.hpp"
+#include "Game/Util/SingletonHolder.hpp"
+#include "Game/Util/StringUtil.hpp"              // MR::strcasecmp
 #include <JSystem/JKernel/JKRArchive.hpp>
+#include <nw4r/ut/ResFont.h>                     // v7: ResFont -> Font upcast
 #include <cstring>
 #include <cstdio>
 
@@ -275,20 +282,63 @@ void* LayoutHolder::GetResource(u32 type, const char* pName, u32* pSize) {
 }
 
 nw4r::ut::Font* LayoutHolder::GetFont(const char* pName) {
-    // SMG layout fonts come from the global font holder (/LayoutData/Font.arc,
-    // loaded by GameSystemFontHolder at boot). The host holder is still a stub
-    // (M9.5.3c wires text drawing), so report the miss once and return null;
-    // TextBox then falls back to GetResource('font', name) for arcs that
-    // bundle their own brfnt.
-    static bool sLogged = false;
-
-    if (!sLogged) {
-        sLogged = true;
-        PL_LOG_INFO("compat.layout", "LayoutHolder::GetFont('%s'): global font holder not wired yet (M9.5.3c)",
-                    pName != nullptr ? pName : "(null)");
+    // PC_PORT (M9.5.4 v7): SMG layout fonts come from the global font holder
+    // (/LayoutData/Font.arc, mounted by GameSystemFontHolder::createFontFromFile
+    // during GameSystem::initAfterStationedResourceLoaded, i.e. before any
+    // scene layout is built). The brlyt fnl1 names carry the file name of the
+    // brfnt ("MessageFont26.brfnt", "PictureFont.brfnt", ...); the
+    // classification below mirrors the console's holder slots, and — like the
+    // console — anything unknown falls back to the message font. Returning
+    // null (holder not created, or Font.arc absent from the assets) makes
+    // TextBox fall back to GetResource('font', name) for arcs that bundle
+    // their own brfnt (HomeButton.arc), and otherwise leaves the textbox
+    // without a font (it draws nothing, no crash).
+    if (pName == nullptr) {
+        return nullptr;
     }
 
-    return nullptr;
+    GameSystem* pSystem = SingletonHolder< GameSystem >::get();
+    GameSystemFontHolder* pHolder = pSystem != nullptr ? pSystem->mFontHolder : nullptr;
+
+    if (pHolder == nullptr) {
+        return nullptr;
+    }
+
+    char stripped[64];
+    stripExtInto(pName, stripped, sizeof(stripped));
+
+    nw4r::ut::Font* pFont = nullptr;
+    const char* slot = "message";
+
+    if (MR::strcasecmp(stripped, "PictureFont") == 0) {
+        pFont = pHolder->mPictureFont;
+        slot = "picture";
+    } else if (MR::strcasecmp(stripped, "MenuFont64") == 0) {
+        pFont = pHolder->mMenuFont;
+        slot = "menu";
+    } else if (MR::strcasecmp(stripped, "NumberFont") == 0) {
+        pFont = pHolder->mNumberFont;
+        slot = "number";
+    } else if (MR::strcasecmp(stripped, "CinemaFont26") == 0) {
+        pFont = pHolder->mCinemaFont;
+        slot = "cinema";
+    } else {
+        // "MessageFont26" and every other name (MenuFont96, StaffFont18,
+        // MiiFont26 are not held by the console holder either).
+        pFont = pHolder->getMessageFont();
+    }
+
+    if (pFont == nullptr) {
+        static bool sLogged = false;
+
+        if (!sLogged) {
+            sLogged = true;
+            PL_LOG_WARN("compat.layout", "LayoutHolder::GetFont('%s'): %s font not loaded (Font.arc missing?) — text stays hidden",
+                        pName, slot);
+        }
+    }
+
+    return pFont;
 }
 
 void* LayoutHolder::getResOther(const char* pName) const {

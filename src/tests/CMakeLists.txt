@@ -59,6 +59,12 @@ add_executable(galaxy-pc-tests
     # M9.5.2: nw4r lyt — brlyt swapper, Layout::Build, TPL + brfnt conversion.
     lyt_layout_test.cpp
     layout_holder_test.cpp
+    # M9.5.4 v7: AST stream parser/decoder + BGM player (virtual audio). The
+    # text-box/font cases live in lyt_layout_test.cpp (shared brlyt builders).
+    ast_stream_test.cpp
+    # M9.5.4 v8: compat/j3d — BMD parser, BTK/BCK, host renderer (headless GX
+    # capture) and the TitleSky mount path over a synthetic archive.
+    j3d_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)

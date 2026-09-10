@@ -159,6 +159,14 @@ namespace nw4r {
                                     static_cast< const void* >(mpGroupContainer));
                     } else {
                         PL_LOG_INFO("compat.lyt", "Build: 'grp1' (nest level %d) -> creating Group ...", groupNestLevel);
+                        // PC_PORT: the vendored Group ctor calls
+                        // pRootPane->FindPaneByName() unconditionally. A brlyt
+                        // whose panes all failed to build (or a malformed one
+                        // with groups before panes) would fault here.
+                        if (mpRootPane == nullptr) {
+                            PL_LOG_WARN("compat.lyt", "Build: 'grp1' before any pane — group skipped");
+                            break;
+                        }
                         if (mpGroupContainer != nullptr && groupNestLevel == 1) {
                             if (Group* pGroup = NewObj< Group >(reinterpret_cast< const res::Group* >(pDataBlockHead), mpRootPane)) {
                                 PL_LOG_INFO("compat.lyt", "Build: Group created (%p) -> appending", static_cast< const void* >(pGroup));

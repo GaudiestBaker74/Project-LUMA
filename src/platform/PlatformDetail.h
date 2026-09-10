@@ -11,6 +11,7 @@
 // =============================================================================
 
 #include <cstddef>
+#include <cstdio>
 #include <ctime>
 #include <string>
 
@@ -45,5 +46,22 @@ void setThreadName(const char* name);
 // (mmap / VirtualAlloc). Returns nullptr on failure.
 void* reserveVirtual(size_t size, const char* purpose);
 void releaseVirtual(void* base, size_t size);
+
+// --- crash reporting (M9.5.4) -----------------------------------------------
+// Installs a last-chance fault handler (sigaction on POSIX,
+// SetUnhandledExceptionFilter on Windows). On an access violation / abort /
+// illegal instruction it appends a "*** CRASH ***" record — fault kind,
+// faulting address, thread id and a best-effort native backtrace — to
+// `logFilePath` (may be empty: stderr only) and to stderr, then lets the
+// process die normally. The game boot runs scene initialisation on worker
+// threads whose faults previously killed the process without a single line
+// in boot.log; this makes those crashes diagnosable from the log alone.
+// Idempotent. Never throws.
+void installCrashHandler(const std::string& logFilePath);
+
+// Used by the handlers above (exposed for tests / manual dumps): appends the
+// current thread's backtrace to the file descriptor / FILE*. `skipFrames`
+// drops the innermost frames (the handler itself).
+void writeBacktrace(FILE* out, int skipFrames);
 
 } // namespace Platform::Detail

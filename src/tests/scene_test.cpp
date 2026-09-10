@@ -10,6 +10,18 @@
 //                                      controller machinery -> LogoScene
 //                                      initialized -> its nerve chain runs to
 //                                      Deactive (headless, no window).
+//   async_execute_try_end_retires_job_and_ignores_stale_same_name (M9.5.4)
+//                                      MR::tryEndFunctionAsyncExecute must
+//                                      behave like the console SystemUtil: a
+//                                      finished job is retired, and a NEW job
+//                                      reusing the same name ("シーン初期化"
+//                                      for every scene) is NOT reported done
+//                                      because an older one finished. The
+//                                      stale-entry bug made the scene
+//                                      controller start the Title scene while
+//                                      its init was still running on the
+//                                      worker (TitleSequenceProduct::appear on
+//                                      a null `this`).
 // =============================================================================
 
 #include "tests/test_runner.h"
@@ -19,17 +31,22 @@
 #include "Game/Scene/LogoScene.hpp"
 #include "Game/Scene/SceneFactory.hpp"
 #include "Game/Screen/LogoFader.hpp"
+#include "Game/System/FunctionAsyncExecutor.hpp"
 #include "Game/System/GameSystem.hpp"
+#include "Game/System/GameSystemObjHolder.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
 #include "Game/System/HeapMemoryWatcher.hpp"
 #include "Game/System/MainLoopFramework.hpp"
+#include "Game/Util/Functor.hpp"
 #include "Game/Util/LayoutUtil.hpp"
 #include "Game/Util/SystemUtil.hpp"
 #include <JSystem/JKernel/JKRHeap.hpp>
 #include <JSystem/JUtility/JUTVideo.hpp>
 
+#include <atomic>
 #include <cstring>
 #include <chrono>
+#include <thread>
 
 namespace {
 
@@ -164,6 +181,103 @@ TEST_CASE(game_system_boot_reaches_logo) {
     // The GameSystem nerve chain must have reached Normal (system archive
     // "loaded" — host loader reports done immediately).
     CHECK(pGameSystem->isDoneLoadSystemArchive());
+}
+
+// ---------------------------------------------------------------------------
+// M9.5.4 — regression for the Logo -> Title crash (see the header comment).
+// Runs after game_system_boot_reaches_logo, which leaves the GameSystem (and
+// its FunctionAsyncExecutor) alive for the process — exactly the state the
+// real boot is in when the Title transition starts.
+// ---------------------------------------------------------------------------
+namespace async_probe {
+    std::atomic< int > sFastRuns{0};
+    std::atomic< int > sSlowRuns{0};
+    std::atomic< bool > sSlowMayFinish{false};
+
+    void fastJob() {
+        sFastRuns++;
+    }
+
+    void slowJob() {
+        // Hold the worker until the test lets it go: models a scene init
+        // that is still running when the controller polls for completion.
+        while (!sSlowMayFinish.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        sSlowRuns++;
+    }
+
+    bool waitUntil(const std::atomic< int >& rCounter, int value, double seconds) {
+        const auto tStart = std::chrono::steady_clock::now();
+        while (rCounter.load() < value) {
+            if (std::chrono::duration< double >(std::chrono::steady_clock::now() - tStart).count() > seconds) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return true;
+    }
+
+    bool pollTryEnd(const char* pName, double seconds) {
+        const auto tStart = std::chrono::steady_clock::now();
+        while (!MR::tryEndFunctionAsyncExecute(pName)) {
+            if (std::chrono::duration< double >(std::chrono::steady_clock::now() - tStart).count() > seconds) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return true;
+    }
+}  // namespace async_probe
+
+TEST_CASE(async_execute_try_end_retires_job_and_ignores_stale_same_name) {
+    GameSystem* pGameSystem = SingletonHolder< GameSystem >::get();
+    if (pGameSystem == nullptr || pGameSystem->mObjHolder == nullptr ||
+        pGameSystem->mObjHolder->mFunctionAsyncExecutor == nullptr) {
+        SKIP("needs the GameSystem booted by game_system_boot_reaches_logo");
+    }
+    FunctionAsyncExecutor* pExecutor = pGameSystem->mObjHolder->mFunctionAsyncExecutor;
+
+    // The same job name every scene transition uses on the console.
+    static const char* const kJobName = "regression-scene-init";
+    const int holdersBefore = pExecutor->mHolders.size();
+
+    // 1) A job that finishes immediately: tryEnd must eventually report it
+    //    done AND retire it (the console's waitForEnd erases the entry).
+    async_probe::sFastRuns = 0;
+    MR::startFunctionAsyncExecute(MR::Functor(&async_probe::fastJob), 17, kJobName);
+    REQUIRE(async_probe::waitUntil(async_probe::sFastRuns, 1, 10.0));
+    CHECK(async_probe::pollTryEnd(kJobName, 10.0));
+    CHECK_EQ(pExecutor->mHolders.size(), holdersBefore);
+
+    // 2) The next transition reuses the name while ITS job is still running.
+    //    With the M9.4 host tryEnd (poll-only, never retire) the finished
+    //    job from step 1 was still in the list and answered "done" for the
+    //    new one -> the scene controller started the Title before its init
+    //    finished. It must report NOT done until the slow job really ends.
+    async_probe::sSlowRuns = 0;
+    async_probe::sSlowMayFinish = false;
+    MR::startFunctionAsyncExecute(MR::Functor(&async_probe::slowJob), 17, kJobName);
+
+    // Give the worker time to pick the job up; poll like exeInitializeScene
+    // does once per frame — every answer must be "not yet".
+    bool reportedEarly = false;
+    const auto tStart = std::chrono::steady_clock::now();
+    while (std::chrono::duration< double >(std::chrono::steady_clock::now() - tStart).count() < 0.25) {
+        if (MR::tryEndFunctionAsyncExecute(kJobName)) {
+            reportedEarly = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK(!reportedEarly);
+    CHECK_EQ(async_probe::sSlowRuns.load(), 0);
+
+    // 3) Release the worker: now it must complete and be retired.
+    async_probe::sSlowMayFinish = true;
+    REQUIRE(async_probe::waitUntil(async_probe::sSlowRuns, 1, 10.0));
+    CHECK(async_probe::pollTryEnd(kJobName, 10.0));
+    CHECK_EQ(pExecutor->mHolders.size(), holdersBefore);
 }
 
 } // namespace

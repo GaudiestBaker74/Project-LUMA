@@ -26,6 +26,40 @@ constexpr uint8_t kTlutIA8 = 0x0;
 constexpr uint8_t kTlutRGB565 = 0x1;
 constexpr uint8_t kTlutRGB5A3 = 0x2;
 
+// PC_PORT M9.5.4: GX tile geometry (RVL_SDK __GXGetTexTileShift). Every tile
+// is 32 bytes (64 for RGBA8); the 4-bit formats pack 8x8 texels, the 8-bit
+// formats 8x4, the 16-bit ones 4x4. The first version of this decoder used a
+// 4x4 tile for EVERY format (8 B for I4, 16 B for I8/IA4) — the byte totals
+// match, so GXGetTexBufferSize and the encode/decode round trips passed, but
+// the texels of I4/I8/IA4/C4/C8 images came out shuffled: the title screen's
+// I8 bloom/shine planes rendered as vertical stripes, the IA4 "(c) 2007
+// Nintendo" and the I4 "TM" strip as noise.
+struct TileGeom {
+    uint32_t w;      // texels per tile row
+    uint32_t h;      // tile rows
+    uint32_t bytes;  // bytes per tile
+};
+inline TileGeom tileGeom(uint8_t fmt) {
+    switch (fmt) {
+        case 0x0: case 0x8:              return {8, 8, 32};  // I4, C4
+        case 0x1: case 0x2: case 0x9:    return {8, 4, 32};  // I8, IA4, C8
+        case 0x6:                        return {4, 4, 64};  // RGBA8 (AR + GB planes)
+        default:                         return {4, 4, 32};  // IA8, RGB565, RGB5A3, C14X2
+    }
+}
+// Byte offset of texel (x, y) inside a tiled image for a format whose texels
+// occupy `bpp` bytes each (1 or 2). 4-bit formats index the byte at bpp = 0
+// and pick the nibble by x's parity (high nibble = even x).
+inline size_t tiledOffset(uint32_t x, uint32_t y, uint32_t w, const TileGeom& g, uint32_t bpp) {
+    const size_t tile = static_cast<size_t>(y / g.h) * (w / g.w) + (x / g.w);
+    const uint32_t tx = x % g.w;
+    const uint32_t ty = y % g.h;
+    if (bpp == 0) { // 4-bit
+        return tile * g.bytes + ty * (g.w / 2) + tx / 2;
+    }
+    return tile * g.bytes + (ty * g.w + tx) * bpp;
+}
+
 inline uint16_t be16(const uint8_t* p) {
     return static_cast<uint16_t>((p[0] << 8) | p[1]);
 }
@@ -97,37 +131,40 @@ void decodeCmprSubtile(const uint8_t* sub, uint8_t* rgbaOut, uint32_t w,
     const uint16_t c1 = be16(sub + 2);
     Rgb8 col[4];
     bool transparent = false;
+    // PC_PORT M9.5.4: GX blends the intermediate colors with 5/8 and 3/8
+    // weights (not 2/3 and 1/3) and, in 3-color mode, index 3 is the average
+    // color with alpha 0 (not transparent black) — matches Dolphin's
+    // DecodeDXTBlock/DXTBlend so bilinear fringes look like the Wii.
+    col[0] = color565(c0);
+    col[1] = color565(c1);
     if (c0 > c1) {
-        col[0] = color565(c0);
-        col[1] = color565(c1);
-        col[2].r = static_cast<uint8_t>((2 * col[0].r + col[1].r) / 3);
-        col[2].g = static_cast<uint8_t>((2 * col[0].g + col[1].g) / 3);
-        col[2].b = static_cast<uint8_t>((2 * col[0].b + col[1].b) / 3);
-        col[3].r = static_cast<uint8_t>((col[0].r + 2 * col[1].r) / 3);
-        col[3].g = static_cast<uint8_t>((col[0].g + 2 * col[1].g) / 3);
-        col[3].b = static_cast<uint8_t>((col[0].b + 2 * col[1].b) / 3);
+        col[2].r = static_cast<uint8_t>((5 * col[0].r + 3 * col[1].r) >> 3);
+        col[2].g = static_cast<uint8_t>((5 * col[0].g + 3 * col[1].g) >> 3);
+        col[2].b = static_cast<uint8_t>((5 * col[0].b + 3 * col[1].b) >> 3);
+        col[3].r = static_cast<uint8_t>((3 * col[0].r + 5 * col[1].r) >> 3);
+        col[3].g = static_cast<uint8_t>((3 * col[0].g + 5 * col[1].g) >> 3);
+        col[3].b = static_cast<uint8_t>((3 * col[0].b + 5 * col[1].b) >> 3);
     } else {
-        col[0] = color565(c0);
-        col[1] = color565(c1);
         col[2].r = static_cast<uint8_t>((col[0].r + col[1].r) / 2);
         col[2].g = static_cast<uint8_t>((col[0].g + col[1].g) / 2);
         col[2].b = static_cast<uint8_t>((col[0].b + col[1].b) / 2);
+        col[3] = col[2];
         transparent = true;
     }
-    // Standard BC1 index layout: one byte per row (4 texels of 2 bits,
-    // LSB = leftmost). (M5.7c: was `sub[4 + ty*4 + tx/4]` — row 3's byte fell
-    // at offset 16, past the 8-byte subtile, corrupting the next block.)
+    // Index layout: one byte per row (4 texels of 2 bits). PC_PORT M9.5.4:
+    // unlike PC DXT1, GX packs the indices big-endian — the MOST significant
+    // pair is the leftmost texel (Dolphin: `colors[(val >> 6) & 3]; val <<= 2`;
+    // this used to read LSB-first, mirroring every 4-texel group). (M5.7c:
+    // was `sub[4 + ty*4 + tx/4]` — row 3's byte fell at offset 16, past the
+    // 8-byte subtile, corrupting the next block.)
     for (uint32_t ty = 0; ty < 4; ++ty) {
         const uint8_t byte = sub[4 + ty];
         for (uint32_t tx = 0; tx < 4; ++tx) {
-            const uint8_t idx = static_cast<uint8_t>((byte >> (tx * 2)) & 0x3);
+            const uint8_t idx = static_cast<uint8_t>((byte >> (6 - tx * 2)) & 0x3);
             const uint32_t x = baseX + tx;
             const uint32_t y = baseY + ty;
-            if (transparent && idx == 3) {
-                putPixel(rgbaOut, x, y, w, 0, 0, 0, 0);
-            } else {
-                putPixel(rgbaOut, x, y, w, col[idx].r, col[idx].g, col[idx].b, 255);
-            }
+            const uint8_t a = (transparent && idx == 3) ? 0 : 255;
+            putPixel(rgbaOut, x, y, w, col[idx].r, col[idx].g, col[idx].b, a);
         }
     }
 }
@@ -144,8 +181,10 @@ void putPalette(uint8_t* rgbaOut, uint32_t x, uint32_t y, uint32_t w,
     const uint16_t v = be16(palette + static_cast<size_t>(idx) * 2);
     switch (paletteFormat) {
         case kTlutIA8: {
-            const uint8_t i = static_cast<uint8_t>(v >> 8);
-            const uint8_t a = static_cast<uint8_t>(v & 0xFF);
+            // PC_PORT M9.5.4: like GX_TF_IA8 — first byte alpha, second byte
+            // intensity (Dolphin DecodePixel_Paletted/IA8; was swapped).
+            const uint8_t a = static_cast<uint8_t>(v >> 8);
+            const uint8_t i = static_cast<uint8_t>(v & 0xFF);
             putPixel(rgbaOut, x, y, w, i, i, i, a);
             break;
         }
@@ -188,23 +227,24 @@ bool btiParseHeader(const uint8_t* data, size_t size, BtiHeader& out) {
 }
 
 size_t btiImageSize(uint32_t w, uint32_t h, uint8_t gxFormat) {
-    const uint32_t tilesW = w / 4;
-    const uint32_t tilesH = h / 4;
     switch (gxFormat) {
         case kFmtI4:
         case kFmtC4:
-            return static_cast<size_t>(tilesW) * tilesH * 8;
         case kFmtI8:
         case kFmtIA4:
         case kFmtC8:
-            return static_cast<size_t>(tilesW) * tilesH * 16;
         case kFmtIA8:
         case kFmtRGB565:
         case kFmtRGB5A3:
         case kFmtC14X2:
-            return static_cast<size_t>(tilesW) * tilesH * 32;
-        case kFmtRGBA8:
-            return static_cast<size_t>(tilesW) * tilesH * 64;
+        case kFmtRGBA8: {
+            // PC_PORT M9.5.4: tiles are padded up to whole tiles, like
+            // GXGetTexBufferSize (an I4 image 328x32 has 41x4 8x8 tiles).
+            const TileGeom g = tileGeom(gxFormat);
+            const size_t tilesW = (w + g.w - 1) / g.w;
+            const size_t tilesH = (h + g.h - 1) / g.h;
+            return tilesW * tilesH * g.bytes;
+        }
         case kFmtCMPR:
             // Standard GX/DXT1: 8x8 blocks of 32 bytes (4 subtiles of 8).
             // Requires w%8==0 and h%8==0; the size is w*h/2 (matches
@@ -228,6 +268,11 @@ bool btiDecodeToRgba8(const uint8_t* src, size_t srcBytes, uint32_t w, uint32_t 
     }
 
     const uint32_t tilesW = w / 4;
+    // PC_PORT M9.5.4: the 4/8-bit formats tile as 8x8 / 8x4 (see tileGeom);
+    // widths that are not a multiple of the tile width still decode (the
+    // trailing partial tile is padded in the source, like GX expects).
+    const TileGeom geom = tileGeom(gxFormat);
+    const uint32_t tw = (w + geom.w - 1) / geom.w * geom.w; // padded width
 
     switch (gxFormat) {
         case kFmtI4:
@@ -235,17 +280,18 @@ bool btiDecodeToRgba8(const uint8_t* src, size_t srcBytes, uint32_t w, uint32_t 
             const bool paletted = (gxFormat == kFmtC4);
             for (uint32_t y = 0; y < h; ++y) {
                 for (uint32_t x = 0; x < w; ++x) {
-                    const size_t blockOff =
-                        static_cast<size_t>((y / 4) * tilesW + (x / 4)) * 8;
-                    const uint8_t byte = src[blockOff + (y % 4) * 2 + (x % 4) / 2];
-                    const uint8_t v = ((x % 4) % 2 == 0) ? static_cast<uint8_t>(byte >> 4)
-                                                         : static_cast<uint8_t>(byte & 0xF);
+                    const uint8_t byte = src[tiledOffset(x, y, tw, geom, 0)];
+                    const uint8_t v = ((x % 2) == 0) ? static_cast<uint8_t>(byte >> 4)
+                                                     : static_cast<uint8_t>(byte & 0xF);
                     if (paletted) {
                         putPalette(rgbaOut, x, y, w, palette, paletteBytes, v,
                                    paletteFormat);
                     } else {
+                        // PC_PORT M9.5.4: GX replicates intensity into ALL
+                        // four channels (A = I), which is what the glow /
+                        // mask textures rely on (Dolphin: memset(dst, i, 4)).
                         const uint8_t g = static_cast<uint8_t>(v * 17);
-                        putPixel(rgbaOut, x, y, w, g, g, g, 255);
+                        putPixel(rgbaOut, x, y, w, g, g, g, g);
                     }
                 }
             }
@@ -254,18 +300,15 @@ bool btiDecodeToRgba8(const uint8_t* src, size_t srcBytes, uint32_t w, uint32_t 
         case kFmtI8:
         case kFmtC8: {
             const bool paletted = (gxFormat == kFmtC8);
-            const size_t blockBytes = 16;
             for (uint32_t y = 0; y < h; ++y) {
                 for (uint32_t x = 0; x < w; ++x) {
-                    const size_t off =
-                        static_cast<size_t>((y / 4) * tilesW + (x / 4)) * blockBytes +
-                        (y % 4) * 4 + (x % 4);
+                    const size_t off = tiledOffset(x, y, tw, geom, 1); // 8x4 tiles
                     if (paletted) {
                         putPalette(rgbaOut, x, y, w, palette, paletteBytes, src[off],
                                    paletteFormat);
                     } else {
                         const uint8_t g = src[off];
-                        putPixel(rgbaOut, x, y, w, g, g, g, 255);
+                        putPixel(rgbaOut, x, y, w, g, g, g, g); // A = I (see I4)
                     }
                 }
             }
@@ -287,12 +330,12 @@ bool btiDecodeToRgba8(const uint8_t* src, size_t srcBytes, uint32_t w, uint32_t 
         case kFmtIA4: {
             for (uint32_t y = 0; y < h; ++y) {
                 for (uint32_t x = 0; x < w; ++x) {
-                    const size_t off =
-                        static_cast<size_t>((y / 4) * tilesW + (x / 4)) * 16 +
-                        (y % 4) * 4 + (x % 4);
+                    const size_t off = tiledOffset(x, y, tw, geom, 1); // 8x4 tiles
                     const uint8_t b = src[off];
-                    const uint8_t i = static_cast<uint8_t>((b >> 4) * 17);
-                    const uint8_t a = static_cast<uint8_t>((b & 0xF) * 17);
+                    // PC_PORT M9.5.4: GX IA4 is A in the HIGH nibble and I in
+                    // the LOW nibble (Dolphin DecodeBytes_IA4; was swapped).
+                    const uint8_t a = static_cast<uint8_t>((b >> 4) * 17);
+                    const uint8_t i = static_cast<uint8_t>((b & 0xF) * 17);
                     putPixel(rgbaOut, x, y, w, i, i, i, a);
                 }
             }
@@ -304,8 +347,10 @@ bool btiDecodeToRgba8(const uint8_t* src, size_t srcBytes, uint32_t w, uint32_t 
                     const size_t off =
                         static_cast<size_t>((y / 4) * tilesW + (x / 4)) * 32 +
                         ((y % 4) * 4 + (x % 4)) * 2;
-                    const uint8_t i = src[off];
-                    const uint8_t a = src[off + 1];
+                    // PC_PORT M9.5.4: GX IA8 stores the ALPHA byte first, then
+                    // the intensity byte (Dolphin DecodePixel_IA8; was swapped).
+                    const uint8_t a = src[off];
+                    const uint8_t i = src[off + 1];
                     putPixel(rgbaOut, x, y, w, i, i, i, a);
                 }
             }

@@ -28,7 +28,7 @@ set(JKR_EXPHEAP_SOURCE
 set(NW4R_SOURCES
     ${PETARI_ROOT}/src/nw4r/math/math_types.cpp
     ${PETARI_ROOT}/src/nw4r/math/math_triangular.cpp
-    ${PETARI_ROOT}/src/nw4r/ut/ut_CharStrmReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/ut/ut_CharStrmReader.cpp
     ${PETARI_ROOT}/src/nw4r/ut/ut_CharWriter.cpp
     ${PETARI_ROOT}/src/nw4r/ut/ut_Font.cpp
     ${PETARI_ROOT}/src/nw4r/ut/ut_LinkList.cpp
@@ -47,11 +47,11 @@ set(NW4R_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_layout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_material.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_pane.cpp
-    ${PETARI_ROOT}/src/nw4r/lyt/lyt_picture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_picture.cpp
     ${PETARI_ROOT}/src/nw4r/lyt/lyt_resourceAccessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_texMap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_textBox.cpp
-    ${PETARI_ROOT}/src/nw4r/lyt/lyt_window.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/patches/nw4r/lyt/lyt_window.cpp
 )
 
 add_library(pc_compat STATIC
@@ -137,6 +137,8 @@ add_library(pc_compat STATIC
     # soft clock, 32-bit pointer token registry, JAS host glue (the audio
     # thread's run loop over Platform::Threading).
     audio/AudioCommon.cpp
+    # M9.5.4 v7: streamed BGM player (AST → Platform::Audio; MR::startStageBGM).
+    audio/AstStream.cpp
     dsp/Adpcm.cpp
     dsp/DSP.cpp
     dsp/Mixer.cpp
@@ -204,10 +206,20 @@ add_library(pc_compat STATIC
     # the real vendored scene controller, Scene base and LogoFader, plus the
     # patched LogoScene/SceneFactory/StringUtil.
     game/SceneCompat.cpp
+    # M9.5.4 v6: host language selection (Language.cpp replacement).
+    game/LanguageCompat.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/LogoScene.cpp
     # M9.5.3d: TitleScene (host reconstruction) + the inert PAL60 window +
     # the vendored title sequence (needs the M9.5.3 layout/input compat).
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/TitleScene.cpp
+    # M9.5.4 v8: host J3D subset — BMD/BDL parser + BTK/BCK animators + the
+    # GX-replaying renderer, and the FileSelectSky stand-in (title backdrop).
+    j3d/J3DMathCompat.cpp
+    j3d/BmdModel.cpp
+    j3d/BtkAnim.cpp
+    j3d/BckAnim.cpp
+    j3d/BmdRenderer.cpp
+    j3d/TitleSky.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/EncouragePal60Window.cpp
     ${PETARI_ROOT}/src/Game/Screen/TitleSequenceProduct.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/SceneFactory.cpp

@@ -166,6 +166,10 @@ void getTexMaps(void** outTex, void** outSam);
 // empty slots). M5.7b (indirect stages) normalizes the warp offset by the
 // direct map's size.
 void getTexMapDims(float outDims[8][2]);
+// True while GXSetZTexture(GX_ZT_REPLACE, ...) is in effect (GXSync.cpp
+// mirror). PC_PORT (M9.5.4 v8): flushDraw warns once when a primitive is
+// drawn in that state — the host cannot source depth from a texture.
+bool zTexReplaceActive();
 // Resets the GX texture state (texgen, tex matrices, texmap bindings) —
 // called from GXInit (mirrors the console register reset).
 void resetTextureState();

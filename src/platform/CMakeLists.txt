@@ -53,4 +53,6 @@ elseif(PC_HOST_OS STREQUAL "windows")
     if(NOT MSVC)
         target_link_libraries(pc_platform PRIVATE atomic)
     endif()
+    # M9.5.4: crash handler symbolization (SymInitialize/StackWalk64).
+    target_link_libraries(pc_platform PRIVATE dbghelp)
 endif()

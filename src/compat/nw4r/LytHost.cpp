@@ -13,7 +13,8 @@
 //   lyt1: layoutSize 2 x f32 @12
 //   txl1/fnl1: count u16 @8; count x {u32 nameStrOffset @+0} entries @12
 //   mat1: count u16 @8; count x u32 material offsets @12 (relative to the
-//     mat1 block); each material: tevCols 12 x s16 @20, resNum u32 @60,
+//     mat1 block); each material: tevCols 12 x s16 @20 (swapped as 16-bit
+//     units), tevKCols 16 bytes @44 (untouched), resNum u32 @60,
 //     then the variable tail (order fixed by the Material ctor):
 //       TexMap[texMapNum]    4B  (u16 texIdx swapped)
 //       TexSRT[texSRTNum]    20B (5 x f32)
@@ -27,16 +28,19 @@
 //       AlphaCompare?        4B  (bytes)
 //       BlendMode?           4B  (bytes)
 //   pan1/bnd1: block size u32 @4; 10 x f32 @36 (translate/rotate/scale/size)
-//   pic1: pane fields; materialIdx u16 @92; texCoords @96: n x 32B (8 x f32)
+//   pic1: pane fields; vtxCols 4 x u32 @76 (0xRRGGBBAA words — assigned via
+//     ut::Color::operator=(u32), whose u32 view the compat Color.h keeps
+//     canonical on the host); materialIdx u16 @92; texCoords @96: n x 32B
+//     (8 x f32)
 //   txt1: pane fields; textBufBytes/textStrBytes/materialIdx/fontIdx u16
-//     @76..82; textStrOffset u32 @88; fontSize/charSpace/lineSpace f32
-//     @100..112; the string itself (UTF-16BE) is left alone (the patched
-//     lyt_textBox.cpp reads it as BE u16).
+//     @76..82; textStrOffset u32 @88; textCols 2 x u32 @92; fontSize/
+//     charSpace/lineSpace f32 @100..112; the string itself (UTF-16BE) is
+//     left alone (the patched lyt_textBox.cpp reads it as BE u16).
 //   wnd1: pane fields; inflation 4 x f32 @76; contentOffset u32 @96;
 //     frameOffsetTableOffset u32 @100; frame offset table @104: frameNum x
 //     u32 (relative to the wnd1 block), each WindowFrame: materialIdx u16;
-//     content @contentOffset: WindowContent (materialIdx u16 @+16) followed
-//     by texCoordNum x 32B texcoords.
+//     content @contentOffset: WindowContent (vtxCols 4 x u32 @+0,
+//     materialIdx u16 @+16) followed by texCoordNum x 32B texcoords.
 //   grp1: paneNum u16 @24; pane names (16B each) untouched
 //   grs1/gre1/pas1/pae1: header only
 // =============================================================================
@@ -101,7 +105,15 @@ struct Swapper {
         if (!inBounds(off, 64)) {
             return false;
         }
-        swap32Range(base + off + 20, 6);  // tevCols: 3 x GXColorS10 (4 s16)
+        // tevCols: 3 x GXColorS10 = 12 consecutive s16 (r,g,b,a per register).
+        // PC_PORT (M9.5.4 v6): these were swapped as 6 u32 words, which
+        // reverses every pair (r<->g, b<->a) — Material::SetupGX then fed
+        // the permuted registers to GXSetTevColorS10 and the lerp(C0,C1,TEX)
+        // stages of the I4/I8 title panes lit up as opaque yellow boxes.
+        for (u32 i = 0; i < 12; ++i) {
+            swap16At(base + off + 20 + i * 2);
+        }
+        // tevKCols @44: 4 x GXColor (u8 r,g,b,a) — bytes, nothing to swap.
         swap32At(base + off + 60);        // resNum bits
 
         const u32 bits = loadU32(base + off + 60);
@@ -232,6 +244,12 @@ struct Swapper {
                 return false;
             }
             swapPaneFields(off);
+            // vtxCols: 4 x u32 (0xRRGGBBAA on disk). PC_PORT (M9.5.4 v6):
+            // the Picture ctor assigns them through ut::Color::operator=(u32),
+            // whose u32 view is canonical 0xRRGGBBAA on the host (compat
+            // override of nw4r/ut/Color.h), so they are swapped like every
+            // other u32 field.
+            swap32Range(blk + 76, 4);
             swap16At(blk + 92);  // materialIdx
             const u32 texCoordNum = blk[94];
             swapTexCoords(off + 96, texCoordNum);
@@ -245,6 +263,7 @@ struct Swapper {
             swap16At(blk + 80);  // materialIdx
             swap16At(blk + 82);  // fontIdx
             swap32At(blk + 88);  // textStrOffset
+            swap32Range(blk + 92, 2);   // textCols: 2 x u32 (0xRRGGBBAA), see pic1
             swap32Range(blk + 100, 4);  // fontSize + charSpace + lineSpace
             // The UTF-16BE string at textStrOffset is read big-endian by the
             // patched lyt_textBox.cpp — deliberately not swapped.
@@ -280,6 +299,7 @@ struct Swapper {
                 if (!inBounds(contentOff, 20)) {
                     return false;
                 }
+                swap32Range(base + contentOff, 4);  // vtxCols: 4 x u32, see pic1
                 swap16At(base + contentOff + 16);  // materialIdx
                 const u32 texCoordNum = base[contentOff + 18];
                 swapTexCoords(contentOff + 20, texCoordNum);

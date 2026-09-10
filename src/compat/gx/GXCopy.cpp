@@ -195,6 +195,12 @@ bool encodeLevel(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t fmt,
                  uint8_t* out) {
     const uint32_t tilesW = w / 4;
     const uint32_t tilesH = h / 4;
+    // PC_PORT M9.5.4: the 4/8-bit formats tile as 8x8 (I4) and 8x4 (I8/IA4),
+    // 32 bytes per tile — the real GX layout (__GXGetTexTileShift), matching
+    // the decoder in Bti.cpp. The old 4x4 framing produced the same byte
+    // count, so round trips passed while real disc textures decoded scrambled.
+    // Partial trailing tiles are padded (w/h rounded up to the tile size).
+    const uint32_t tiles8W = (w + 7) / 8;
     switch (fmt) {
         case kFmtI4: {
             for (uint32_t y = 0; y < h; ++y) {
@@ -202,9 +208,9 @@ bool encodeLevel(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t fmt,
                     const uint8_t* p = rgba + (y * w + x) * 4;
                     const uint8_t lum = static_cast<uint8_t>((p[0] + p[1] + p[2]) / 3);
                     const uint8_t v = std::min<uint8_t>(15, (lum + 8) / 17);
-                    uint8_t& byte = out[((y / 4) * tilesW + (x / 4)) * 8 +
-                                        (y % 4) * 2 + (x % 4) / 2];
-                    if ((x % 4) % 2 == 0) {
+                    uint8_t& byte = out[((y / 8) * tiles8W + (x / 8)) * 32 +
+                                        (y % 8) * 4 + (x % 8) / 2];
+                    if ((x % 2) == 0) {
                         byte = static_cast<uint8_t>((byte & 0x0F) | (v << 4));
                     } else {
                         byte = static_cast<uint8_t>((byte & 0xF0) | v);
@@ -217,7 +223,7 @@ bool encodeLevel(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t fmt,
             for (uint32_t y = 0; y < h; ++y) {
                 for (uint32_t x = 0; x < w; ++x) {
                     const uint8_t* p = rgba + (y * w + x) * 4;
-                    out[((y / 4) * tilesW + (x / 4)) * 16 + (y % 4) * 4 + (x % 4)] =
+                    out[((y / 4) * tiles8W + (x / 8)) * 32 + (y % 4) * 8 + (x % 8)] =
                         static_cast<uint8_t>((p[0] + p[1] + p[2]) / 3);
                 }
             }
@@ -230,8 +236,10 @@ bool encodeLevel(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t fmt,
                     const uint8_t lum = static_cast<uint8_t>((p[0] + p[1] + p[2]) / 3);
                     const uint8_t i = std::min<uint8_t>(15, (lum + 8) / 17);
                     const uint8_t a = std::min<uint8_t>(15, (p[3] + 8) / 17);
-                    out[((y / 4) * tilesW + (x / 4)) * 16 + (y % 4) * 4 + (x % 4)] =
-                        static_cast<uint8_t>((i << 4) | a);
+                    // PC_PORT M9.5.4: GX IA4 = alpha in the high nibble,
+                    // intensity in the low one (matches btiDecodeToRgba8).
+                    out[((y / 4) * tiles8W + (x / 8)) * 32 + (y % 4) * 8 + (x % 8)] =
+                        static_cast<uint8_t>((a << 4) | i);
                 }
             }
             return true;
@@ -242,8 +250,9 @@ bool encodeLevel(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t fmt,
                     const uint8_t* p = rgba + (y * w + x) * 4;
                     uint8_t* dst = out + ((y / 4) * tilesW + (x / 4)) * 32 +
                                    ((y % 4) * 4 + (x % 4)) * 2;
-                    dst[0] = static_cast<uint8_t>((p[0] + p[1] + p[2]) / 3);
-                    dst[1] = p[3];
+                    // PC_PORT M9.5.4: GX IA8 = alpha byte first, then intensity.
+                    dst[0] = p[3];
+                    dst[1] = static_cast<uint8_t>((p[0] + p[1] + p[2]) / 3);
                 }
             }
             return true;
@@ -391,8 +400,9 @@ bool encodeCmprSubtile(const uint8_t* rgba, uint32_t w, uint32_t baseX,
     color565Rgb(c1, &col[1][0], &col[1][1], &col[1][2]);
     if (!transparent) {
         for (int c = 0; c < 3; ++c) {
-            col[2][c] = static_cast<uint8_t>((2 * col[0][c] + col[1][c]) / 3);
-            col[3][c] = static_cast<uint8_t>((col[0][c] + 2 * col[1][c]) / 3);
+            // PC_PORT M9.5.4: GX weights 5/8 + 3/8 (matches the decoder).
+            col[2][c] = static_cast<uint8_t>((5 * col[0][c] + 3 * col[1][c]) >> 3);
+            col[3][c] = static_cast<uint8_t>((3 * col[0][c] + 5 * col[1][c]) >> 3);
         }
     } else {
         for (int c = 0; c < 3; ++c) {
@@ -421,9 +431,11 @@ bool encodeCmprSubtile(const uint8_t* rgba, uint32_t w, uint32_t baseX,
             if (transparent && px[idx][3] < 128) {
                 best = 3;
             }
-            rowIndices |= static_cast<uint8_t>((best & 0x3u) << (tx * 2));
+            // PC_PORT M9.5.4: GX CMPR indices are big-endian — leftmost texel
+            // in the MOST significant bit pair (matches decodeCmprSubtile).
+            rowIndices |= static_cast<uint8_t>((best & 0x3u) << (6 - tx * 2));
         }
-        out[4 + ty] = rowIndices; // LSB = leftmost (matches decodeCmprSubtile)
+        out[4 + ty] = rowIndices;
     }
     return true;
 }
@@ -433,11 +445,11 @@ size_t encodedLevelSize(uint32_t w, uint32_t h, uint8_t fmt) {
     const uint32_t tilesW = w / 4;
     const uint32_t tilesH = h / 4;
     switch (fmt) {
-        case kFmtI4:
-            return static_cast<size_t>(tilesW) * tilesH * 8;
+        case kFmtI4: // PC_PORT M9.5.4: 8x8 tiles of 32 B (padded)
+            return static_cast<size_t>((w + 7) / 8) * ((h + 7) / 8) * 32;
         case kFmtI8:
-        case kFmtIA4:
-            return static_cast<size_t>(tilesW) * tilesH * 16;
+        case kFmtIA4: // 8x4 tiles of 32 B (padded)
+            return static_cast<size_t>((w + 7) / 8) * ((h + 3) / 4) * 32;
         case kFmtIA8:
         case kFmtRGB565:
         case kFmtRGB5A3:
@@ -805,42 +817,57 @@ void GXCopyTex(void* dst, GXBool clear) {
 
 u32 GXGetTexBufferSize(u16 width, u16 height, u32 format, GXBool mipmap,
                        u8 maxLod) {
-    // SDK formula (GXTexture.c): bytes per level = w*h*bpp, summing the mip
-    // chain 1..maxLod when mipmap. Matches the tiled layout sizes for the
-    // sizes GX allows (multiples of 4 / 8), so buffers sized with this call
-    // fit the GXCopyTex output.
+    // SDK formula (GXTexture.c, __GXGetTexTileShift): bytes per level =
+    // ceil(w / tileW) * ceil(h / tileH) * tileBytes, summing the mip chain
+    // 1..maxLod when mipmap. PC_PORT M9.5.4: rounded up to whole tiles like
+    // the SDK (the old w*h*bpp undersized buffers for widths that are not a
+    // multiple of the 8-texel tile of the 4/8-bit formats) — this is exactly
+    // what GXCopyTex writes (encodedLevelSize) and Bti decodes.
     auto levelSize = [&](u32 w, u32 h) -> u32 {
+        u32 shiftX = 2, shiftY = 2, tileBytes = 32;
         switch (format) {
             case GX_TF_I4:
             case GX_TF_C4:
-                return (w * h) >> 1;
+            case GX_TF_CMPR:
+                shiftX = 3; shiftY = 3;
+                break;
             case GX_TF_I8:
             case GX_TF_C8:
             case GX_TF_IA4:
-                return w * h;
+                shiftX = 3; shiftY = 2;
+                break;
             case GX_TF_IA8:
             case GX_TF_RGB565:
             case GX_TF_RGB5A3:
             case GX_TF_C14X2:
-                return w * h * 2;
+                break;
             case GX_TF_RGBA8:
-                return w * h * 4;
-            case GX_TF_CMPR:
-                return (w * h) >> 1;
+                tileBytes = 64;
+                break;
             default:
                 return 0;
         }
+        const u32 nx = (w + (1u << shiftX) - 1) >> shiftX;
+        const u32 ny = (h + (1u << shiftY) - 1) >> shiftY;
+        return nx * ny * tileBytes;
     };
-    u32 size = levelSize(width, height);
-    if (size == 0) {
+    if (levelSize(width, height) == 0) {
         return 0;
     }
-    if (mipmap) {
-        for (u8 i = 1; i <= maxLod; ++i) {
-            const u32 w = (width >> i) ? (width >> i) : 1;
-            const u32 h = (height >> i) ? (height >> i) : 1;
-            size += levelSize(w, h);
+    if (!mipmap) {
+        return levelSize(width, height);
+    }
+    // SDK loop: `maxLod` levels INCLUDING the base, halving down to 1x1 (the
+    // 1x1 level is counted once, then the loop stops).
+    u32 size = 0;
+    u32 w = width, h = height;
+    for (u8 level = 0; level < maxLod; ++level) {
+        size += levelSize(w, h);
+        if (w == 1 && h == 1) {
+            break;
         }
+        w = (w > 1) ? (w >> 1) : 1;
+        h = (h > 1) ? (h >> 1) : 1;
     }
     return size;
 }

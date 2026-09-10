@@ -14,10 +14,13 @@
 //             [--no-vsync] [--fullscreen] [--frames N] [--boot]
 // =============================================================================
 
+#include "compat/audio/AstStream.h"
 #include "compat/dvd/DVDCompat.h"
+#include "compat/game/LanguageCompat.h"
 #include "compat/gx/GXCompat.h"
 #include "compat/kpad/KPADCompat.h"
 #include "compat/os/OSCompat.h"
+#include "platform/Audio/Audio.h"
 #include "platform/Input/Input.h"
 #include "platform/Renderer/Renderer.h"
 #include "platform/Window/Window.h"
@@ -49,6 +52,7 @@ struct Options {
     std::string logLevel;
     std::string logFile;
     std::string assetsDir;
+    std::string language; // M9.5.4 v6: game language folder (UsEnglish, ...)
     int width = 1280;
     int height = 720;
     bool gpuDebug = false;
@@ -56,6 +60,8 @@ struct Options {
     bool fullscreen = false;
     int maxFrames = 0; // 0 = run until quit
     bool boot = false; // M9: run the real game boot (gameMain) instead of the demo
+    bool audio = true; // M9.5.4 v7: open the audio device for the boot (music)
+    float musicVolume = 1.0f; // 0..1
 };
 
 void printHelp() {
@@ -68,6 +74,11 @@ void printHelp() {
         "  --log-level LVL    TRACE|DEBUG|INFO|WARN|ERROR|FATAL (default INFO)\n"
         "  --log-file PATH    also write logs to PATH\n"
         "  --assets-dir DIR   game assets root (default ./assets, env GALAXY_ASSETS_DIR)\n"
+        "  --language NAME    game language folder: UsEnglish (default), UsSpanish,\n"
+        "                     UsFrench, EuEnglish, EuSpanish, EuFrench, EuGerman,\n"
+        "                     EuItalian, EuDutch, JpJapanese, CnSimpChinese, KrKorean\n"
+        "                     (env GALAXY_LANGUAGE). Picks the language variants of\n"
+        "                     the layout panes (TxtStartUsEn vs TxtStartJpJa, ...)\n"
         "  --gpu-debug        enable Vulkan validation layers + debug labels\n"
         "  --width N          window width (default 1280)\n"
         "  --height N         window height (default 720)\n"
@@ -75,7 +86,10 @@ void printHelp() {
         "  --fullscreen       start fullscreen (F11 toggles)\n"
         "  --frames N         run N frames then exit cleanly (0 = run forever)\n"
         "  --boot             run the real game boot (M9: gameMain -> frameLoop,\n"
-        "                     Logo scene) instead of the M5 demo\n\n"
+        "                     Logo scene) instead of the M5 demo\n"
+        "  --no-audio         do not open the audio device (env GALAXY_NO_AUDIO=1);\n"
+        "                     the boot plays the streamed music (AudioRes/Stream)\n"
+        "  --music-volume V   music volume 0..1 (default 1, env GALAXY_MUSIC_VOLUME)\n\n"
         "M5 demo: SDL3 window + Vulkan (Platform::Renderer) + fixed 60 Hz loop\n"
         "with a rotating GX quad (immediate vertices). Esc/close quits; F11 toggles\n"
         "fullscreen.\n"
@@ -114,6 +128,10 @@ bool parseArgs(int argc, char** argv, Options& out) {
             const char* v = next("--assets-dir");
             if (!v) return false;
             out.assetsDir = v;
+        } else if (arg == "--language") {
+            const char* v = next("--language");
+            if (!v) return false;
+            out.language = v;
         } else if (arg == "--width") {
             const char* v = next("--width");
             if (!v) return false;
@@ -130,6 +148,14 @@ bool parseArgs(int argc, char** argv, Options& out) {
             out.fullscreen = true;
         } else if (arg == "--boot") {
             out.boot = true;
+        } else if (arg == "--no-audio") {
+            out.audio = false;
+        } else if (arg == "--music-volume") {
+            const char* v = next("--music-volume");
+            if (!v) return false;
+            out.musicVolume = static_cast<float>(std::atof(v));
+            if (out.musicVolume < 0.0f) out.musicVolume = 0.0f;
+            if (out.musicVolume > 1.0f) out.musicVolume = 1.0f;
         } else if (arg == "--frames") {
             const char* v = next("--frames");
             if (!v) return false;
@@ -222,9 +248,23 @@ int main(int argc, char** argv) {
         logConfig.filePath = opts.logFile;
     }
     Platform::init(logConfig); // also initializes logging (re-applies config)
+    // M9.5.4: last-chance crash reporter. Scene initialisation ("シーン初期化")
+    // runs on an OSThread worker; a fault there used to end the process
+    // with nothing after the last flushed log line. Now boot.log (and stderr)
+    // get a "*** CRASH ***" record with the fault kind, address and a
+    // backtrace of the faulting thread.
+    Platform::Detail::installCrashHandler(opts.logFile);
     if (!opts.assetsDir.empty()) {
         // Override the default "./assets" (or GALAXY_ASSETS_DIR) root.
         Platform::Filesystem::setRootDir(opts.assetsDir);
+    }
+    if (!opts.language.empty() && !compat::setLanguage(opts.language.c_str())) {
+        std::fprintf(stderr, "--language: unknown language '%s' (valid:", opts.language.c_str());
+        for (u32 i = 0; i < compat::getLanguageNum(); ++i) {
+            std::fprintf(stderr, " %s", compat::getLanguageNameByIndex(i));
+        }
+        std::fprintf(stderr, ")\n");
+        return 2;
     }
     compat::initOS();
     compat::initDVD();  // M7: FST from the mounted assets root (no-op without assets)
@@ -258,6 +298,35 @@ int main(int argc, char** argv) {
         if (!Platform::Renderer::init(bootWindow.handle(), bootRendererConfig)) {
             PL_LOG_FATAL("main", "renderer initialization failed");
             return 1;
+        }
+
+        // M9.5.4 v7: the audio device. The game's BGM path (MR::startStageBGM →
+        // compat/audio/AstStream) pushes the streamed music into it; without
+        // a device (or with --no-audio / GALAXY_NO_AUDIO) Platform::Audio runs
+        // in virtual mode and the game stays silent but otherwise identical.
+        {
+            const char* envNoAudio = std::getenv("GALAXY_NO_AUDIO");
+            if (envNoAudio != nullptr && envNoAudio[0] != '\0' && envNoAudio[0] != '0') {
+                opts.audio = false;
+            }
+            const char* envVolume = std::getenv("GALAXY_MUSIC_VOLUME");
+            if (envVolume != nullptr && envVolume[0] != '\0') {
+                float v = static_cast<float>(std::atof(envVolume));
+                if (v < 0.0f) v = 0.0f;
+                if (v > 1.0f) v = 1.0f;
+                opts.musicVolume = v;
+            }
+            Platform::Audio::Config audioConfig;
+            audioConfig.enable = opts.audio;
+            audioConfig.inputFreq = 32000;   // SMG streams are 32 kHz
+            audioConfig.latencyMs = 250;     // ring the stream thread keeps topped up
+            Platform::Audio::init(audioConfig);
+            compat::audio::setStreamVolume(opts.musicVolume);
+            std::atexit([]() {
+                compat::audio::shutdownStreams();
+                Platform::Audio::shutdown();
+            });
+            PL_LOG_INFO("main", "audio: %s (music volume %.2f)", Platform::Audio::statusString(), opts.musicVolume);
         }
 
         PL_LOG_INFO("main", "--boot: entering gameMain() (the vendored game boot)");

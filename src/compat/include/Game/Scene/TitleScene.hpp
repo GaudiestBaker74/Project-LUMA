@@ -4,15 +4,23 @@
 //
 // The console scene holds TitleSequenceProduct + FileSelector + a 3D backdrop
 // (FileSelectSky). M9.5.3d scope (docs/m9.5.3-plan.md): the real vendored
-// TitleSequenceProduct over a black backdrop; FileSelector is M10 and the 3D
-// background is a later milestone. When the sequence ends (Decide) the scene
+// TitleSequenceProduct over the FileSelectSky backdrop — M9.5.4 v8 draws the
+// real CometNearOrbitSky model through compat/j3d (BmdRenderer), falling back
+// to the v6/v7 host starfield when the archive is not present;
+// FileSelector is M10. When the sequence ends (Decide) the scene
 // parks and logs — the console loops back through GameSequenceProgress to the
 // Title again, which without FileSelector would restart the intro forever.
 // =============================================================================
 
 #include "Game/Scene/Scene.hpp"
 
+#include <memory>
+
 class TitleSequenceProduct;
+
+namespace compat::j3d {
+    class TitleSky;
+}
 
 class TitleScene : public Scene {
 public:
@@ -33,4 +41,8 @@ private:
     /// PC_PORT: set once the sequence reached Dead; draw goes to a black frame
     /// afterwards (parked until the process exits — see the class comment).
     bool mEnded;
+    /// PC_PORT (M9.5.4 v8): the real CometNearOrbitSky J3D backdrop
+    /// (FileSelectSky stand-in, compat/j3d). Null when the archive is missing
+    /// → the synthetic starfield is drawn instead.
+    std::unique_ptr< compat::j3d::TitleSky > mSky;
 };

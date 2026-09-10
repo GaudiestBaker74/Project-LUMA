@@ -121,10 +121,23 @@ namespace nw4r {
                 mBits.bAllocFont = true;
             }
 
-            const u32* const matOffsTbl = detail::ConvertOffsToPtr< u32 >(resBlockSet.pMaterialList, sizeof(*resBlockSet.pMaterialList));
-            const res::Material* const pResMaterial =
-                detail::ConvertOffsToPtr< res::Material >(resBlockSet.pMaterialList, matOffsTbl[pBlock->materialIdx]);
-            mpMaterial = Layout::NewObj< Material >(pResMaterial, resBlockSet);
+            // PC_PORT (M9.5.4 hardening): validate materialIdx against mat1
+            // before indexing the offset table (a missing mat1 or a corrupt /
+            // mis-swapped index read a wild offset and faulted in the Material
+            // ctor). The textbox keeps a null material; DrawSelf already
+            // bails when mpMaterial is null.
+            if (resBlockSet.pMaterialList != nullptr && pBlock->materialIdx < resBlockSet.pMaterialList->materialNum) {
+                const u32* const matOffsTbl = detail::ConvertOffsToPtr< u32 >(resBlockSet.pMaterialList, sizeof(*resBlockSet.pMaterialList));
+                const res::Material* const pResMaterial =
+                    detail::ConvertOffsToPtr< res::Material >(resBlockSet.pMaterialList, matOffsTbl[pBlock->materialIdx]);
+                mpMaterial = Layout::NewObj< Material >(pResMaterial, resBlockSet);
+            } else {
+                PL_LOG_WARN("compat.lyt", "TextBox '%.16s': material %u out of range (materialNum %u) — no material",
+                            pBlock->name, static_cast< unsigned >(pBlock->materialIdx),
+                            resBlockSet.pMaterialList != nullptr
+                                ? static_cast< unsigned >(resBlockSet.pMaterialList->materialNum)
+                                : 0u);
+            }
         }
 
         void TextBox::Init(u16 allocStrLen) {

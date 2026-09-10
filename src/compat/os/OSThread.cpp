@@ -21,10 +21,13 @@
 //
 // Uses the Meyers-singleton registry pattern of OSMutex.cpp for the side
 // tables (no static-init-order hazards).
+#include "platform/Log/Log.h"
 #include "platform/Threading/Threading.h"
 #include "platform/Timing/Timing.h"
 
 #include <revolution/os.h>
+
+#include <exception>
 
 #include <atomic>
 #include <condition_variable>
@@ -103,8 +106,17 @@ void runTrampoline(OSThread* t) {
     if (h->func != nullptr) {
         try {
             ret = h->func(h->arg);
+        } catch (const std::exception& e) {
+            // PC_PORT (M9.5.4): never propagate across a C boundary — but say
+            // so. A swallowed exception in a game worker (scene init runs on
+            // one, see FunctionAsyncExecutor) used to leave the scene half
+            // built with no trace in the log; the callers then dereferenced
+            // whatever was missing and the process died "for no reason".
+            PL_LOG_ERROR("compat.os", "OSThread %p: uncaught exception in thread function: %s", static_cast<void*>(t), e.what());
+            ret = nullptr;
         } catch (...) {
-            ret = nullptr; // never propagate across a C boundary
+            PL_LOG_ERROR("compat.os", "OSThread %p: uncaught non-std exception in thread function", static_cast<void*>(t));
+            ret = nullptr;
         }
     }
     {
