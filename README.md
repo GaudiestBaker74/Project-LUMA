@@ -66,10 +66,9 @@ Note: These screenshots show the current technical boot progress. Gameplay and T
 
 ### More screenshots 
 
-|          Renderer          |          Runtime          |          Debug          |
-| :------------------------: | :-----------------------: | :---------------------: |
-|         Coming Soon        |        Coming Soon        |       Coming Soon       |
-|                            |                           |                         |
+| Title Screen | Runtime | Debug |
+| :---: | :---: | :---: |
+| <img src="https://raw.githubusercontent.com/GaudiestBaker74/Project-LUMA/refs/heads/main/docs/images/screenshots/Title_Screen.png" width="300"> | Coming Soon | Coming Soon |
 
 ---
 
