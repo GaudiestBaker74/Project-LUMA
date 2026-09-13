@@ -49,8 +49,6 @@ The long-term goal is simple:
 
 </div>
 
-*(Progress captures are no longer kept in the repository to keep it light; dump your own with `--screenshot frame.ppm` and convert it with `tools/ppm2png.py`.)*
-
 Project LUMA is currently working through the game's initialization and boot pipeline.
 
 The current milestone is M9 — First Real Boot, with the project progressively reaching more of the original game's startup sequence.
@@ -63,8 +61,6 @@ Note: These screenshots show the current technical boot progress. Gameplay and T
 > Screenshots below are development captures and may change significantly as the renderer and game boot process evolve.
 
 <div align="center">
-
-*(No versioned captures: use `--screenshot` to dump the current frame.)*
 
 </div>
 
