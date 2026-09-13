@@ -280,6 +280,10 @@ add_library(pc_compat STATIC
     # the A/B button icons of the "Press both [A] and [B]." line (the picture
     # font's own glyphs when it is mounted, a vector reproduction otherwise).
     ${CMAKE_CURRENT_SOURCE_DIR}/game/UiAnchoring.cpp
+    # PC_PORT (M10): host-side file-select logic (cursor over the pointer,
+    # A/B selection, host save store) for the FileSelect.arc stand-in that
+    # TitleScene mounts after the title sequence decides.
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/FileSelectHost.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/ButtonPrompt.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureGlyphs.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureFontDump.cpp

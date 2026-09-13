@@ -254,11 +254,24 @@ void PSMTXTrans(Mtx m, f32 xT, f32 yT, f32 zT) {
 }
 
 void PSMTXTransApply(const Mtx src, Mtx dst, f32 xT, f32 yT, f32 zT) {
-    // dst = src * Translate(xT, yT, zT): rotation rows copied, the
-    // translation column gets src's linear part applied to (x, y, z).
-    f32 t0 = src[0][0] * xT + src[0][1] * yT + src[0][2] * zT + src[0][3];
-    f32 t1 = src[1][0] * xT + src[1][1] * yT + src[1][2] * zT + src[1][3];
-    f32 t2 = src[2][0] * xT + src[2][1] * yT + src[2][2] * zT + src[2][3];
+    // RVL SDK semantics (cross-checked against libogc's guMtxTransApply, the
+    // clean-room reimplementation of this very function): the translation is
+    // ADDED to the matrix column, i.e. applied in the space `src` maps INTO,
+    // NOT pushed through src's linear part. The multiplying variant
+    // (dst = src * T) is a DIFFERENT SDK call, PSMTXApplyTrans — implementing
+    // TransApply with ApplyTrans' body made every pane's own translate get
+    // scaled by its own scale.
+    //
+    // nw4r::lyt::Pane::CalculateMtx builds R*S and then applies the pane's
+    // mTranslate with this call, so on console a pane's translate lives in
+    // PARENT space and animating the scale never shrinks it. With the
+    // multiplying body the title logo's appear anim collapsed its rise
+    // (translate -30..0 became -7.5..0 at scale 0.25) and PicLogoShine
+    // (pos 64, scale 2) sat at 128 instead of 64: the whole intro read
+    // shifted upwards against the console.
+    const f32 t0 = src[0][3] + xT;
+    const f32 t1 = src[1][3] + yT;
+    const f32 t2 = src[2][3] + zT;
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
             dst[i][j] = src[i][j];

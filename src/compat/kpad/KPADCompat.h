@@ -25,6 +25,18 @@ void setRumbleSink(RumbleSink sink);
 // since the last call (used for button auto-repeat).
 void updateFrame(const InputState& state, double dt);
 
+// --- boot-path feed ---------------------------------------------------------
+// The demo loop polls SDL itself and calls updateFrame() directly, but the
+// real boot (gameMain) never returns to main.cpp: its frame loop lives inside
+// the vendored code and the SDL event queue is pumped by compat/vi
+// (pumpHostEvents, once per retrace). Registering a raw-device source lets
+// that pump feed the KPAD/WPAD layer without consuming events (Input::sample
+// is a pure state query), so A+B actually reaches the title sequence.
+// Both pointers must outlive the boot (gameMain never returns). No-op pair:
+// without a source, pumpFrame() does nothing (headless tests).
+void setInputSource(Platform::Input* input, Platform::Window* window);
+void pumpFrame();
+
 // Resets all channels and (re)loads the input config (calls KPADInit).
 void init();
 void shutdown();
@@ -34,6 +46,12 @@ void shutdown();
 // held this frame; `trig` = this-frame press edges. 0 for invalid channels.
 uint32_t getHoldButtons(int chan);
 uint32_t getTrigButtons(int chan);
+
+// Latest DPD pointer of a channel in KPAD pos space ([-1,1], y up), without
+// draining the KPADRead ring (host-side UI stand-ins need the pointer while
+// the vendored WPadHolder keeps consuming the samples). false when the
+// channel has no samples yet.
+bool getPointerPos(int chan, float* outX, float* outY);
 
 // --- Test hooks -------------------------------------------------------------
 // Replaces the config used by updateFrame (bypasses the config file).

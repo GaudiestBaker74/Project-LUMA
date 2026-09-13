@@ -17,9 +17,14 @@
 #include <memory>
 
 class TitleSequenceProduct;
+class SimpleLayout;
 
 namespace compat::j3d {
     class TitleSky;
+}
+
+namespace compat::game {
+    class FileSelectHost;
 }
 
 class TitleScene : public Scene {
@@ -45,4 +50,10 @@ private:
     /// (FileSelectSky stand-in, compat/j3d). Null when the archive is missing
     /// → the synthetic starfield is drawn instead.
     std::unique_ptr< compat::j3d::TitleSky > mSky;
+    /// PC_PORT (M10): post-Decide file-select stand-in — the real
+    /// FileSelect.arc layout (vendored SimpleLayout) plus host-side
+    /// cursor/selection (compat/game/FileSelectHost). Null until the title
+    /// sequence decides (A+B).
+    SimpleLayout* mFileSelect = nullptr;
+    std::unique_ptr< compat::game::FileSelectHost > mFileHost;
 };

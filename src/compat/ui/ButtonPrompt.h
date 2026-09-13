@@ -65,6 +65,16 @@ struct PromptDrawContext {
     GXColor colorTop;
     GXColor colorBottom;
 
+    /// The writer's colour mapping (the material's TEV colours 0/1, see
+    /// nw4r::ut::CharWriter::SetupGXWithColorMapping): every printed texel is
+    /// mix(min, max, texel) BEFORE the vertex colour multiplies it. On the
+    /// title's shadow pane (ShaStart) the dark ink can live in the mapping's
+    /// max instead of the vertex colour, so the icons fold `mapMax` into their
+    /// tint (running the lerp as a TEV stage over the texel washes the art's
+    /// own colours to white on alpha-only mappings). Defaults are identity.
+    GXColor mapMin = GXColor{0, 0, 0, 0};
+    GXColor mapMax = GXColor{255, 255, 255, 255};
+
     /// Pane/global alpha (0-255) applied to every emitted vertex.
     u8 globalAlpha = 255;
 };

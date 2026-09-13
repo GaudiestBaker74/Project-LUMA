@@ -90,9 +90,11 @@ InputConfig InputConfig::defaults() {
         cfg.channels[i].source = Source::None;
     }
 
-    // Channel 0: keyboard + mouse.
+    // Channel 0: keyboard + mouse UNION gamepad 0 (the game reads WPAD_CHAN0
+    // for everything single-player; a gamepad on its own channel was dead).
     ChannelConfig& c0 = cfg.channels[0];
-    c0.source = Source::KeyboardMouse;
+    c0.source = Source::KeyboardMouseGamepad;
+    c0.gamepadIndex = 0;
     c0.bind[static_cast<int>(WiiAction::Up)] = Platform::Key::Up;
     c0.bind[static_cast<int>(WiiAction::Down)] = Platform::Key::Down;
     c0.bind[static_cast<int>(WiiAction::Left)] = Platform::Key::Left;
@@ -110,11 +112,11 @@ InputConfig InputConfig::defaults() {
 
     // Channels 1-3: the first three SDL gamepads (if present).
     cfg.channels[1].source = Source::Gamepad;
-    cfg.channels[1].gamepadIndex = 0;
+    cfg.channels[1].gamepadIndex = 1;
     cfg.channels[2].source = Source::Gamepad;
-    cfg.channels[2].gamepadIndex = 1;
+    cfg.channels[2].gamepadIndex = 2;
     cfg.channels[3].source = Source::Gamepad;
-    cfg.channels[3].gamepadIndex = 2;
+    cfg.channels[3].gamepadIndex = 3;
 
     return cfg;
 }
@@ -187,6 +189,8 @@ InputConfig InputConfig::load() {
         if (std::strcmp(key, "source") == 0) {
             if (std::strcmp(value, "keyboard_mouse") == 0) {
                 ch.source = Source::KeyboardMouse;
+            } else if (std::strcmp(value, "keyboard_mouse_gamepad") == 0) {
+                ch.source = Source::KeyboardMouseGamepad;
             } else if (std::strcmp(value, "gamepad") == 0) {
                 ch.source = Source::Gamepad;
             } else if (std::strcmp(value, "none") == 0) {

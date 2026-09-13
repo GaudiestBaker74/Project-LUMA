@@ -106,6 +106,15 @@ public:
     // Also updates the window's internal close flag.
     InputState poll(Window& window);
 
+    // Event-free snapshot of the same devices (SDL state queries only:
+    // SDL_GetKeyboardState / SDL_GetMouseState / SDL_GetGamepad*). For loops
+    // that already own the SDL event queue (the --boot path pumps it in
+    // compat/vi pumpHostEvents) so both layers can coexist without stealing
+    // events from each other. Button edges still come out of the compat
+    // layer's frame-to-frame diff. quit/fullscreenToggle stay false here —
+    // those remain event-driven in the owner of the queue.
+    InputState sample(int windowWidth, int windowHeight);
+
     // Motor control: gamepadIndex is a slot in [0, kMaxGamepads) that maps to
     // the i-th connected gamepad. No-op when no gamepad is present (or SDL is
     // unavailable, e.g. headless tests).
@@ -120,6 +129,10 @@ private:
     // not depend on SDL3.
     void* mGamepads[kMaxGamepads] = {};
     uint32_t mGamepadIds[kMaxGamepads] = {};
+    // Previous sample() mouse position, for mouseDX/mouseDY without events.
+    int mSampleMouseX = 0;
+    int mSampleMouseY = 0;
+    bool mHaveSampleMouse = false;
 };
 
 } // namespace Platform

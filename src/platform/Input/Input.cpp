@@ -4,6 +4,8 @@
 
 #include "platform/Input/Input.h"
 
+#include "platform/Log/Log.h"
+
 #include <SDL3/SDL.h>
 
 #include <cmath>
@@ -263,6 +265,12 @@ InputState Input::poll(Window& window) {
                     if (pad != nullptr) {
                         mGamepads[slot] = static_cast<void*>(pad);
                         mGamepadIds[slot] = event.gdevice.which;
+                        const char* name = SDL_GetGamepadName(pad);
+                        Log::log(Log::Level::Info, "platform.input", "gamepad attached -> slot %d: %s",
+                                 slot, name != nullptr ? name : "(unknown)");
+                    } else {
+                        Log::log(Log::Level::Warn, "platform.input", "gamepad attach: SDL_OpenGamepad failed: %s",
+                                 SDL_GetError() != nullptr ? SDL_GetError() : "?");
                     }
                 }
                 break;
@@ -270,6 +278,7 @@ InputState Input::poll(Window& window) {
             case SDL_EVENT_GAMEPAD_REMOVED: {
                 const int slot = findGamepadSlot(mGamepads, mGamepadIds, event.gdevice.which);
                 if (slot >= 0) {
+                    Log::log(Log::Level::Info, "platform.input", "gamepad detached from slot %d", slot);
                     SDL_CloseGamepad(static_cast<SDL_Gamepad*>(mGamepads[slot]));
                     mGamepads[slot] = nullptr;
                     mGamepadIds[slot] = 0;
@@ -280,6 +289,13 @@ InputState Input::poll(Window& window) {
                 break;
         }
     }
+
+    // Mouse buttons are bindable actions (WiiAction::B defaults to
+    // mouse:left), and binds are read through keys[] — mirror them in or the
+    // clicks never reach any binding.
+    state.keys[static_cast<int>(Key::MouseLeft)] = state.mouseLeft;
+    state.keys[static_cast<int>(Key::MouseRight)] = state.mouseRight;
+    state.keys[static_cast<int>(Key::MouseMiddle)] = state.mouseMiddle;
 
     // ESC quits, F11 toggles fullscreen (M3 behavior).
     if (state.keys[static_cast<int>(Key::Escape)]) {
@@ -315,11 +331,136 @@ InputState Input::poll(Window& window) {
         int count = 0;
         SDL_JoystickID* ids = SDL_GetGamepads(&count);
         for (int i = 0; i < count && i < kMaxGamepads; ++i) {
-            mGamepads[i] = static_cast<void*>(SDL_OpenGamepad(ids[i]));
+            SDL_Gamepad* pad = SDL_OpenGamepad(ids[i]);
+            if (pad != nullptr) {
+                const char* name = SDL_GetGamepadName(pad);
+                Log::log(Log::Level::Info, "platform.input", "gamepad opened at startup -> slot %d: %s",
+                         i, name != nullptr ? name : "(unknown)");
+            } else {
+                Log::log(Log::Level::Warn, "platform.input", "gamepad startup open failed (slot %d): %s",
+                         i, SDL_GetError() != nullptr ? SDL_GetError() : "?");
+            }
+            mGamepads[i] = static_cast<void*>(pad);
             mGamepadIds[i] = ids[i];
+        }
+        SDL_free(ids);
+    }
+
+    for (int i = 0; i < kMaxGamepads; ++i) {
+        if (mGamepads[i] != nullptr) {
+            readGamepad(mGamepads[i], state.gamepads[i]);
         }
     }
 
+    return state;
+}
+
+// One-shot startup probe (PC_PORT M10.2): user logs must show whether the
+// SDL gamepad subsystem is alive and which pads were attached, so a dead pad
+// is diagnosable from the log alone.
+static void logGamepadProbeOnce() {
+    static bool probed = false;
+    if (probed) {
+        return;
+    }
+    probed = true;
+
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&count);
+    Log::log(Log::Level::Info, "platform.input", "SDL gamepad subsystem %s; %d pad(s) attached",
+             SDL_WasInit(SDL_INIT_GAMEPAD) != 0 ? "initialized" : "NOT initialized", count);
+    for (int i = 0; i < count; ++i) {
+        const char* name = SDL_GetGamepadNameForID(ids[i]); // static string, no free
+        Log::log(Log::Level::Info, "platform.input", "  pad %d: %s", i, name != nullptr ? name : "(unknown)");
+    }
+    SDL_free(ids);
+}
+
+InputState Input::sample(int windowWidth, int windowHeight) {
+    InputState state;
+
+    // Headless safety: without any SDL subsystem up (unit tests) every query
+    // below would be empty anyway — bail out before touching SDL at all.
+    if (SDL_WasInit(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) == 0) {
+        return state;
+    }
+
+    logGamepadProbeOnce();
+
+    // Keyboard: the whole scancode table as a state query (no events, so the
+    // boot path's own event pump keeps owning the queue).
+    int numScancodes = 0;
+    const bool* keyboard = SDL_GetKeyboardState(&numScancodes);
+    if (keyboard != nullptr) {
+        for (int sc = 0; sc < numScancodes; ++sc) {
+            if (!keyboard[sc]) {
+                continue;
+            }
+            const Key key = keyFromScancode(static_cast<SDL_Scancode>(sc));
+            if (key != Key::None) {
+                state.keys[static_cast<int>(key)] = true;
+            }
+        }
+    }
+
+    // Mouse: position + buttons as a state query.
+    float mx = 0.0f;
+    float my = 0.0f;
+    const Uint32 buttons = SDL_GetMouseState(&mx, &my);
+    state.mouseX = static_cast<int>(mx);
+    state.mouseY = static_cast<int>(my);
+    state.mouseLeft = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
+    state.mouseRight = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) != 0;
+    state.mouseMiddle = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) != 0;
+    state.mouseInWindow = SDL_GetMouseFocus() != nullptr;
+    state.keys[static_cast<int>(Key::MouseLeft)] = state.mouseLeft;
+    state.keys[static_cast<int>(Key::MouseRight)] = state.mouseRight;
+    state.keys[static_cast<int>(Key::MouseMiddle)] = state.mouseMiddle;
+
+    // Legacy arrow/space flags (same derivation as poll()).
+    state.keyUp = state.keys[static_cast<int>(Key::Up)];
+    state.keyDown = state.keys[static_cast<int>(Key::Down)];
+    state.keyLeft = state.keys[static_cast<int>(Key::Left)];
+    state.keyRight = state.keys[static_cast<int>(Key::Right)];
+    state.keySpace = state.keys[static_cast<int>(Key::Space)];
+
+    // Mouse deltas from the previous sample (no motion events here).
+    if (mHaveSampleMouse) {
+        state.mouseDX = state.mouseX - mSampleMouseX;
+        state.mouseDY = state.mouseY - mSampleMouseY;
+    }
+    mSampleMouseX = state.mouseX;
+    mSampleMouseY = state.mouseY;
+    mHaveSampleMouse = true;
+
+    // Normalized mouse position (y up), for the KPAD pointer mapping.
+    const int winW = windowWidth;
+    const int winH = windowHeight;
+    if (winW > 0 && winH > 0) {
+        state.mouseNx = (state.mouseX + 0.5f) / winW;
+        state.mouseNy = 1.0f - (state.mouseY + 0.5f) / winH;
+    }
+
+    // Gamepads: same lazy open as poll() + the shared per-pad sampler.
+    if (mGamepads[0] == nullptr && mGamepads[1] == nullptr && mGamepads[2] == nullptr &&
+        mGamepads[3] == nullptr) {
+        int count = 0;
+        SDL_JoystickID* ids = SDL_GetGamepads(&count);
+        for (int i = 0; i < count && i < kMaxGamepads; ++i) {
+            SDL_Gamepad* pad = SDL_OpenGamepad(ids[i]);
+            if (pad != nullptr) {
+                const char* name = SDL_GetGamepadName(pad);
+                Log::log(Log::Level::Info, "platform.input", "gamepad opened at startup -> slot %d: %s",
+                         i, name != nullptr ? name : "(unknown)");
+            } else {
+                Log::log(Log::Level::Warn, "platform.input", "gamepad startup open failed (slot %d): %s",
+                         i, SDL_GetError() != nullptr ? SDL_GetError() : "?");
+            }
+            mGamepads[i] = static_cast<void*>(pad);
+            mGamepadIds[i] = ids[i];
+        }
+        SDL_free(ids);
+    }
     for (int i = 0; i < kMaxGamepads; ++i) {
         if (mGamepads[i] != nullptr) {
             readGamepad(mGamepads[i], state.gamepads[i]);

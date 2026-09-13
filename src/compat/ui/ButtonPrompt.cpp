@@ -123,6 +123,30 @@ GXColor lerpColor(const GXColor& top, const GXColor& bottom, f32 t, u8 paneAlpha
     return out;
 }
 
+/// Modulate an art colour by the pane's text colour.
+///
+/// On console the icons are glyphs of the layout's picture font, printed by
+/// the TextBox like every other character: each texel is multiplied by the
+/// ink the pane prints with. That ink is the vertex colour (mTextColors,
+/// white on TxtStart) folded with the material's colour mapping max (the
+/// writer's SetupGXWithColorMapping lerps min..max per texel; on the shadow
+/// pane the dark ink can live in either place depending on the material).
+/// Folding `mapMax` into the tint instead of running the mapping as a TEV
+/// stage keeps the art's own colours (dark ring, grey letter) alive on
+/// TxtStart — a flat lerp stage washes them to white — while on ShaStart the
+/// whole icon still collapses into the dark silhouette the console drops
+/// behind the real buttons. The tint's alpha already includes the pane's
+/// global alpha, so callers pass paneAlpha = 255 for anything built from
+/// tinted colours.
+GXColor modulate(const GXColor& art, const GXColor& tint) {
+    GXColor out;
+    out.r = static_cast<u8>((static_cast<u32>(art.r) * tint.r) / 255);
+    out.g = static_cast<u8>((static_cast<u32>(art.g) * tint.g) / 255);
+    out.b = static_cast<u8>((static_cast<u32>(art.b) * tint.b) / 255);
+    out.a = static_cast<u8>((static_cast<u32>(art.a) * tint.a) / 255);
+    return out;
+}
+
 /// Perimeter of a disc / rounded rectangle as ONE triangle fan.
 ///
 /// The tile is traced as FOUR CORNER ARCS JOINED BY STRAIGHT EDGES. (Sampling
@@ -186,10 +210,20 @@ nw4r::ut::Color makeColor(const GXColor& c) {
 /// One icon: soft shadow -> dark ring/frame -> light face. `width`/`height` are
 /// the OUTER size, `ring` the thickness of the dark ring ([A]) / frame ([B]).
 void drawIcon(Shape shape, f32 centerX, f32 centerY, f32 width, f32 height, f32 ring,
-              f32 corner, u8 paneAlpha) {
+              f32 corner, const GXColor& tintTop, const GXColor& tintBottom) {
     const f32 halfW = width * 0.5f;
     const f32 halfH = height * 0.5f;
     const f32 radius = shape == Shape::Disc ? halfW : corner;
+    // Every art colour below is modulated by the pane's ink (the text colour
+    // folded with the material mapping max — see modulate() — which already
+    // carries the pane's global alpha, so the shapes themselves draw at
+    // paneAlpha 255). On the ShaStart pass the whole icon collapses into the
+    // dark silhouette the console drops behind the real buttons; on TxtStart
+    // the ink is white and the art is untouched.
+    const GXColor tintMid = lerpColor(tintTop, tintBottom, 0.5f, 255);
+    const auto ink = [&](GXColor art) { return modulate(art, tintMid); };
+    const auto inkTop = [&](GXColor art) { return modulate(art, tintTop); };
+    const auto inkBottom = [&](GXColor art) { return modulate(art, tintBottom); };
 
     // Soft shadow, four passes (tight -> wide): the original drops a diffuse
     // dark halo below the button — the sea right under it falls from ~110 to
@@ -201,26 +235,26 @@ void drawIcon(Shape shape, f32 centerX, f32 centerY, f32 width, f32 height, f32 
     const u8 shadowAlpha[4] = {90, 52, 30, 15};
     for (int pass = 0; pass < 4; ++pass) {
         const f32 off = shadowOffset[pass];
-        const GXColor ink{0, 0, 0, shadowAlpha[pass]};
+        const GXColor shadow = ink(GXColor{0, 0, 0, shadowAlpha[pass]});
         emitShape(shape, centerX + off * height * 0.35f, centerY + off * height, halfW * 1.06f,
-                  halfH * 1.12f, radius, ink, ink, paneAlpha);
+                  halfH * 1.12f, radius, shadow, shadow, 255);
     }
 
     // The ring/frame itself: near black, very slightly cool, and with a faint
     // bleed so its outer contour fades into the sea like the original's.
-    const GXColor ringInk{9, 20, 26, 255};
-    const GXColor ringBleed{9, 20, 26, 130};
+    const GXColor ringInk = ink(GXColor{9, 20, 26, 255});
+    const GXColor ringBleed = ink(GXColor{9, 20, 26, 130});
     emitShape(shape, centerX, centerY, halfW * 1.012f, halfH * 1.012f, radius, ringBleed,
-              ringBleed, paneAlpha);
-    emitShape(shape, centerX, centerY, halfW, halfH, radius, ringInk, ringInk, paneAlpha);
+              ringBleed, 255);
+    emitShape(shape, centerX, centerY, halfW, halfH, radius, ringInk, ringInk, 255);
 
     // Face: white, top-lit (the original face reads ~252 top-left -> ~208
     // bottom-right), inset by the ring thickness.
-    const GXColor faceTop{252, 252, 252, 255};
-    const GXColor faceBottom{206, 212, 216, 255};
+    const GXColor faceTop = inkTop(GXColor{252, 252, 252, 255});
+    const GXColor faceBottom = inkBottom(GXColor{206, 212, 216, 255});
     const f32 faceCorner = shape == Shape::Disc ? halfW - ring : corner - ring * 0.5f;
     emitShape(shape, centerX, centerY, halfW - ring, halfH - ring, faceCorner, faceTop,
-              faceBottom, paneAlpha);
+              faceBottom, 255);
 }
 
 /// The texel -> layout scale the picture font is drawn at.
@@ -261,7 +295,7 @@ f32 pictureGlyphScale(f32 faceHeight) {
 /// Returns false when no picture font is installed or it has no glyph for the
 /// code; the caller then draws the vector fallback.
 bool drawPictureGlyph(u16 code, f32 centerX, f32 centerY, f32 scale, f32 referenceFaceHeight,
-                      u8 paneAlpha) {
+                      const GXColor& top, const GXColor& bottom) {
     PictureGlyph glyph;
 
     if (!pictureGlyph(code, glyph) || glyph.outerH <= 0.0f || scale <= 0.0f) {
@@ -305,10 +339,12 @@ bool drawPictureGlyph(u16 code, f32 centerX, f32 centerY, f32 scale, f32 referen
     GXSetNumTexGens(1);
     GXSetTexCoordGen2(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
 
+    // texel * vertex colour, one stage: the vertex colour IS the pane's ink
+    // (text colour folded with the material mapping max — see modulate()), so
+    // the art keeps its own colours on TxtStart and collapses to the dark
+    // silhouette on ShaStart.
     GXSetNumTevStages(1);
     GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
-    // texel * vertex colour (white, pane alpha) — the same modulate the layout's
-    // own textured quads use.
     GXSetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
     GXSetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
     GXSetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_TEXA, GX_CA_RASA, GX_CA_ZERO);
@@ -336,19 +372,19 @@ bool drawPictureGlyph(u16 code, f32 centerX, f32 centerY, f32 scale, f32 referen
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     {
         GXPosition2f32(x0, yTop);
-        GXColor4u8(255, 255, 255, paneAlpha);
+        GXColor4u8(top.r, top.g, top.b, top.a);
         GXTexCoord2f32(glyph.outerU0, glyph.outerV0);
 
         GXPosition2f32(x1, yTop);
-        GXColor4u8(255, 255, 255, paneAlpha);
+        GXColor4u8(top.r, top.g, top.b, top.a);
         GXTexCoord2f32(glyph.outerU1, glyph.outerV0);
 
         GXPosition2f32(x1, yBottom);
-        GXColor4u8(255, 255, 255, paneAlpha);
+        GXColor4u8(bottom.r, bottom.g, bottom.b, bottom.a);
         GXTexCoord2f32(glyph.outerU1, glyph.outerV1);
 
         GXPosition2f32(x0, yBottom);
-        GXColor4u8(255, 255, 255, paneAlpha);
+        GXColor4u8(bottom.r, bottom.g, bottom.b, bottom.a);
         GXTexCoord2f32(glyph.outerU0, glyph.outerV1);
     }
     GXEnd();
@@ -515,6 +551,15 @@ bool drawButtonPrompt(const PromptDrawContext& ctx) {
     const f32 capsTop = ctx.textTop + (ctx.capHeight - metrics.capHeight);
     const f32 iconCenterY = capsTop + metrics.capHeight * 0.5f + metrics.dropY;
 
+    // The pane's ink for the ICONS: the text colour folded with the material's
+    // colour-mapping max (see modulate()). On ShaStart the dark shadow ink can
+    // live in the vertex colour or in the mapping depending on the material;
+    // folding the max into the tint catches both while keeping the art's own
+    // colours (dark ring, grey letter) alive on TxtStart, which a lerp TEV
+    // stage over the texel would wash to white.
+    const GXColor tintTop = modulate(ctx.colorTop, ctx.mapMax);
+    const GXColor tintBottom = modulate(ctx.colorBottom, ctx.mapMax);
+
     for (int i = 0; i < itemCount; ++i) {
         if (items[i].kind == PromptItem::Text) {
             cursor += items[i].width;
@@ -528,13 +573,13 @@ bool drawButtonPrompt(const PromptDrawContext& ctx) {
             // included (that is why they are not printed on top of it).
             const bool real = drawPictureGlyph(isA ? kPictureCodeA : kPictureCodeB, centerX,
                                                iconCenterY, glyphScale, metrics.faceSize,
-                                               ctx.globalAlpha);
+                                               tintTop, tintBottom);
 
             if (!real) {
                 const f32 ring = isA ? metrics.ringWidth : metrics.bRingWidth;
                 beginGlyphGeometry();
                 drawIcon(shape, centerX, iconCenterY, slot, metrics.size, ring,
-                         metrics.cornerRatio * metrics.bWidth, ctx.globalAlpha);
+                         metrics.cornerRatio * metrics.bWidth, tintTop, tintBottom);
             }
 
             if (iconCount < kPromptSlotCount) {
@@ -588,7 +633,8 @@ bool drawButtonPrompt(const PromptDrawContext& ctx) {
                 ctx.writer->CalcStringRect(&letterRect, &letter, 1);
                 const f32 letterWidth = letterRect.GetWidth() * scale;
 
-                const GXColor inkRaw{124, 126, 126, ctx.globalAlpha};
+                const GXColor inkRaw =
+                    modulate(GXColor{124, 126, 126, 255}, lerpColor(tintTop, tintBottom, 0.5f, 255));
                 const nw4r::ut::Color ink = makeColor(inkRaw);
                 ctx.writer->SetTextColor(ink);
                 ctx.writer->SetScale(scale, scale);

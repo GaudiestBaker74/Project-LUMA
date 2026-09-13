@@ -5,8 +5,19 @@
 // The full J3DAnimation.cpp (1300+ lines) pulls in J3DMaterialAttach and
 // J3DModelData — J3D model territory that lands with M9.5.4. The layout anim
 // players only need the frame controller, so its three out-of-line methods
-// (init/checkPass/update) are compiled here VERBATIM from the decompilation;
-// every other J3DFrameCtrl member is inline in the header.
+// (init/checkPass/update) are compiled here from the decompilation; every
+// other J3DFrameCtrl member is inline in the header.
+//
+// PC_PORT M10.2 fix (update()): petari's decompilation zeroes mRate in the
+// EMode_NONE/EMode_RESET clamps; the original JSystem J3DFrameCtrl::update
+// does NOT. With the rate zeroed, the stop bit (mState & 1) lives for exactly
+// one frame — isAnimStopped() then works for single-anim waits but deadlocks
+// any nerve waiting for TWO anims to be stopped simultaneously (the title's
+// exeDecide waits for TitleLogo "Decide" AND PressStart "End"; whichever
+// finishes first reports stopped for one frame only, the pair never lines up,
+// and the boot hangs forever on the title screen). Keeping the rate makes a
+// finished non-looping anim re-clamp to mEnd-0.001f every frame, re-arming
+// the stop bit each update — the persistent "stopped" state the console has.
 // =============================================================================
 #include "JSystem/J3DGraphAnimator/J3DAnimation.hpp"
 
@@ -145,24 +156,22 @@ void J3DFrameCtrl::update() {
     case EMode_NONE:
         if (mFrame < mStart) {
             mFrame = mStart;
-            mRate = 0.0f;
+            // PC_PORT M10.2: no mRate zeroing (real JSystem keeps the rate so
+            // the clamp re-arms the stop bit every update; see file banner).
             mState |= (u8)1;
         }
         if (mFrame >= mEnd) {
             mFrame = mEnd - 0.001f;
-            mRate = 0.0f;
             mState |= (u8)1;
         }
         break;
     case EMode_RESET:
         if (mFrame < mStart) {
             mFrame = mStart;
-            mRate = 0.0f;
             mState |= (u8)1;
         }
         if (mFrame >= mEnd) {
             mFrame = mStart;
-            mRate = 0.0f;
             mState |= (u8)1;
         }
         break;

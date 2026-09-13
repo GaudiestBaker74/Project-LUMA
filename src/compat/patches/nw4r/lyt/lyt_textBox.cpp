@@ -237,6 +237,13 @@ namespace nw4r {
             promptCtx.blockCenterX = 0.0f;  // layout space centre == screen centre
             promptCtx.colorTop = GXColor{topCol.r, topCol.g, topCol.b, topCol.a};
             promptCtx.colorBottom = GXColor{btmCol.r, btmCol.g, btmCol.b, btmCol.a};
+            // The icons have to run through the SAME colour mapping the words
+            // do (CharWriter::SetupGXWithColorMapping): on the shadow pane the
+            // dark ink lives in the material's TEV colours, not in the vertex
+            // colours, so without this the icons print white on ShaStart and
+            // drop no shadow.
+            promptCtx.mapMin = GXColor{minCol.r, minCol.g, minCol.b, minCol.a};
+            promptCtx.mapMax = GXColor{maxCol.r, maxCol.g, maxCol.b, maxCol.a};
             promptCtx.globalAlpha = mGlbAlpha;
 
             if (compat::ui::drawButtonPrompt(promptCtx)) {

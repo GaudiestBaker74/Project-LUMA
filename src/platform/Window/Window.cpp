@@ -24,7 +24,10 @@ int gWindowCount = 0;
 
 Window::Window(const WindowConfig& config) {
     if (gWindowCount == 0) {
-        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        // PC_PORT M10.2: SDL_INIT_GAMEPAD added. Without it SDL_GetGamepads()
+    // returns nothing and every gamepad stays invisible to the input bridge
+    // (the Kpad channel code was correct; the subsystem was simply never on).
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD)) {
             PL_LOG_FATAL("window", "SDL_Init failed: %s", SDL_GetError());
             return;
         }

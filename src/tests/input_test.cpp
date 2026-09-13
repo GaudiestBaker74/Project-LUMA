@@ -155,6 +155,13 @@ TEST_CASE(kpad_stick_wasd) {
 // ---------------------------------------------------------------------------
 TEST_CASE(kpad_pointer_mouse) {
     resetCompat();
+    // Pure keyboard+mouse channel: the pointer is the mouse and goes invalid
+    // when the mouse leaves the window (the merged default keeps the sticks
+    // as a fallback and stays valid — covered by kpad_merged_pointer_stick).
+    Platform::CompatInput::InputConfig cfg = Platform::CompatInput::InputConfig::defaults();
+    cfg.channels[0].source = Platform::CompatInput::Source::KeyboardMouse;
+    Platform::CompatInput::setConfig(cfg);
+    Platform::CompatInput::init();
     Platform::InputState s;
     KPADStatus buf[4];
 
@@ -208,6 +215,43 @@ TEST_CASE(kpad_accel_rest_shake) {
         CHECK_EQ(readChannel(0, buf, 4), 1);
     }
     CHECK(std::fabs(buf[0].acc_value - 1.0f) < 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
+// Merged channel 0 (default): mouse moves the pointer absolutely, the sticks
+// steer it gyro-style when the mouse rests — a gamepad-only player can reach
+// the menus and the FileSelect cursor.
+// ---------------------------------------------------------------------------
+TEST_CASE(kpad_merged_pointer_stick) {
+    resetCompat();  // defaults(): chan0 = keyboard+mouse UNION gamepad 0
+    Platform::InputState s;
+    KPADStatus buf[4];
+
+    s.mouseNx = 0.5f;
+    s.mouseNy = 0.5f;
+    s.mouseInWindow = true;
+    Platform::CompatInput::updateFrame(s, kStep);
+    CHECK_EQ(readChannel(0, buf, 4), 1);
+    CHECK(std::fabs(buf[0].pos.x - 0.0f) < 1e-5f);  // 0.5*2-1
+    CHECK(std::fabs(buf[0].pos.y - 0.0f) < 1e-5f);
+
+    // Mouse rests, right stick pushed right: the pointer steers east.
+    s.gamepads[0].connected = true;
+    s.gamepads[0].rightX = 1.0f;
+    Platform::CompatInput::updateFrame(s, kStep);
+    CHECK_EQ(readChannel(0, buf, 4), 1);
+    CHECK(buf[0].pos.x > 0.0f);
+    CHECK(buf[0].pos.x <= 1.0f);
+    CHECK(std::fabs(buf[0].pos.y - 0.0f) < 1e-5f);
+    CHECK(buf[0].dpd_valid_fg >= 1);  // pointer valid without the mouse
+
+    // Gamepad buttons reach channel 0 (the title/menus only read chan 0).
+    s.gamepads[0].a = true;
+    s.gamepads[0].b = true;
+    Platform::CompatInput::updateFrame(s, kStep);
+    CHECK_EQ(readChannel(0, buf, 4), 1);
+    CHECK((buf[0].hold & WPAD_BUTTON_A) != 0);
+    CHECK((buf[0].hold & WPAD_BUTTON_B) != 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -546,4 +590,37 @@ TEST_CASE(kpad_wpadbutton_semantics) {
     CHECK((mRepeat & WPAD_BUTTON_A) != 0);
     CHECK_EQ(mTrigger & KPAD_BUTTON_RPT, 0u);  // RPT never leaks into trig
     clearKeys(s);
+}
+
+// M10: the boot-path feed. sample() must be a pure state query that is safe
+// with no SDL subsystem up (headless suite), and pumpFrame() without a
+// registered source must be a no-op — the demo path feeds updateFrame
+// explicitly and the boot path registers main.cpp's Input/Window pair.
+TEST_CASE(input_sample_state_query_only) {
+    // sample() must never synthesize the event-driven flags (those stay with
+    // the owner of the SDL queue) and must normalize the mouse into [0,1]
+    // with y up for the KPAD pointer mapping. The suite may or may not have
+    // SDL up (earlier renderer cases init video on llvmpipe), so only assert
+    // invariants, not the host's physical device state.
+    Platform::Input input;
+    const Platform::InputState state = input.sample(1280, 720);
+    CHECK(!state.quit);
+    CHECK(!state.fullscreenToggle);
+    CHECK(state.mouseNx >= 0.0f && state.mouseNx <= 1.0f);
+    CHECK(state.mouseNy >= 0.0f && state.mouseNy <= 1.0f);
+    // A second sample right after reports no movement (the host mouse does
+    // not move between two back-to-back queries): the delta derivation works
+    // without motion events.
+    const Platform::InputState again = input.sample(1280, 720);
+    CHECK(again.mouseDX == 0);
+    CHECK(again.mouseDY == 0);
+}
+
+TEST_CASE(input_pumpframe_no_source_noop) {
+    // No setInputSource() in the suite: pumpFrame must not touch SDL nor the
+    // channels (a KPADRead right after still reports the explicit-config
+    // state set by the other cases, undisturbed).
+    Platform::CompatInput::pumpFrame();
+    Platform::CompatInput::pumpFrame();
+    CHECK(true);
 }

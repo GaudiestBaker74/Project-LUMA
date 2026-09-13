@@ -25,6 +25,7 @@
 #include "compat/HostShutdown.h"
 
 #include "compat/BootCapture.h"
+#include "compat/kpad/KPADCompat.h"
 
 #include "platform/Log/Log.h"
 #include "platform/Window/Window.h"
@@ -372,6 +373,12 @@ void pumpHostEvents() {
             }
         }
     }
+
+    // PC_PORT (M10 input): feed the KPAD/WPAD layer once per pump. The boot
+    // (gameMain) owns this event queue, so the compat input layer samples the
+    // devices without polling events (Input::sample) — without this hook the
+    // title sequence never sees A+B and the prompt never decides.
+    Platform::CompatInput::pumpFrame();
 }
 
 

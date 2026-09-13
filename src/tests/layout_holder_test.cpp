@@ -469,7 +469,17 @@ TEST_CASE(j3d_frame_ctrl_stop_and_loop) {
     ctrl.update();               // frame 4 >= end -> clamp + stop
     CHECK(ctrl.checkState(1));
     CHECK_NEAR(ctrl.getFrame(), 3.999f, 1e-4f);
-    CHECK_NEAR(ctrl.getRate(), 0.0f, 1e-6f);
+
+    // PC_PORT M10.2: real JSystem keeps the rate on the end clamp, so the
+    // finished anim re-clamps (and re-arms the stop bit) on EVERY update.
+    // A one-frame stop bit deadlocked nerves that wait for two anims to be
+    // stopped simultaneously (the title's exeDecide: Decide + End).
+    CHECK_NEAR(ctrl.getRate(), 1.0f, 1e-6f);
+    for (int i = 0; i < 5; i++) {
+        ctrl.update();
+        CHECK(ctrl.checkState(1));
+        CHECK_NEAR(ctrl.getFrame(), 3.999f, 1e-4f);
+    }
 
     // Looping (EMode_LOOP, init default and what start picks for loop
     // brlans): never flags stop; the frame wraps around.

@@ -366,6 +366,23 @@ int main(int argc, char** argv) {
             PL_LOG_INFO("main", "audio: %s (music volume %.2f)", Platform::Audio::statusString(), opts.musicVolume);
         }
 
+        // M10 input: the boot's frame loop lives INSIDE the vendored game
+        // (gameMain never returns), so the demo loop's poll+updateFrame pair
+        // below never runs on this path — that is why A+B never reached the
+        // title sequence. Register the raw-device source that the compat/vi
+        // event pump feeds once per retrace (CompatInput::pumpFrame →
+        // Input::sample, a pure state query that does not steal events from
+        // pumpHostEvents), and route Wiimote rumble back to this window's
+        // gamepads. Both objects outlive the boot (gameMain never returns).
+        static Platform::Input sBootInput;
+        static Platform::Input* sBootInputForRumble = &sBootInput;
+        Platform::CompatInput::init();
+        Platform::CompatInput::setInputSource(&sBootInput, &bootWindow);
+        Platform::CompatInput::setRumbleSink([](int gamepadIndex, bool on) {
+            sBootInputForRumble->setRumble(gamepadIndex, on);
+        });
+        PL_LOG_INFO("main", "--boot: input wired (gamepad/keyboard/mouse -> KPAD/WPAD via the retrace pump)");
+
         if (!opts.screenshotPath.empty() || opts.maxFrames > 0) {
             // --screenshot without --frames: dump the title screen (present
             // #kBootCaptureDefaultFrame) and exit. --frames N: exit after N

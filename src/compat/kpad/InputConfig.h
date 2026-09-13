@@ -38,7 +38,16 @@
 namespace Platform::CompatInput {
 
 // Where a channel's input comes from.
-enum class Source : uint8_t { None, KeyboardMouse, Gamepad };
+enum class Source : uint8_t {
+    None,
+    KeyboardMouse,
+    Gamepad,
+    // M10: keyboard+mouse UNION the gamepad on the SAME Wii channel. The game
+    // only ever reads WPAD_CHAN0 for its menus/title, so a gamepad parked on
+    // channel 1 was invisible to it: the first player's channel has to accept
+    // both device families at once.
+    KeyboardMouseGamepad,
+};
 
 // Wiimote actions that can be bound to a key/mouse button (keyboard_mouse
 // channels). Gamepad channels use a fixed mapping (see KPAD.cpp).

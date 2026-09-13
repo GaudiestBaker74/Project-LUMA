@@ -10,6 +10,7 @@
 #include "Game/Scene/TitleScene.hpp"
 
 #include "Game/LiveActor/Nerve.hpp"
+#include "Game/Screen/SimpleLayout.hpp"
 #include "Game/Screen/TitleSequenceProduct.hpp"
 #include "Game/Scene/SceneFunction.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
@@ -17,6 +18,7 @@
 #include "Game/Util/LayoutUtil.hpp"
 #include "Game/Util/NerveUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
+#include "compat/game/FileSelectHost.h"
 #include "compat/game/UiAnchoring.h"
 #include "compat/j3d/TitleSky.h"
 #include "platform/Log/Log.h"
@@ -103,8 +105,27 @@ void TitleScene::exeEnd() {
     if (MR::isFirstStep(this)) {
         mEnded = true;
         PL_LOG_INFO("boot",
-                    "TitleScene: sequence ended (Decide) — FileSelector is M10, "
-                    "the title parks here");
+                    "TitleScene: A+B decided (sequence reached Decide/Dead) — the "
+                    "input path works; mounting the FileSelect stand-in over the "
+                    "live sky");
+    }
+
+    // PC_PORT (M10): on console the FileSelector fades in over this same sky
+    // right after Decide. Stand-in v1: the REAL FileSelect.arc layout through
+    // the vendored SimpleLayout (same mount path as TitleLogo/PressStart; a
+    // missing arc degrades to the null-layout path) plus host-side cursor and
+    // A/B selection in compat/game/FileSelectHost. The pane tree of the arc
+    // is dumped by the layout manager on build, which is what the
+    // pane-accurate cursor iteration will key on.
+    if (mFileSelect == nullptr) {
+        mFileSelect = new SimpleLayout("FileSelect", "FileSelect", 1, -1);
+        mFileSelect->appear();
+        mFileHost.reset(new compat::game::FileSelectHost());
+        PL_LOG_INFO("boot", "TitleScene: FileSelect stand-in mounted (FileSelect.arc + host cursor)");
+    }
+
+    if (mFileHost != nullptr) {
+        mFileHost->update();
     }
 }
 
@@ -124,8 +145,9 @@ void TitleScene::calcAnim() {
     SceneFunction::executeCalcAnimList();
     SceneFunction::executeCalcViewAndEntryList2D();
     // PC_PORT (M9.5.4 v8): FileSelectSky::exeWait + calcAnim (the actor is
-    // not in the NameObj lists on the host, so the scene steps it).
-    if (mSky && !mEnded) {
+    // not in the NameObj lists on the host, so the scene steps it). Kept
+    // running while parked so the post-Decide sky stays alive.
+    if (mSky) {
         mSky->update();
     }
 }
@@ -367,7 +389,21 @@ void TitleScene::draw() const {
         MR::drawInitFor2DModel();
         CategoryList::execute(MR::DrawType_Layout);
     } else {
-        // Parked: keep presenting pure black.
+        // Parked after Decide (A+B): keep presenting the LIVE sky instead of
+        // pure black. On console the FileSelector fades in over this same
+        // backdrop (FileSelectSky); until the M10 stand-in lands, a black
+        // frame here read as "the game froze" exactly when the input worked.
         MR::fillScreen(fillColor);
+        if (mSky) {
+            mSky->draw();
+        } else {
+            drawSpaceBackdrop();
+        }
+        MR::clearZBuffer();
+        MR::drawInitFor2DModel();
+        CategoryList::execute(MR::DrawType_Layout);
+        if (mFileHost != nullptr) {
+            mFileHost->drawCursor();
+        }
     }
 }

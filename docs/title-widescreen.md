@@ -871,3 +871,176 @@ contador y se vuelca en los dibujos 1, 2, 3, 4, 6, 9, 13, 18, 25, 35, 50, 70,
 principio y luego más espaciado. Cada línea trae `glbPos`, `pos`, `scale`,
 alpha, `anm` (número de animaciones ligadas al pane) y la textura del material,
 que es lo que identifica a `PicFlash` (8x8) frente a los bloom.
+
+## Ronda F — la sombra de los iconos y el desajuste "para arriba" del intro
+
+### 1. Los iconos [A]/[B] no tenían sombra propia
+
+En consola la línea se dibuja DOS veces: el pane `ShaStart` (offset (3,-3),
+tinta oscura) detrás de `TxtStart` (blanco). Las palabras ya recibían el color
+de cada pane, pero los iconos no: `drawPictureGlyph` modulaba los texels con
+blanco fijo `(255,255,255,paneAlpha)` y el respaldo vectorial dibujaba su arte
+con colores fijos. El pase de sombra dejaba así una copia BLANCA del icono
+asomando por el borde (un cerco claro, no una sombra), y con la tinta oscura
+del pane no hacía nada.
+
+Arreglo: los iconos se modulan con el color con el que el TextBox imprime
+(`PromptDrawContext::colorTop/colorBottom`, que ya llegan con el alpha global
+del pane multiplicado — `MultipleAlpha(mTextColors, mGlbAlpha)` en el patch de
+`TextBox::DrawSelf`):
+
+- Ruta del font de imágenes: los colores de vértice del quad pasan a ser ese
+  degradado (arriba/abajo), igual que los glifos de texto.
+- Ruta vectorial: `modulate(arte, tint)` en las cuatro pasadas de sombra
+  suave, el anillo/marco, la cara y la letra impresa.
+
+En `ShaStart` el icono entero colapsa a la silueta oscura desplazada (3,-3) —
+"el mismo icono justo detrás", como en la referencia; en `TxtStart` (tinte
+blanco) el arte queda idéntico a antes. El alpha del tinte ya incluye el fundido
+del pane, así que las formas se emiten con `paneAlpha = 255` (multiplicar otra
+vez por `globalAlpha` lo aplicaría dos veces).
+
+### 2. El intro "desajustado para arriba": `PSMTXTransApply` era `PSMTXApplyTrans`
+
+El `.log` delataba la trayectoria: durante el appear, `glbPos = pos * scale`
+(`SMGTitleLogo` a s=0.25 quedaba en -5.6 en vez de -22.5), y en reposo
+`PicLogoShine` (pos 64, scale 2) aparecía en glb 128. Eso es la translación de
+un pane multiplicada por su PROPIA escala, y nw4r no lo hace:
+`Pane::CalculateMtx` compone R*S y aplica `mTranslate` con el
+`PSMTXTransApply` del SDK, que **SUMA** la translación a la columna (vive en
+espacio del padre). La variante que multiplica (`dst = src * T`) es OTRA
+llamada del SDK, `PSMTXApplyTrans` — comprobado contra libogc
+(`guMtxTransApply` suma, `guMtxApplyTrans` multiplica).
+
+`src/compat/jsystem/JMathCompat.cpp` tenía el cuerpo de ApplyTrans bajo el
+nombre de TransApply. Consecuencias en el intro: la subida del logo
+(translate -30 -> 0 durante el zoom) quedaba comprimida por ×s, y el shine
+(scale 2) barría ~100 px por ENCIMA del logo: toda la aparición se veía
+desplazada para arriba respecto a la consola. Con el cuerpo aditivo la
+translación se respeta: el logo crece subiendo desde ~30 unidades por debajo
+hasta su sitio y el shine barre el centro del logo, como en la intro real.
+
+En reposo el único pane del TitleLogo con scale != 1 y pos != 0 es
+`PicLogoShine` (alpha 0 fuera del intro), así que la pantalla final no se
+mueve: lo que cambia es la animación. Los dos callers de `PSMTXTransApply`
+(`nw4r::lyt::Pane::CalculateMtx` y `J2DPane`) piden la semántica aditiva, y
+ningún test fijaba la multiplicativa.
+
+### 3. La sombra, segunda pasada: el mapping de color del material
+
+Con el tinte por color de vértice la sombra seguía sin salir, y el motivo está
+en `TextBox::DrawSelf`: antes de imprimir configura el writer con
+`SetColorMapping(GetTevColor(0), GetTevColor(1))` del material. Con mapping
+activo, `CharWriter::SetupGXWithColorMapping` monta DOS etapas TEV: la 0 hace
+`lerp(min, max, texel)` y la 1 multiplica por el color de vértice. En el pane
+de sombra (`ShaStart`) la tinta oscura vive en ese `max` del material —los
+colores de vértice (`mTextColors`) son BLANCOS en los dos panes—, así que
+modular los iconos solo por `colorTop/colorBottom` los dejaba blancos también
+en el pase de sombra: exactamente el síntoma de "igual que antes".
+
+Arreglo: los iconos recorren el mismo pipeline que las palabras.
+
+- `PromptDrawContext` gana `mapMin`/`mapMax` (los TEV 0/1 del material; por
+  defecto, mapping identidad).
+- `drawPictureGlyph` monta el mismo TEV de dos etapas del writer (stage 0
+  `lerp(min,max,texel)` con `GX_COLOR_NULL`, stage 1 `* vtx`), con los colores
+  de vértice top/bottom del pane.
+- `drawIcon` (respaldo vectorial) aplica `mapColor(min,max,arte)` = el lerp por
+  canal evaluado sobre colores sólidos, y luego modula por el tinte.
+- `TextBox::DrawSelf` rellena `mapMin`/`mapMax` desde `minCol`/`maxCol`.
+
+Con mapping identidad (TxtStart) todo queda como estaba; en ShaStart el icono
+entero colapsa a la silueta oscura desplazada (3,-3).
+
+### 4. Cierre: el mapping se pliega en la tinta, no como etapa TEV
+
+El TEV de dos etapas (el literal del writer) arregló la sombra pero dejó los
+iconos de `TxtStart` **planos en blanco**: con los materiales de estos panes el
+mapping es de solo alpha (`min=(255,255,255,0)`, `max=blanco`), así que el
+`lerp(min,max,texel)` de la etapa 0 aplasta el COLOR del arte a blanco constante
+y la forma sobrevive solo por el alpha. En consola el arte del glifo conserva
+sus colores (anillo oscuro, letra gris), luego ese lerp no puede ser el camino
+de los iconos.
+
+Regla final, robusta a que la tinta oscura de `ShaStart` viva en el color de
+vértice o en el `max` del material (según el material):
+
+```
+tinta = colorDeVertice(del pane) * mapMax / 255
+icono = texel(arte) * tinta          (una sola etapa TEV, como siempre)
+```
+
+- `TxtStart`: `mapMax` blanco -> tinta = blanco -> el arte queda intacto.
+- `ShaStart`: viva donde viva la tinta oscura, el producto la incluye y el
+  icono colapsa a la silueta desplazada (3,-3).
+- La letra del respaldo vectorial y todos los colores de `drawIcon` pasan por
+  la misma tinta plegada.
+
+Las palabras siguen su camino de siempre (el TEV del writer con su mapping),
+que es el que ya se veía bien.
+
+## Ronda G — input en el boot y FileSelect stand-in v1 (M10)
+
+### 1. El A+B no llegaba: el input solo vivía en el loop de demo
+
+`CompatInput::updateFrame` solo se llamaba desde el loop de demo de
+`main.cpp`; con `--boot` el bucle de frames está dentro del código vendored
+(`gameMain` no retorna) y nadie sampleaba los dispositivos: `KPADRead`
+devolvía vacío y el `TitleSequenceProduct` no veía el A+B jamás.
+
+- `Platform::Input::sample(w, h)`: snapshot SIN eventos (consultas de estado
+  SDL), para no robarle la cola al pump del boot (`pumpHostEvents`).
+- `CompatInput::setInputSource()` + `pumpFrame()`: el pump del retrace
+  samplea y avanza los canales KPAD/WPAD con su dt; sin source es no-op.
+- `main.cpp --boot`: registra el source y el rumble sink antes de
+  `gameMain()`.
+- TitleScene aparca ahora sobre el cielo vivo (no un frame negro que parecía
+  un freeze justo cuando el input funcionaba).
+
+### 2. FileSelect stand-in v1 (lo que en consola es el FileSelector)
+
+Tras el Decide, en consola el `FileSelector` funde encima del mismo cielo.
+v1 del port, con el arc REAL:
+
+- `SimpleLayout("FileSelect", "FileSelect", 1, -1)` monta
+  `/LayoutData/FileSelect.arc` por el mismo camino que TitleLogo/PressStart
+  (arc ausente → null-layout path, sin crash) y se registra en las listas de
+  escena, así que la pasada `DrawType_Layout` del branch aparcado lo dibuja.
+- `compat/game/FileSelectHost`: cursor estrella stand-in (disco cálido en
+  ortho de píxeles) que sigue al puntero KPAD (ratón/stick), A confirma el
+  slot bajo el puntero (mapeo provisional por tercios de pantalla) y escribe
+  el guardado host (`saves/slotN.bin`), B loguea el "atrás" (en consola
+  repite el title). Los botones/puntero salen de getters de CompatInput que
+  NO drenan el ring de `KPADRead`, para no dejar sin muestras al
+  `WPadHolder` vendored.
+- El layout manager vuelca el árbol de panes del arc al construirlo: con ese
+  dump del próximo run se hace la iteración fina (rects de slot por pane,
+  cursor/animaciones reales del arc).
+
+
+## Ronda H — M10.2: deadlock de exeDecide (el boot se quedaba colgado tras A+B)
+
+Síntoma en log del usuario: `Decide` disparaba (fade de `stopStageBGM`,
+`SE_SY_GAME_START`) pero nunca aparecía el montaje del FileSelect; el usuario
+cerraba ~8 s después con `ended=0`.
+
+Causa: `J3DFrameCtrl::update()` (compat, copiado del decomp de petari) ponía
+`mRate = 0.0f` en los clamps de fin de animación. Así, el bit de stop
+(`mState & 1`) vivía exactamente UN frame: suficiente para esperas de una sola
+animación (`Appear`→`Wait` funcionaba), pero `exeDecide` espera
+`isAnimStopped(TitleLogo "Decide") && isAnimStopped(PressStart "End")` en el
+MISMO frame — la que termina antes deja de reportar stop y el par nunca
+coincide → cuelgue eterno. El `J3DFrameCtrl::update` original de JSystem NO
+cero-el rate: la animación terminada se re-clampa a `mEnd-0.001f` cada update
+y rearma el bit de stop en cada frame (stop persistente), que es lo que la
+consola tiene.
+
+Arreglo: eliminadas las cuatro líneas `mRate = 0.0f;` de los modos
+NONE/RESET en `src/compat/jsystem/J3DFrameCtrlCompat.cpp` + banner PC_PORT.
+Test `j3d_frame_ctrl_stop_and_loop` actualizado: verifica rate preservado y
+stop persistente durante 5 updates extra.
+
+Audio: los `stream ended (stopped)` del log coinciden con cierres de sesión
+del usuario, no con un fallo de loop — el decoder AST ya hace loop por bloques
+(`loop yes [565526..1421275]`). El silencio tras Decide era consecuencia del
+cuelgue (nada se montaba) + SEs todavía stub.

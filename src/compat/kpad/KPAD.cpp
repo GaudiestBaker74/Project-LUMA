@@ -23,6 +23,7 @@
 
 #include "compat/kpad/KPADCompat.h"
 #include "compat/kpad/WPADInternal.h"
+#include "platform/Timing/Timing.h"
 
 #include <revolution/kpad.h>
 #include <revolution/wpad.h>
@@ -50,6 +51,14 @@ struct KpadChannel {
     uint32_t prevHold = 0;
     uint32_t trig = 0;
     uint32_t release = 0;
+
+    // Integrated pointer position ([-1,1]) for merged channels: the mouse
+    // sets it absolutely when it moves, the sticks steer it otherwise.
+    float integX = 0.0f;
+    float integY = 0.0f;
+    float prevMouseNx = 0.0f;
+    float prevMouseNy = 0.0f;
+    bool havePrevMouse = false;
 
     // Auto-repeat (KPADSetBtnRepeat), in seconds.
     double delaySec = 1.0 / 2.4;
@@ -110,6 +119,7 @@ bool sourcePresent(int chan, const Platform::InputState& state) {
     switch (cfg.source) {
         case Platform::CompatInput::Source::None: return false;
         case Platform::CompatInput::Source::KeyboardMouse: return true;
+        case Platform::CompatInput::Source::KeyboardMouseGamepad: return true;
         case Platform::CompatInput::Source::Gamepad:
             if (cfg.gamepadIndex < 0 || cfg.gamepadIndex >= Platform::kMaxGamepads) {
                 return false;
@@ -186,7 +196,8 @@ uint32_t computeClassicButtons(const Platform::CompatInput::ChannelConfig& cfg,
 Vec2 computeStick(int chan, const Platform::InputState& state) {
     Vec2 s{0.0f, 0.0f};
     const Platform::CompatInput::ChannelConfig& cfg = gConfig.channels[chan];
-    if (cfg.source == Platform::CompatInput::Source::KeyboardMouse) {
+    if (cfg.source == Platform::CompatInput::Source::KeyboardMouse ||
+        cfg.source == Platform::CompatInput::Source::KeyboardMouseGamepad) {
         const bool up = state.keys[static_cast<int>(cfg.stickUsesArrows ? Platform::Key::Up : Platform::Key::W)];
         const bool down = state.keys[static_cast<int>(cfg.stickUsesArrows ? Platform::Key::Down : Platform::Key::S)];
         const bool left = state.keys[static_cast<int>(cfg.stickUsesArrows ? Platform::Key::Left : Platform::Key::A)];
@@ -196,6 +207,16 @@ Vec2 computeStick(int chan, const Platform::InputState& state) {
         if (s.x != 0.0f && s.y != 0.0f) {
             s.x *= 0.70710678f;  // normalize diagonals
             s.y *= 0.70710678f;
+        }
+    }
+    if (cfg.source == Platform::CompatInput::Source::KeyboardMouseGamepad &&
+        cfg.gamepadIndex >= 0 && cfg.gamepadIndex < Platform::kMaxGamepads) {
+        const Platform::GamepadState& g = state.gamepads[cfg.gamepadIndex];
+        if (std::fabs(g.leftX) > std::fabs(s.x)) {
+            s.x = g.leftX;
+        }
+        if (std::fabs(-g.leftY) > std::fabs(s.y)) {
+            s.y = -g.leftY;  // SDL: +Y down; KPAD nunchuk: +Y up
         }
     } else if (cfg.source == Platform::CompatInput::Source::Gamepad &&
                cfg.gamepadIndex >= 0 && cfg.gamepadIndex < Platform::kMaxGamepads) {
@@ -260,11 +281,17 @@ void updateFrame(const InputState& state, double dt) {
         }
 
         // --- buttons --------------------------------------------------------
-        uint32_t newHold = (cfg.source == Source::Gamepad && cfg.useClassic)
-                               ? 0u
-                               : (cfg.source == Source::Gamepad
-                                      ? computeGamepadButtons(cfg, state)
-                                      : computeKeyboardButtons(cfg, state));
+        uint32_t newHold = 0u;
+        if (cfg.source == Source::Gamepad) {
+            newHold = cfg.useClassic ? 0u : computeGamepadButtons(cfg, state);
+        } else {
+            newHold = computeKeyboardButtons(cfg, state);
+            if (cfg.source == Source::KeyboardMouseGamepad) {
+                // Union with the pad on the same Wii channel (0 when the pad
+                // is absent: computeGamepadButtons reads disconnected=false).
+                newHold |= computeGamepadButtons(cfg, state);
+            }
+        }
         c.trig = newHold & ~c.prevHold;
         c.release = c.prevHold & ~newHold;
         c.hold = newHold;
@@ -300,17 +327,55 @@ void updateFrame(const InputState& state, double dt) {
             pos.y = state.mouseNy * 2.0f - 1.0f;
             c.dpdValid = state.mouseInWindow ? (c.dpdValid + 1 > 3 ? 3 : c.dpdValid + 1) : 0;
             dpdValid = c.dpdValid;
+        } else if (cfg.source == Source::KeyboardMouseGamepad) {
+            // The mouse owns the pointer when it moves; otherwise the sticks
+            // steer it gyro-style (right stick first, left as fallback) so a
+            // gamepad-only player can reach the menus and the FileSelect
+            // cursor.
+            const float mx = state.mouseNx * 2.0f - 1.0f;
+            const float my = state.mouseNy * 2.0f - 1.0f;
+            const bool mouseMoved =
+                !c.havePrevMouse || mx != c.prevMouseNx || my != c.prevMouseNy;
+            c.prevMouseNx = mx;
+            c.prevMouseNy = my;
+            c.havePrevMouse = true;
+            if (mouseMoved) {
+                c.integX = mx;
+                c.integY = my;
+            } else if (cfg.gamepadIndex >= 0 && cfg.gamepadIndex < Platform::kMaxGamepads) {
+                const Platform::GamepadState& g = state.gamepads[cfg.gamepadIndex];
+                float sx = g.rightX;
+                float sy = -g.rightY;
+                if (sx == 0.0f && sy == 0.0f) {
+                    sx = g.leftX;
+                    sy = -g.leftY;
+                }
+                if (sx != 0.0f || sy != 0.0f) {
+                    c.integX += sx * 1.8f * static_cast<float>(dt);
+                    c.integY += sy * 1.8f * static_cast<float>(dt);
+                    if (c.integX < -1.0f) c.integX = -1.0f;
+                    if (c.integX > 1.0f) c.integX = 1.0f;
+                    if (c.integY < -1.0f) c.integY = -1.0f;
+                    if (c.integY > 1.0f) c.integY = 1.0f;
+                }
+            }
+            pos.x = c.integX;
+            pos.y = c.integY;
+            c.dpdValid = c.dpdValid + 1 > 3 ? 3 : c.dpdValid + 1;
+            dpdValid = c.dpdValid;
         } else {
             c.dpdValid = 0;
         }
 
         bool shakeHeld = false;
-        if (cfg.source == Source::KeyboardMouse) {
+        if (cfg.source == Source::KeyboardMouse || cfg.source == Source::KeyboardMouseGamepad) {
             const Platform::Key shakeKey = cfg.bind[static_cast<int>(WiiAction::Shake)];
             shakeHeld = shakeKey != Platform::Key::None && state.keys[static_cast<int>(shakeKey)];
-        } else {
-            shakeHeld = cfg.gamepadIndex >= 0 && cfg.gamepadIndex < Platform::kMaxGamepads &&
-                        state.gamepads[cfg.gamepadIndex].misc1;
+        }
+        if (cfg.source == Source::Gamepad || cfg.source == Source::KeyboardMouseGamepad) {
+            shakeHeld = shakeHeld ||
+                        (cfg.gamepadIndex >= 0 && cfg.gamepadIndex < Platform::kMaxGamepads &&
+                         state.gamepads[cfg.gamepadIndex].misc1);
         }
 
         Vec acc{0.0f, 0.0f, 0.0f};
@@ -367,6 +432,56 @@ void updateFrame(const InputState& state, double dt) {
 
 void init() { KPADInit(); }
 void shutdown() {}
+
+// --- boot-path feed (see KPADCompat.h) ---------------------------------------
+namespace {
+    Platform::Input* sInputSource = nullptr;
+    Platform::Window* sWindowSource = nullptr;
+    Platform::Timing::TimePoint sLastPump{};
+    bool sHaveLastPump = false;
+}  // namespace
+
+bool getPointerPos(int chan, float* outX, float* outY) {
+    if (chan < 0 || chan >= kChannels || outX == nullptr || outY == nullptr) {
+        return false;
+    }
+    const KpadChannel& c = gChannels[chan];
+    if (c.ringWrite == 0 && c.unconsumed == 0) {
+        return false;
+    }
+    const int last = (c.ringWrite + kRingSize - 1) % kRingSize;
+    *outX = c.ring[last].pos.x;
+    *outY = c.ring[last].pos.y;
+    return true;
+}
+
+void setInputSource(Platform::Input* input, Platform::Window* window) {
+    sInputSource = input;
+    sWindowSource = window;
+    sHaveLastPump = false;
+}
+
+void pumpFrame() {
+    if (sInputSource == nullptr || sWindowSource == nullptr) {
+        return;  // headless / demo path: updateFrame is called explicitly
+    }
+
+    const Platform::Timing::TimePoint now = Platform::Timing::now();
+    double dt = 1.0 / 60.0;
+    if (sHaveLastPump) {
+        dt = Platform::Timing::secondsBetween(sLastPump, now);
+        if (dt < 0.0) {
+            dt = 0.0;
+        }
+        if (dt > 0.25) {
+            dt = 0.25;  // same clamp the demo loop uses after a hitch
+        }
+    }
+    sLastPump = now;
+    sHaveLastPump = true;
+
+    updateFrame(sInputSource->sample(sWindowSource->width(), sWindowSource->height()), dt);
+}
 
 void setConfig(const InputConfig& config) {
     gConfig = config;

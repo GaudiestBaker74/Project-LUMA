@@ -241,3 +241,93 @@ ficheros originales compilen** (duplicados → no linkea).
 - DPD con 2 objetos/sensor bar: se reduce a un puntero único (ratón); los
   campos `horizon/dist` se rellenan con valores coherentes para que
   `WPadPointer` no entre en estados raros.
+
+## 6. M10 — el input en el path de boot (A+B en el title)
+
+Hasta M9.5.4 el input solo vivía en el loop de demo de `main.cpp`
+(`Input::poll` + `CompatInput::updateFrame`). Con `--boot` eso no se ejecuta
+nunca: `gameMain()` no retorna y el bucle de frames está dentro del código
+vendored, así que `KPADRead` devolvía siempre vacío y la secuencia del title
+no veía el A+B (el prompt no decidía jamás).
+
+El pump de eventos del boot ya existía (`compat/vi pumpHostEvents`, una vez
+por retrace, para que la ventana no se cuelgue en Windows), pero no alimentaba
+la capa de input. Añadir `Input::poll` ahí robaría eventos al propio pump, así
+que se separó un muestreo SIN eventos:
+
+* `Platform::Input::sample(w, h)`: consultas de estado SDL
+  (`SDL_GetKeyboardState`, `SDL_GetMouseState`, `SDL_GetGamepad*`), mismo
+  post-procesado que `poll` (deadzones, normalizado del ratón con y arriba,
+  deltas por diferencia de posición). `quit`/`fullscreenToggle` siguen siendo
+  evento-driven y los sigue poniendo el dueño de la cola.
+* `Platform::CompatInput::setInputSource(input, window)` +
+  `pumpFrame()`: el pump del retrace llama a `pumpFrame()`, que samplea y
+  avanza los canales KPAD/WPAD con su dt medido. Sin source registrado es
+  no-op (tests headless, demo).
+* `main.cpp` (`--boot`): crea el `Platform::Input` del boot, registra el
+  source y el rumble sink antes de `gameMain()`.
+
+Con esto el `TitleSequenceProduct` recibe el trig de A+B por la cadena de
+siempre (`WPadHolder` → `KPADRead`), la secuencia llega a Decide/Dead y la
+escena aparca sobre el cielo vivo (ya no un frame negro, que parecía un
+freeze justo cuando el input funcionaba). El siguiente paso de la cadena de
+consola es el `FileSelector` dentro de la propia TitleScene (M10).
+
+## 7. M10.1 — canal 0 fusionado y botones de ratón como acciones
+
+Síntomas reales reportados: espacio iba bien, el clic izquierdo no y el mando
+no pintaba nada. Tres causas:
+
+1. **Decide = A Y B a la vez** (`mAButtonChecker->getLevel() &&
+   mBButtonChecker->getLevel()` en `TitleSequenceProduct::exeLogoDisplay`,
+   chan 0). Con el mapping por defecto A=espacio, B=clic izquierdo: hay que
+   mantenerlos juntos (como el "Press both A and B" de consola).
+2. Los botones de ratón nunca entraban en `state.keys[]` (el lector de binds
+   lee ahí): `poll()`/`sample()` ahora espejan `mouseLeft/Right/Middle` en el
+   array de teclas.
+3. El juego **solo lee WPAD_CHAN0** para title/menús, y los defaults aparcaban
+   los gamepads en chan 1-3 → muertos. Nuevo source
+   `KeyboardMouseGamepad` (INI: `keyboard_mouse_gamepad`): chan 0 =
+   teclado+ratón UNIÓN gamepad 0 (botones por OR); chan 1-3 = gamepads 1-3
+   para multijugador.
+
+Puntero en canal fusionado: el ratón manda en absoluto cuando se mueve; en
+reposo, los sticks lo giran tipo giroscopio (derecho primero, izquierdo como
+fallback, 1.8 u/s) para que un jugador solo-mando alcance menús y el cursor
+del FileSelect. `dpd_valid_fg` nunca cae en fusionado (el puntero siempre
+existe). Shake = tecla K o `misc1` del pad.
+
+Mapping rápido de referencia (chan 0):
+
+| Wii | Teclado/ratón | Gamepad (SDL standard) |
+|---|---|---|
+| A | espacio | A (sur) |
+| B | clic izquierdo | B (este) |
+| Z | clic derecho | Y (norte) |
+| C | Shift izq | X (oeste) |
+| 1 / 2 | Q / E | LB / RB |
+| + / - | Enter / Backspace | Start / Back |
+| HOME | Escape | Guide |
+| shake | K | misc1 |
+| puntero | ratón | sticks en reposo del ratón |
+| stick nunchuk | WASD/flechas | stick izquierdo |
+
+
+## 8. M10.2 — subsistema de gamepad de SDL (arreglo raíz)
+
+El mando no funcionaba porque `Window.cpp` inicializaba SDL con
+`SDL_INIT_VIDEO | SDL_INIT_EVENTS` únicamente: sin `SDL_INIT_GAMEPAD`,
+`SDL_GetGamepads()` devuelve siempre 0 pads y ningún canal ve jamás un mando
+(el puente KPAD era correcto; el subsistema nunca estaba encendido). Ahora
+`SDL_Init` incluye `SDL_INIT_GAMEPAD`.
+
+Diagnóstico en log (categoría `platform.input`):
+
+- Al primer `sample()` del boot: `SDL gamepad subsystem initialized; N pad(s) attached`
+  + nombre de cada pad detectado.
+- En cada apertura perezosa/hotplug: `gamepad attached -> slot N: <nombre>` /
+  `gamepad detached from slot N`; fallos de `SDL_OpenGamepad` salen como WARN
+  con el mensaje de SDL.
+
+Si el log dice `0 pad(s) attached` con el mando enchufado, el problema es de
+detección de SDL (driver/Bluetooth), no del mapeo del port.
