@@ -144,12 +144,24 @@ struct SamplerDesc {
     SamplerFilter mipFilter = SamplerFilter::Linear;
     SamplerAddressMode addressU = SamplerAddressMode::ClampToEdge;
     SamplerAddressMode addressV = SamplerAddressMode::ClampToEdge;
+    // Mip selection (GXInitTexObjLOD's min/max LOD + bias, in level units —
+    // GX lod 1.0 == one mip level). maxLod large enough for the chain, the way
+    // the console clamps a saturated filter to the smallest level of the range.
+    float minLod = 0.0f;
+    float maxLod = 1000.0f;
+    float lodBias = 0.0f;
     bool operator==(const SamplerDesc&) const = default;
 };
 
 struct TextureDesc {
     uint32_t width = 0;
     uint32_t height = 0;
+    // Mip chain: `levels` includes the base. `levelData` (when set) points at
+    // `levels` row-major buffers, level i being (width>>i)x(height>>i) in 4
+    // bytes/texel and `level[i+1]` the next level; `initialData` alone is the
+    // base image of a single-level texture.
+    uint32_t levels = 1;
+    const void* const* levelData = nullptr;
     TextureFormat format = TextureFormat::R8G8B8A8_UNORM;
     // Row-major RGBA8 (or the format's natural layout) host bytes uploaded via
     // a staging buffer. Null = undefined contents (upload later / fill via

@@ -94,17 +94,6 @@ void alarmThreadMain() {
     }
 }
 
-void shutdownAlarmThread() {
-    {
-        std::lock_guard<std::mutex> lock(sAlarmMutex);
-        sQuit = true;
-    }
-    sAlarmCv.notify_all();
-    if (sAlarmThread.joinable()) {
-        sAlarmThread.join();
-    }
-}
-
 void ensureAlarmThread() {
     if (!sThreadRunning) {
         sThreadRunning = true;
@@ -113,11 +102,33 @@ void ensureAlarmThread() {
         // Joined at process exit from the atexit handler above (the Wii OS
         // also tears alarms down at shutdown); keeping it joinable lets the
         // suite binary terminate cleanly.
-        std::atexit(shutdownAlarmThread);
+        std::atexit(compat::shutdownAlarmThread);
     }
 }
 
 } // namespace
+
+namespace compat {
+
+// PC_PORT: the alarm thread runs game code (alarm handlers allocate/free), so
+// it must be joined before the process tears down — before the game heap is
+// destroyed and before the compat mutex registry is used for the last time.
+// Idempotent (a second call sees a non-joinable thread) and safe to call from
+// the alarm thread itself (self-join would deadlock/terminate).
+void shutdownAlarmThread() {
+    {
+        std::lock_guard<std::mutex> lock(sAlarmMutex);
+        sQuit = true;
+    }
+
+    sAlarmCv.notify_all();
+
+    if (sAlarmThread.joinable() && sAlarmThread.get_id() != std::this_thread::get_id()) {
+        sAlarmThread.join();
+    }
+}
+
+} // namespace compat
 
 extern "C" {
 

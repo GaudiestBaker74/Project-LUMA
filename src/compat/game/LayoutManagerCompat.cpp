@@ -59,6 +59,7 @@
 #include "compat/game/LanguageCompat.h"
 #include "compat/nw4r/LytHost.h"
 #include "platform/Log/Log.h"
+#include "compat/game/UiAnchoring.h"
 
 #include <cstdio>
 #include <cstring>
@@ -93,6 +94,56 @@ namespace {
 
     // Logs "not ported yet" warnings a bounded number of times so per-frame
     // callers cannot flood the log.
+    // Case-insensitive compare for resource names (MSVC has no strcasecmp).
+    bool resNameEquals(const char* pA, const char* pB) {
+        while (*pA != '\0' && *pB != '\0') {
+            char a = *pA;
+            char b = *pB;
+
+            if (a >= 'A' && a <= 'Z') {
+                a = static_cast< char >(a - 'A' + 'a');
+            }
+
+            if (b >= 'A' && b <= 'Z') {
+                b = static_cast< char >(b - 'A' + 'a');
+            }
+
+            if (a != b) {
+                return false;
+            }
+
+            ++pA;
+            ++pB;
+        }
+
+        return *pA == *pB;
+    }
+
+    // True when the arc's resource name denotes the layout the caller asked
+    // for. Beside the exact (case-insensitive) name this accepts the
+    // "…replace" variant the SMG arcs ship: WiiRemoteStrap.arc contains
+    // 'wiiremotestrapreplace.brlyt', which IS the strap layout the actor asks
+    // for by its name "WiiRemoteStrap" (the arc has no plain
+    // 'wiiremotestrap.brlyt'), so this is a match, not a wrong-layout
+    // fallback.
+    bool resNameMatches(const char* pResName, const char* pWanted) {
+        if (resNameEquals(pResName, pWanted)) {
+            return true;
+        }
+
+        const size_t wantedLen = std::strlen(pWanted);
+        char head[128];
+
+        if (wantedLen >= sizeof(head) || std::strlen(pResName) != wantedLen + 7 /* "replace" */) {
+            return false;
+        }
+
+        std::memcpy(head, pResName, wantedLen);
+        head[wantedLen] = '\0';
+
+        return resNameEquals(head, pWanted) && resNameEquals(pResName + wantedLen, "replace");
+    }
+
     void logOnceUnsupported(const char* pWhat) {
         static int sLoggedNum = 0;
 
@@ -111,7 +162,7 @@ LayoutManager::LayoutManager(const char* pName, bool convertFilename, u32 animLa
     : mLayoutHolder(nullptr), mLayout(nullptr), mAnimTransList(nullptr), mDrawInfo(), mIsScreenHidden(false),
       _61(false), mAnimLayerNum(animLayerNum), mTextBoxBufferLength(textBoxBufferLength), mRootPaneCtrl(nullptr),
       mPaneCtrls(nullptr), mPaneCtrlNum(0), mAnimTransNum(0), mPaneMtxRefs(nullptr), mPaneMtxRefNum(0),
-      mLayoutName(copyString(pName)) {
+      mLayoutName(copyString(pName)), mDrawCount(0) {
     char arcPath[256];
     buildLayoutArcPath(arcPath, sizeof(arcPath), pName, convertFilename);
 
@@ -142,8 +193,24 @@ void LayoutManager::initArc(const char* pArcPath, const char* pLayoutName) {
     void* pBrlyt = mLayoutHolder->mLayoutRes.getRes(pLayoutName);
 
     if (pBrlyt == nullptr && mLayoutHolder->mLayoutRes.mCount > 0) {
-        // Some arcs name the brlyt differently from the arc itself; fall back
-        // to the single layout resource in the arc.
+        // The arc may name the brlyt differently from the name the actor asked
+        // for: a case difference, or the '…replace' variant (see
+        // resNameMatches). Look for a real match before falling back — the
+        // old code always took whichever layout came first and warned, which
+        // is how 'WiiRemoteStrap' ended up logging a warning on every boot.
+        for (u32 i = 0; i < mLayoutHolder->mLayoutRes.mCount; i++) {
+            const char* pResName = mLayoutHolder->mLayoutRes.getResName(i);
+
+            if (pResName != nullptr && resNameMatches(pResName, pLayoutName)) {
+                pBrlyt = mLayoutHolder->mLayoutRes.getRes(i);
+                break;
+            }
+        }
+    }
+
+    if (pBrlyt == nullptr && mLayoutHolder->mLayoutRes.mCount > 0) {
+        // Nothing matched: the arc really holds a different layout. Use it and
+        // say so — this is the case that deserves a warning.
         pBrlyt = mLayoutHolder->mLayoutRes.getRes(0u);
         PL_LOG_WARN("compat.layout", "LayoutManager '%s': brlyt '%s' not found; using '%s' instead",
                     mLayoutName != nullptr ? mLayoutName : "?", pLayoutName,
@@ -215,14 +282,52 @@ void LayoutManager::initArc(const char* pArcPath, const char* pLayoutName) {
 
 void LayoutManager::initDrawInfo() {
     // The DrawInfo ctor already sets identity view mtx, alpha 1 and cleared
-    // flags. The view rect spans the SMG layout space (608 x 456 for 4:3),
-    // centered on the origin, with the SAME sign convention as
-    // Layout::GetLayoutRect: top > bottom. That ordering matters —
-    // DrawInfo::IsYAxisUp() is `bottom - top < 0`, and Pane::LoadMtx only
-    // reverses the Y axis (layout space is Y-down, the screen ortho set by
-    // MR::setupDrawForNW4RLayout is Y-up) when the DrawInfo says Y-up.
-    mDrawInfo.mViewRect = nw4r::ut::Rect(-304.0f, cLayoutSpaceHeight * 0.5f, 304.0f,
-                                         -cLayoutSpaceHeight * 0.5f);
+    // flags. The view rect spans the SMG layout space, centered on the origin,
+    // with the SAME sign convention as Layout::GetLayoutRect: top > bottom.
+    // That ordering matters — DrawInfo::IsYAxisUp() is `bottom - top < 0`, and
+    // Pane::LoadMtx only reverses the Y axis (layout space is Y-down, the
+    // screen ortho set by MR::setupDrawForNW4RLayout is Y-up) when the DrawInfo
+    // says Y-up.
+    //
+    // PC_PORT (title widescreen): the rect follows the ASPECT RATIO, like the
+    // console's getScreenWidth() (608 in 4:3, 832 in 16:9). The rect is only
+    // half the story though — pane positions come from the view MATRIX below,
+    // which is what actually places the composition on screen.
+    f32 fbWidth = 0.0f;
+    f32 fbHeight = 0.0f;
+    compat::ui::framebufferSize(&fbWidth, &fbHeight);
+    const f32 spaceWidth = compat::ui::layoutSpaceWidth(fbWidth, fbHeight);
+    mDrawInfo.mViewRect = nw4r::ut::Rect(-spaceWidth * 0.5f, cLayoutSpaceHeight * 0.5f,
+                                         spaceWidth * 0.5f, -cLayoutSpaceHeight * 0.5f);
+    updateUiAnchoring();
+}
+
+// PC_PORT (title widescreen): the single place where the layout space meets the
+// framebuffer — see compat/game/UiAnchoring.h for the mapping and for what the
+// old (stretching) behaviour was.
+void LayoutManager::updateUiAnchoring() {
+    // PC_PORT: PIXELS, not the 456-unit design height — see
+    // compat::ui::framebufferSize(). Passing 456 here at 1920x1080 gave
+    // uiScale 1.0, i.e. the whole UI at 1 layout unit = 1 pixel.
+    f32 fbWidth = 0.0f;
+    f32 fbHeight = 0.0f;
+    compat::ui::framebufferSize(&fbWidth, &fbHeight);
+
+    f32 mtx[3][4];
+    compat::ui::fillUiViewMtx(fbWidth, fbHeight, mtx);
+
+    mDrawInfo.mViewMtx._00 = mtx[0][0];
+    mDrawInfo.mViewMtx._01 = mtx[0][1];
+    mDrawInfo.mViewMtx._02 = mtx[0][2];
+    mDrawInfo.mViewMtx._03 = mtx[0][3];
+    mDrawInfo.mViewMtx._10 = mtx[1][0];
+    mDrawInfo.mViewMtx._11 = mtx[1][1];
+    mDrawInfo.mViewMtx._12 = mtx[1][2];
+    mDrawInfo.mViewMtx._13 = mtx[1][3];
+    mDrawInfo.mViewMtx._20 = mtx[2][0];
+    mDrawInfo.mViewMtx._21 = mtx[2][1];
+    mDrawInfo.mViewMtx._22 = mtx[2][2];
+    mDrawInfo.mViewMtx._23 = mtx[2][3];
 }
 
 void LayoutManager::initPaneInfo() {
@@ -245,9 +350,34 @@ u32 LayoutManager::countPanes(nw4r::lyt::Pane*) {
 }
 
 void LayoutManager::initGroupCtrlList() {
-    if (mLayout != nullptr && mLayout->GetGroupContainer() != nullptr) {
-        logOnceUnsupported("group controllers (initGroupCtrlList)");
+    // A "group" is nw4r lyt's way of tagging panes inside a layout (the 'grp1'
+    // blocks the SMG arcs carry, e.g. StarPointerLayout's "GroupRing").
+    // Animations bound to a group are applied by Layout::BindAnimationAuto
+    // (patches/nw4r/lyt/lyt_layout.cpp) — that part IS ported.
+    //
+    // What is not ported is the by-name group *controller* API
+    // (addGroupCtrl / createAndAddGroupCtrl / getIndexOfGroupCtrl below): game
+    // code asks for one with MR::createAndAddGroupCtrl and drives an animation
+    // through it. The only caller in the game is StarPointerLayout.cpp:98
+    // ("GroupRing"); the title/logo/strap layouts never ask for one. Those
+    // entry points warn when actually called, so a layout that merely
+    // CONTAINS groups does not need a warning of its own.
+    if (mLayout == nullptr || mLayout->GetGroupContainer() == nullptr) {
+        return;
     }
+
+    nw4r::lyt::GroupContainer* pContainer = mLayout->GetGroupContainer();
+    u32 groupNum = 0;
+
+    for (nw4r::lyt::GroupList::Iterator it = pContainer->mGroupList.GetBeginIter();
+         it != pContainer->mGroupList.GetEndIter(); ++it) {
+        ++groupNum;
+    }
+
+    PL_LOG_INFO("compat.layout",
+                "LayoutManager '%s': %u group(s) in the layout (group-bound animations bind normally; "
+                "the by-name group controller API is not ported yet)",
+                mLayoutName != nullptr ? mLayoutName : "?", groupNum);
 }
 
 namespace {
@@ -272,8 +402,8 @@ namespace {
     };
 
     const LayoutMessageFallback sLayoutMessageFallbacks[] = {
-        {"PressStart", "TxtStart", L"Press A and B."},
-        {"PressStart", "ShaStart", L"Press A and B."},
+        {"PressStart", "TxtStart", L"Press both [A] and [B]."},
+        {"PressStart", "ShaStart", L"Press both [A] and [B]."},
     };
 
     // `pPaneName` may carry a language suffix ("TxtStartUsEn"): match on the
@@ -387,6 +517,11 @@ void LayoutManager::calcAnim() {
         mPaneCtrls[i]->calcAnim();
     }
 
+    // The window/EFB size can change at any time (resize, fullscreen): refresh
+    // the mapping before the pane matrices are composed, so a layout that was
+    // already built still lands in the right place after a resolution change.
+    updateUiAnchoring();
+
     mLayout->Animate(0);
     mLayout->CalculateMtx(mDrawInfo);
 }
@@ -490,16 +625,40 @@ void LayoutManager::draw() const {
         PL_LOG_INFO("compat.layout", "LayoutManager::draw: first layout draw (M9.5.3c drawing active)");
     }
 
-    // One-shot diagnostics (see dumpPaneTree): draw #1 and #300 (~5 s in).
-    static u32 sDrawCount = 0;
-    sDrawCount++;
+    // Diagnostic sampling (see dumpPaneTree below).
+    mDrawCount++;
 
-    if (sDrawCount == 1 || sDrawCount == 300) {
+    // PC_PORT (title widescreen): the pane-tree dump is what makes a capture
+    // log self-explanatory, so it samples EVERY layout (a global counter left
+    // the title's own layout undumped — only the first one to draw got a
+    // tree). Draws are per layout, i.e. frames for that layout: the schedule
+    // below tracks the title's appear/flash sequence (~4 s) densely and then
+    // thins out.
+    static const u32 kDumpDraws[] = {1, 2, 3, 4, 6, 9, 13, 18, 25, 35, 50, 70, 100, 140, 190, 250, 300};
+    bool dumpNow = false;
+    for (u32 d : kDumpDraws) {
+        if (mDrawCount == d) {
+            dumpNow = true;
+            break;
+        }
+    }
+
+    if (dumpNow) {
+        const u32 sDrawCount = mDrawCount;
+        // PC_PORT (title widescreen): the framebuffer geometry and the resolved
+        // layout->pixel scale go in the same line, so a capture log shows at a
+        // glance whether the UI is anchored to the window (fb=1920x1080 =>
+        // scale=2.37, i.e. 456 layout units = 1080 px) or to the design height.
+        f32 dbgFbW = 0.0f;
+        f32 dbgFbH = 0.0f;
+        compat::ui::framebufferSize(&dbgFbW, &dbgFbH);
         PL_LOG_INFO("compat.layout",
-                    "draw #%u: yAxisUp=%d glbAlpha=%.2f viewRect=(%.0f,%.0f)-(%.0f,%.0f)",
+                    "draw #%u: yAxisUp=%d glbAlpha=%.2f viewRect=(%.0f,%.0f)-(%.0f,%.0f) "
+                    "fb=%.0fx%.0f uiScale=%.3f space=%.0f",
                     static_cast< unsigned >(sDrawCount), static_cast< int >(mDrawInfo.IsYAxisUp()),
                     mDrawInfo.GetGlobalAlpha(), mDrawInfo.mViewRect.left, mDrawInfo.mViewRect.top,
-                    mDrawInfo.mViewRect.right, mDrawInfo.mViewRect.bottom);
+                    mDrawInfo.mViewRect.right, mDrawInfo.mViewRect.bottom, dbgFbW, dbgFbH,
+                    compat::ui::uiScale(dbgFbW, dbgFbH), static_cast<f32>(MR::getScreenWidth()));
         dumpPaneTree(mLayout->mpRootPane, 0);
 
         if (mPaneCtrlNum > 0 && mPaneCtrls != nullptr && mPaneCtrls[0] != nullptr) {
@@ -971,21 +1130,39 @@ namespace MR {
         pTrans->y = pPane->mGlbMtx._13;
     }
 
-    // Verbatim from LayoutCoreUtil.cpp.
+    // PC_PORT (title widescreen): the exact inverse of the UI anchoring — see
+    // compat/game/UiAnchoring.h. The vendored bodies assumed the 608-wide
+    // layout space was stretched across the framebuffer (x factor
+    // 608/getScreenWidth with a 1:1 y factor); that mapping no longer exists,
+    // so these have to follow the uniform scale the DrawInfo view matrix uses.
     void convertScreenPosToLayoutPos(TVec2f* pLayoutPos, const TVec2f& rScreenPos) {
-        pLayoutPos->x = rScreenPos.x * 608.0f / MR::getScreenWidth() - 304.0f;
-        pLayoutPos->y = -(rScreenPos.y * MR::getScreenHeight() / MR::getScreenHeight() - (MR::getScreenHeight() * 0.5f));
+        f32 w = 0.0f;
+        f32 h = 0.0f;
+        compat::ui::framebufferSize(&w, &h);
+        const f32 scale = compat::ui::uiScale(w, h);
+
+        pLayoutPos->x = (rScreenPos.x - w * 0.5f) / scale;
+        pLayoutPos->y = (h * 0.5f - rScreenPos.y) / scale;
     }
 
-    // Verbatim from LayoutCoreUtil.cpp.
+    // Verbatim from LayoutCoreUtil.cpp, with the uniform scale above.
     void convertLayoutPosToScreenPos(TVec2f* pScreenPos, const TVec2f& rLayoutPos) {
-        pScreenPos->x = rLayoutPos.x * MR::getScreenWidth() / 608.0f + MR::getScreenWidth() * 0.5f;
-        pScreenPos->y = MR::getScreenHeight() * 0.5f + -rLayoutPos.y * MR::getScreenHeight() / MR::getScreenHeight();
+        f32 w = 0.0f;
+        f32 h = 0.0f;
+        compat::ui::framebufferSize(&w, &h);
+        compat::ui::layoutToScreen(rLayoutPos.x, rLayoutPos.y, w, h, &pScreenPos->x,
+                                   &pScreenPos->y);
     }
 
-    // Verbatim from ScreenUtil.cpp.
+    // PC_PORT (title widescreen): ScreenUtil.cpp returns 832 in 16:9 and 608 in
+    // 4:3. On the host the render mode is whatever the window is, so the answer
+    // comes from the framebuffer's aspect ratio (the 16:9 branch used to be
+    // unreachable because isScreen16Per9() was a stub that returned false).
     s32 getScreenWidth() {
-        return isScreen16Per9() ? 832 : 608;
+        f32 w = 0.0f;
+        f32 h = 0.0f;
+        compat::ui::framebufferSize(&w, &h);
+        return static_cast<s32>(compat::ui::layoutSpaceWidth(w, h));
     }
 
     // PC_PORT: petari omits the body. SMG's 4:3 screen space is 608 x 456

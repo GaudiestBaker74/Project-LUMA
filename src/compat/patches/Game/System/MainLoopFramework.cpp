@@ -243,6 +243,14 @@ void MainLoopFramework::waitForRetrace() {
 }
 
 void MainLoopFramework::beginRender() {
+    // PC_PORT (title widescreen): the framebuffer geometry follows the window.
+    // Doing it here (once per rendered frame, before the EFB is touched) keeps
+    // the EFB, the game's viewport/scissor and the present path all in the
+    // window's native resolution: a resize or a fullscreen toggle changes the
+    // aspect ratio, and the scene/UI layers pick it up on their next frame
+    // (compat/game/UiAnchoring.h maps the layout space accordingly).
+    Platform::CompatVi::syncHostRenderModeWithWindow();
+
     OSTick currentTick = OSGetTick();
     mLastFrameTime = currentTick - mTick;
     mTick = currentTick;

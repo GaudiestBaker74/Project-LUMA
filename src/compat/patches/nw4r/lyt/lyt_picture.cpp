@@ -12,12 +12,21 @@
 // (DrawSelf already bails on a null mpMaterial). Same guard TextBox got in
 // the patched lyt_textBox.cpp.
 //
+// Change vs. upstream (title widescreen): DrawSelf widens screen-covering
+// panes (see the note inside) so full-screen effects such as TitleLogo's
+// PicFlash cover a widescreen framebuffer instead of only the 4:3 design area.
+//
 // Everything else is identical to upstream.
 // =============================================================================
 #include "nw4r/lyt/layout.h"
 #include "nw4r/lyt/picture.h"
 #include "nw4r/ut/inlines.h"
 #include "platform/Log/Log.h"  // PC_PORT
+#include "compat/game/UiAnchoring.h"  // PC_PORT: screen-covering panes (the flash)
+
+#include <set>       // PC_PORT: the once-per-pane report below
+#include <string>
+#include <cstring>
 
 namespace nw4r {
     namespace lyt {
@@ -129,7 +138,39 @@ namespace nw4r {
 
             detail::SetVertexFormat(useVtxColor, mTexCoordAry.GetSize());
 
-            detail::DrawQuad(GetVtxPos(), mSize, mTexCoordAry.GetSize(), mTexCoordAry.GetArray(), useVtxColor ? mVtxColors : NULL, mGlbAlpha);
+            // PC_PORT (title widescreen): a pane that covers the whole design
+            // area is a screen-covering EFFECT (TitleLogo's PicFlash: an 8x8
+            // texture stretched over the screen and faded by the logo's
+            // "Appear" animation). The console's design space is 4:3, so drawn
+            // at its authored size the flash covered only the middle 960 px of
+            // a 1280-wide frame and the sides kept the unflashed scene — a hard
+            // vertical cut at the 4:3 edges. Widen it symmetrically about its
+            // centre (the screen centre) until it covers the framebuffer; the
+            // same "extend the sides, keep the centre" rule the background
+            // follows. Ordinary panes are untouched (factor 1).
+            math::VEC2 basePt = GetVtxPos();
+            Size size = mSize;
+
+            const f32 widen = compat::ui::screenCoveringPaneScaleX(mSize.width, mSize.height);
+
+            if (widen > 1.0f) {
+                const f32 extra = mSize.width * (widen - 1.0f);
+                basePt.x -= extra * 0.5f;
+                size.width += extra;
+
+                // Reported once per pane: this is a screen-covering effect
+                // being stretched over a widescreen frame, worth seeing in the
+                // log (and the place to look if a pane is widened by mistake).
+                static std::set< std::string > sReported;
+                std::string name(mName, strnlen(mName, sizeof(mName)));
+                if (sReported.insert(name).second) {
+                    PL_LOG_INFO("compat.lyt", "screen-covering pane '%s': %.0fx%.0f design units widened x%.3f to cover the framebuffer",
+                                name.c_str(), static_cast< double >(mSize.width), static_cast< double >(mSize.height),
+                                static_cast< double >(widen));
+                }
+            }
+
+            detail::DrawQuad(basePt, size, mTexCoordAry.GetSize(), mTexCoordAry.GetArray(), useVtxColor ? mVtxColors : NULL, mGlbAlpha);
         }
 
     };  // namespace lyt

@@ -156,7 +156,16 @@ void GXClear(u32 clrMask);
 namespace Platform::CompatGx {
 // Applies the GXSetTexCoordGen2 generator of `coordId` (GX_TEXCOORD0..7) to
 // the current vertex attributes (in/out sCurAttr), transforming TEX coords.
-void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4]);
+void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4],
+                   const float inputs[GX_VA_MAX_ATTR][4]);
+// Projective component (q) of the texcoord the last resolveTexGen produced for
+// `coordId` — the console's texture unit divides s and t by it per pixel.
+f32 texGenW(int coordId);
+// M9.5.8: length in bytes of the image blob behind a GX texture object, so the
+// host can upload the mip levels that follow the base level. Textures that are
+// never told stay base-only.
+void setTexObjImageBytes(GXTexObj* obj, size_t bytes);
+
 // Returns the texture/sampler currently bound to TEXMAP0 (or nulls).
 void getTexMap0(void** outTex, void** outSam);
 // Returns the 8 TEXMAP0..7 textures/samplers (nulls for unbound slots). M5.4
@@ -187,6 +196,11 @@ void dlApplyXfTexGen(int coordId, std::uint32_t xfTex, std::uint32_t xfDual);
 // the GX pipelines built in flushDraw match the attachment). Null when the
 // renderer is not initialized. Called by the frame host before beginPass().
 void* getEfbRenderTarget();
+
+// PC_PORT: the EFB's current size (it follows the render mode / window via
+// GXSetDispCopySrc). Used by the --screenshot dev tool and diagnostics.
+int getEfbWidth();
+int getEfbHeight();
 // Releases the EFB render target (called from GXCompatShutdown).
 void shutdownEfb();
 // Encodes a w*h RGBA8 buffer into the GX tiled image format `gxFmt`
@@ -212,6 +226,10 @@ void GXCompatEndFrame();
 // Called by main.cpp before Renderer::shutdown(): releases the dynamic vertex
 // buffer and the renderer textures owned by the GX path.
 void GXCompatShutdown();
+
+// PC_PORT diagnostics: read back the mirrored GXSetViewport state (the rect the
+// next flushDraw applies to the pass). Used by the j3d sky diagnostic.
+void debugViewport(f32* outX, f32* outY, f32* outW, f32* outH);
 
 // --- debug / tests -----------------------------------------------------------
 
@@ -262,6 +280,11 @@ void GXCompatDebugCopyState(GxCopyDebugState& out);
 // primitive (floats, stride = `outStride`). `count` = number of vertices.
 // Used by unit tests and --dump-gx. Returns nullptr if no primitive yet.
 const float* GXCompatDebugVertices(int* outCount, int* outStride);
+
+// Debug: the projective component (q) the texgen produced for `coord` with the
+// last captured vertex. The texture unit divides s/t by it per pixel (see
+// tools/shaders/gx_tev_frag.frag), so tests check it instead of a CPU divide.
+bool GXCompatDebugTexGenQ(int coord, float* outQ);
 
 #ifdef __cplusplus
 }

@@ -27,7 +27,17 @@
 
 layout(location = 0) in vec4 vColor0;
 layout(location = 1) in vec4 vColor1;
-layout(location = 2) in vec2 vUV[8];
+layout(location = 2) in vec3 vUV[8];
+
+// Generated texcoord (GX vertex processor): the TEV samples s/q, t/q. The
+// divide happens HERE, per pixel, like the hardware — the rasterizer
+// interpolates (s, t, q) perspective-correctly and the texture unit finishes
+// the projection. Doing it per vertex (the CPU texgen) flattens the curve into
+// affine steps inside every triangle. q = 1 for a non-projective generator.
+vec2 texCoord(int i) {
+    vec3 c = vUV[i];
+    return (abs(c.z) > 1e-12) ? c.xy / c.z : c.xy;
+}
 
 layout(set = 0, binding = 0) uniform sampler2D uTex[8];
 
@@ -172,7 +182,7 @@ void main() {
             const int map = (p >> 8) & 0xFF;
             const int scaleS = min((p >> 16) & 0xFF, 8);
             const int scaleT = min((p >> 24) & 0xFF, 8);
-            const vec2 indUv = vUV[coord] / vec2(float(1 << scaleS), float(1 << scaleT));
+            const vec2 indUv = texCoord(coord) / vec2(float(1 << scaleS), float(1 << scaleT));
             if (map == 0) {
                 iind[i] = texture(uTex[0], indUv).rgb;
             } else if (map == 1) {
@@ -226,7 +236,7 @@ void main() {
         const int indWrapS = (tevind >> 16) & 0x7;
         const int indWrapT = (tevind >> 20) & 0x7;
         const bool indAddPrev = ((tevind >> 24) & 1) != 0;
-        vec2 sampleUv = vUV[texcoord];
+        vec2 sampleUv = texCoord(texcoord);
         if (indStage < numInd && indMtxSel >= 1 && indMtxSel <= 3) {
             // Quantize the raw indirect texel to the format's significant bits
             // (Dolphin iindtevcrd: ITF_8 keeps 8 bits, ITF_5/4/3 shift left the
@@ -254,13 +264,13 @@ void main() {
 
             // Wrap the base texcoord (GX_ITW_*): OFF = as-is, 0 = zero,
             // 256..16 = repeat every N texels (mod, approximated in UV).
-            vec2 wrapped = vUV[texcoord];
+            vec2 wrapped = texCoord(texcoord);
             if (indWrapS == 6) {
                 wrapped.x = 0.0;
             } else if (indWrapS >= 1 && indWrapS <= 5) {
                 const float n = float(1 << (9 - indWrapS));  // 256,128,...,16
                 if (texDim.x > 0.0) {
-                    wrapped.x = fract(vUV[texcoord].x * texDim.x / n) * (n / texDim.x);
+                    wrapped.x = fract(texCoord(texcoord).x * texDim.x / n) * (n / texDim.x);
                 }
             }
             if (indWrapT == 6) {
@@ -268,7 +278,7 @@ void main() {
             } else if (indWrapT >= 1 && indWrapT <= 5) {
                 const float n = float(1 << (9 - indWrapT));
                 if (texDim.y > 0.0) {
-                    wrapped.y = fract(vUV[texcoord].y * texDim.y / n) * (n / texDim.y);
+                    wrapped.y = fract(texCoord(texcoord).y * texDim.y / n) * (n / texDim.y);
                 }
             }
             sampleUv = wrapped + offsetUv;

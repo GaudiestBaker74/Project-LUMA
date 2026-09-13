@@ -188,10 +188,17 @@ inline void fnvMix(uint64_t& h, const void* p, size_t n) {
 }
 
 uint64_t hashSamplerDesc(const SamplerDesc& d) {
-    // SamplerDesc is five uint8_t enums — no padding, raw bytes are fine.
-    static_assert(sizeof(SamplerDesc) == 5, "SamplerDesc grew: hash it field by field");
+    // Field by field (M9.5.8): the struct mixes uint8_t enums with floats, so
+    // raw bytes would hash padding.
     uint64_t h = 14695981039346656037ull;
-    fnvMix(h, &d, sizeof(d));
+    fnvMix(h, &d.magFilter, sizeof(d.magFilter));
+    fnvMix(h, &d.minFilter, sizeof(d.minFilter));
+    fnvMix(h, &d.mipFilter, sizeof(d.mipFilter));
+    fnvMix(h, &d.addressU, sizeof(d.addressU));
+    fnvMix(h, &d.addressV, sizeof(d.addressV));
+    fnvMix(h, &d.minLod, sizeof(d.minLod));
+    fnvMix(h, &d.maxLod, sizeof(d.maxLod));
+    fnvMix(h, &d.lodBias, sizeof(d.lodBias));
     return h;
 }
 
@@ -1525,7 +1532,7 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
     ici.imageType = VK_IMAGE_TYPE_2D;
     ici.format = vkFormat;
     ici.extent = {desc.width, desc.height, 1};
-    ici.mipLevels = 1; // M4.2: no mip chain (flag reserved for later)
+    ici.mipLevels = (desc.levels > 0) ? desc.levels : 1;
     ici.arrayLayers = 1;
     ici.samples = VK_SAMPLE_COUNT_1_BIT;
     ici.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -1553,7 +1560,7 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
     vci.image = image;
     vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
     vci.format = vkFormat;
-    vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, static_cast<uint32_t>(ici.mipLevels), 0, 1};
     VkImageView view = VK_NULL_HANDLE;
     vkCreateImageView(VKDEV, &vci, nullptr, &view);
 
@@ -1564,10 +1571,47 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
     if (hasData) {
         // Upload via a one-time command buffer with a host-visible staging
         // buffer (simple and correct; a persistent staging ring comes with
-        // heavier streaming in M5+).
+        // heavier streaming in M5+). The mip chain is packed level after level
+        // into the same staging buffer, one copy region per level.
+        struct Level {
+            const void* data = nullptr;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            VkDeviceSize offset = 0;
+        };
+        std::vector<Level> levels;
+        if (desc.levelData != nullptr) {
+            for (uint32_t i = 0; i < ici.mipLevels; ++i) {
+                const uint32_t lw = (desc.width >> i) ? (desc.width >> i) : 1;
+                const uint32_t lh = (desc.height >> i) ? (desc.height >> i) : 1;
+                if (desc.levelData[i] == nullptr) {
+                    break;
+                }
+                Level l;
+                l.data = desc.levelData[i];
+                l.width = lw;
+                l.height = lh;
+                levels.push_back(l);
+            }
+        } else {
+            Level l;
+            l.data = desc.initialData;
+            l.width = desc.width;
+            l.height = desc.height;
+            levels.push_back(l);
+        }
+        VkDeviceSize totalBytes = 0;
+        for (Level& l : levels) {
+            l.offset = totalBytes;
+            totalBytes += static_cast<VkDeviceSize>(l.width) * l.height * 4;
+        }
+        if (totalBytes == 0) {
+            totalBytes = dataBytes;
+        }
+
         VkBufferCreateInfo sbci{};
         sbci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        sbci.size = dataBytes;
+        sbci.size = totalBytes;
         sbci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         VkBuffer staging = VK_NULL_HANDLE;
         vkCreateBuffer(VKDEV, &sbci, nullptr, &staging);
@@ -1578,8 +1622,11 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
                                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         vkBindBufferMemory(VKDEV, staging, stagingMem, 0);
         void* mapped = nullptr;
-        vkMapMemory(VKDEV, stagingMem, 0, dataBytes, 0, &mapped);
-        std::memcpy(mapped, desc.initialData, static_cast<size_t>(dataBytes));
+        vkMapMemory(VKDEV, stagingMem, 0, totalBytes, 0, &mapped);
+        for (const Level& l : levels) {
+            std::memcpy(static_cast<uint8_t*>(mapped) + l.offset, l.data,
+                        static_cast<size_t>(l.width) * l.height * 4);
+        }
         vkUnmapMemory(VKDEV, stagingMem);
 
         VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -1602,16 +1649,24 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
         toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toDst.image = image;
-        toDst.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toDst.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0,
+                                  static_cast<uint32_t>(ici.mipLevels), 0, 1};
         toDst.srcAccessMask = 0;
         toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &toDst);
 
-        VkBufferImageCopy region{};
-        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        region.imageExtent = {desc.width, desc.height, 1};
-        vkCmdCopyBufferToImage(cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        std::vector<VkBufferImageCopy> regions;
+        regions.reserve(levels.size());
+        for (uint32_t i = 0; i < levels.size(); ++i) {
+            VkBufferImageCopy region{};
+            region.bufferOffset = levels[i].offset;
+            region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, i, 0, 1};
+            region.imageExtent = {levels[i].width, levels[i].height, 1};
+            regions.push_back(region);
+        }
+        vkCmdCopyBufferToImage(cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               static_cast<uint32_t>(regions.size()), regions.data());
 
         VkImageMemoryBarrier toRead{};
         toRead.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1620,7 +1675,8 @@ TextureHandle Renderer::createTexture(const TextureDesc& desc) {
         toRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toRead.image = image;
-        toRead.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toRead.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0,
+                                   static_cast<uint32_t>(ici.mipLevels), 0, 1};
         toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -1699,8 +1755,14 @@ SamplerHandle Renderer::getOrCreateSampler(const SamplerDesc& desc) {
     sci.addressModeU = addressModeToVk(desc.addressU);
     sci.addressModeV = addressModeToVk(desc.addressV);
     sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.maxLod = 0.0f;
-    sci.minLod = 0.0f;
+    // LOD range/bias straight from GX (level units). Keep minLod <= maxLod:
+    // Vulkan rejects the sampler otherwise, and GX callers do not guarantee it.
+    sci.maxLod = desc.maxLod < 0.0f ? 0.0f : desc.maxLod;
+    sci.minLod = desc.minLod < 0.0f ? 0.0f : desc.minLod;
+    if (sci.minLod > sci.maxLod) {
+        sci.minLod = sci.maxLod;
+    }
+    sci.mipLodBias = desc.lodBias;
     // No anisotropy / compare / border in M4.2 (GX has no anisotropic filtering
     // on the real console; aniso may come as an enhancement later).
     VkSampler sampler = VK_NULL_HANDLE;
@@ -2049,15 +2111,44 @@ bool Renderer::blitPassToSwapchain() {
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
                          nullptr, 2, barriers);
 
-    // Scale the EFB to the window (the GX XFB was 640x448/576; the window is
-    // any size). LINEAR filter = the XFB vertical filter, simplified.
+    // PC_PORT (title widescreen): the EFB is presented 1:1 whenever the
+    // framebuffer geometry matches the window (compat/vi keeps the render mode
+    // in sync with the window, so this is the normal case). If they ever differ
+    // — the very first frames, a resize, a swapped-out render mode — the EFB is
+    // scaled with its ASPECT RATIO PRESERVED and centred (letterbox/pillarbox),
+    // never stretched: a stretched present is exactly what made the title
+    // screen's sky, planet and UI look distorted.
+    const int32_t dstW = static_cast<int32_t>(mExtentW);
+    const int32_t dstH = static_cast<int32_t>(mExtentH);
+    int32_t blitX0 = 0;
+    int32_t blitY0 = 0;
+    int32_t blitX1 = dstW;
+    int32_t blitY1 = dstH;
+
+    if (efbW > 0 && efbH > 0 && dstW > 0 && dstH > 0) {
+        const float srcAspect = static_cast<float>(efbW) / static_cast<float>(efbH);
+        const float dstAspect = static_cast<float>(dstW) / static_cast<float>(dstH);
+
+        if (srcAspect > dstAspect) {
+            // Wider than the window: fill the width, bars top and bottom.
+            const int32_t h = static_cast<int32_t>(static_cast<float>(dstW) / srcAspect + 0.5f);
+            blitY0 = (dstH - h) / 2;
+            blitY1 = blitY0 + h;
+        } else if (srcAspect < dstAspect) {
+            // Narrower than the window: fill the height, bars left and right.
+            const int32_t w = static_cast<int32_t>(static_cast<float>(dstH) * srcAspect + 0.5f);
+            blitX0 = (dstW - w) / 2;
+            blitX1 = blitX0 + w;
+        }
+    }
+
     VkImageBlit region{};
     region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     region.srcOffsets[0] = {0, 0, 0};
     region.srcOffsets[1] = {efbW, efbH, 1};
     region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    region.dstOffsets[0] = {0, 0, 0};
-    region.dstOffsets[1] = {static_cast<int32_t>(mExtentW), static_cast<int32_t>(mExtentH), 1};
+    region.dstOffsets[0] = {blitX0, blitY0, 0};
+    region.dstOffsets[1] = {blitX1, blitY1, 1};
     vkCmdBlitImage(cmd, efbImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                    swapImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region,
                    VK_FILTER_LINEAR);

@@ -7,8 +7,11 @@
 #include <revolution/gx.h>
 
 #include <cmath>
+#include <cstdlib>
+#include <string>
 #include <cstring>
 
+#include "compat/gx/GXCompat.h"
 #include "platform/Log/Log.h"
 
 namespace compat::j3d {
@@ -279,7 +282,33 @@ void BmdRenderer::calcTexMtx(const BmdMaterial& mat, int slot, const Mtx modelMt
         mtxIdentity(input);
         break;
     }
-    const f32(*effect)[4] = mHasEffectMtx ? mEffectMtx : tm.effectMtx;
+    // The runtime effect matrix (MR::initDLMakerProjmapEffectMtxSetter →
+    // ProjmapEffectMtxSetter::updateMtxUseBaseMtx) does not REPLACE the
+    // matrix baked into the BMD: it right-multiplies it by inverse(base) so
+    // the projection keeps working in the model's own frame while the actor
+    // (the sky dome) spins. Replacing it, as this port did, threw away the
+    // sphere projection and flattened the sea into a wallpaper of the earth
+    // map — see docs/title-widescreen.md.
+    Mtx effectComposed;
+    if (mHasEffectMtx) {
+        mtxProjConcat(tm.effectMtx, mEffectMtx, effectComposed);
+    } else {
+        std::memcpy(effectComposed, tm.effectMtx, sizeof(Mtx));
+    }
+    const f32(*effect)[4] = effectComposed;
+    // EXPERIMENT: a uniform texcoord scale for this material, applied to every
+    // texgen (what the hardware's texcoord-scale register would do). The
+    // reference frames sample the earth textures ONCE across the sea, while the
+    // encoded SRT/texcoords produce tens of repeats, so the effective scale is
+    // ~1/20 (LUMA_SKY_UV_SCALE tunes it while fitting).
+    static const float kUvScale = [] {
+        const char* e = std::getenv("LUMA_SKY_UV_SCALE");
+        return (e != nullptr) ? static_cast<float>(std::atof(e)) : 1.0f;
+    }();
+    if (kUvScale != 1.0f && mat.name.find("Earth") != std::string::npos) {
+        srt.scaleX *= kUvScale;
+        srt.scaleY *= kUvScale;
+    }
 
     // J3DTexMtx::calcTexMtx.
     Mtx srtMtx;
@@ -361,6 +390,23 @@ void BmdRenderer::calcTexMtx(const BmdMaterial& mat, int slot, const Mtx modelMt
         mtxCopy(srtMtx, out);
         break;
     }
+
+    // M9.5.9 EXPERIMENT: the projmap traversal the console uses. Measured with
+    // LUMA_GX_UV_LOG=1, the composed matrix sweeps ~10 Earth-map repeats per 45
+    // degree sector while the reference shows the map about once, so the scale
+    // belongs to the xy rows of the projection. Scaling the SRT (as the earlier
+    // LUMA_SKY_UV_SCALE did) cannot work: the projective path takes the SRT
+    // through kQMtx only, the traversal is set by the effect/projection matrix.
+    static const float kProjScale = [] {
+        const char* e = std::getenv("LUMA_SKY_PROJ_SCALE");
+        return (e != nullptr) ? static_cast<float>(std::atof(e)) : 1.0f;
+    }();
+    if (kProjScale != 1.0f && (mode == 8 || mode == 9)) {
+        for (int c = 0; c < 4; ++c) {
+            out[0][c] *= kProjScale;
+            out[1][c] *= kProjScale;
+        }
+    }
 }
 
 // --- textures ----------------------------------------------------------------
@@ -396,6 +442,9 @@ void BmdRenderer::bindTextures(const BmdMaterial& mat) {
                              static_cast<GXTexFmt>(fmt), static_cast<GXTexWrapMode>(t.header.wrapS),
                              static_cast<GXTexWrapMode>(t.header.wrapT), t.mipmap ? GX_TRUE : GX_FALSE);
             }
+            // M9.5.8: the image blob covers the mip chain (see BmdModel), so the
+            // loader can upload the levels the LOD range samples.
+            Platform::CompatGx::setTexObjImageBytes(&obj, t.imageBytes);
             GXInitTexObjLOD(&obj, static_cast<GXTexFilter>(t.minFilter), static_cast<GXTexFilter>(t.magFilter),
                             t.minLod / 8.0f, t.maxLod / 8.0f, t.lodBias / 100.0f,
                             t.biasClamp ? GX_TRUE : GX_FALSE, t.edgeLod ? GX_TRUE : GX_FALSE,
@@ -588,6 +637,18 @@ void BmdRenderer::draw(const Mtx view) {
                 continue;
             }
             const BmdMaterial& mat = mModel.materials[item.material];
+            // TEMP DEBUG (M9.5.4 diagnostics): isolate draw items from the
+            // environment, e.g. LUMA_SKY_ONLY_MAT=Earth to see just the sea.
+            {
+                static const char* only = std::getenv("LUMA_SKY_ONLY_MAT");
+                if (only != nullptr && mat.name.find(only) == std::string::npos) {
+                    continue;
+                }
+                static const char* hide = std::getenv("LUMA_SKY_HIDE_MAT");
+                if (hide != nullptr && mat.name.find(hide) != std::string::npos) {
+                    continue;
+                }
+            }
             const bool xlu = (mat.mode == 4);
             if ((pass == 0) == xlu) {
                 continue;

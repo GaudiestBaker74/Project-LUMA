@@ -35,6 +35,16 @@ public:
     int width() const;
     int height() const;
 
+    // Drawable (framebuffer) size in PIXELS. On a HiDPI display SDL's logical
+    // size is smaller than the swapchain extent; the compat layer renders at the
+    // pixel size so the present is 1:1 (see compat/vi setHostFramebufferSize).
+    int drawableWidth() const;
+    int drawableHeight() const;
+
+    // PC_PORT: the process' current window, without handing the object around
+    // (the game's boot path owns it on the stack). Null before one exists.
+    static SDL_Window* currentHandle();
+
     // True after the user asked to close (window close button or OS quit).
     bool shouldClose() const { return mShouldClose; }
 

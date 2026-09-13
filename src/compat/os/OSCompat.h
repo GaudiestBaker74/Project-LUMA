@@ -23,4 +23,9 @@ std::size_t arenaSizeBytes();
 // the DOL boot header; see OSArena.cpp). Used by the JKRHeap.cpp PC patch.
 const void* getBootInfo();
 
+// Stops the emulated OS alarm thread and joins it (PC_PORT teardown hook; also
+// registered with atexit by the thread itself). Idempotent and safe to call
+// from any thread, including the alarm thread. See OSAlarm.cpp.
+void shutdownAlarmThread();
+
 } // namespace compat

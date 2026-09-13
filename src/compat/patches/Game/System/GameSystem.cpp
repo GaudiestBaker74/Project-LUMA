@@ -29,6 +29,7 @@
 #include "Game/System/HeapMemoryWatcher.hpp"
 #include "Game/System/HomeButtonStateNotifier.hpp"
 #include "Game/System/MainLoopFramework.hpp"
+#include "compat/vi/VICompat.h"
 #include "Game/Util/Functor.hpp"
 #include "Game/Util/MathUtil.hpp"
 #include "Game/Util/MemoryUtil.hpp"
@@ -86,25 +87,12 @@ void gameMain(void) {
     // GXNtscProg entry's geometry, RenderMode.cpp); the 3 XFBs come from the
     // stationed heap like initDisplay's (0xA9600 =
     // MR::getRequiredExternalFrameBufferSize).
-    static const GXRenderModeObj sHostRenderMode = {
-        VI_TVMODE_NTSC_PROG,
-        640,
-        456,
-        456,
-        (720 - 670) / 2,
-        (480 - 456) / 2,
-        670,
-        456,
-        VI_XFBMODE_SF,
-        GX_FALSE,
-        GX_FALSE,
-        {
-            {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6},
-            {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6},
-        },
-        {32, 0, 32, 0, 0, 0, 0},
-    };
-    JUTVideo::createManager(&sHostRenderMode);
+    // PC_PORT (title widescreen): the render mode is owned by compat/vi, which
+    // keeps its geometry in sync with the host window (see
+    // Platform::CompatVideo::setHostFramebufferSize). Everything the boot needs
+    // here is the pointer to hand to JUTVideo/MainLoopFramework.
+    const GXRenderModeObj* sHostRenderMode = Platform::CompatVi::hostRenderMode();
+    JUTVideo::createManager(sHostRenderMode);
     JKRHeap* pStationedHeap = JKRGetCurrentHeap();
     void* xfb1 = pStationedHeap->alloc(0xA9600, 0x20);
     void* xfb2 = pStationedHeap->alloc(0xA9600, 0x20);

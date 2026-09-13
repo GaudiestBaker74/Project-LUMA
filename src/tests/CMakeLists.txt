@@ -58,6 +58,9 @@ add_executable(galaxy-pc-tests
     jkr_archive_test.cpp
     # M9.5.2: nw4r lyt — brlyt swapper, Layout::Build, TPL + brfnt conversion.
     lyt_layout_test.cpp
+    # PC_PORT (title widescreen): the layout-space -> framebuffer mapping and
+    # the A/B button prompt metrics.
+    ui_anchoring_test.cpp
     layout_holder_test.cpp
     # M9.5.4 v7: AST stream parser/decoder + BGM player (virtual audio). The
     # text-box/font cases live in lyt_layout_test.cpp (shared brlyt builders).

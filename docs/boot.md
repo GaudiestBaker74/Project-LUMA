@@ -219,7 +219,8 @@ MountGameData → Deactive`) con el GameSystem en `Normal`. Verificado por
 | Stub tree del boot | `compat/game/GameBoot.cpp` | `GameSequenceDirector::update` real (sustituye a `GameSequenceProgress`: `startScene` + `tryToLoadSystemArchive` cuando el controller está ready), `GameSystemStationedArchiveLoader` "done" inmediato (TODO M9.4+: montaje JKRArchive real), `MR::requestChangeScene` → controller, `GameSystemFunction`/`GameSequenceFunction`, LayoutActor con nerve machine real. |
 | Frame del renderer | `patches/Game/System/MainLoopFramework.cpp` | **Puente PC_PORT del ciclo de frame**: `beginRender` abre `Renderer::beginFrame` + el pass del EFB (`CompatGx::getEfbRenderTarget`), `endRender` cierra el pass antes del `GXCopyDisp` (blit EFB→swapchain), `endFrame` presenta (`Renderer::endFrame` + `GXCompatEndFrame`). Si `beginFrame` falla (swapchain out-of-date) el frame host se salta: los draws GX fuera de pass se descartan (guarda `inPass()` nueva en `flushDraw`). |
 | Destrucción diferida de RTs | `platform/Renderer` (`mRetiredRenderTargets`) | `destroyRenderTarget` ya NO destruye en el acto: encola y se libera en el `endFrame` tras la fence (y en shutdown). Bug real cazado por el smoke: `ensureEfb` recrea el EFB a mitad de frame (el `GXSetDispCopySrc` del `prepareCopyDisp` cambia 640×448→640×456 en el primer frame) mientras `blitPassToSwapchain` aún lee el target viejo vía `mPassTarget` → use-after-free (crash en el worker de lavapipe). Con la destrucción diferida el blit usa la imagen vieja (válida hasta la fence) y el frame siguiente ya usa la nueva. |
-| `--boot` | `src/main.cpp` | `galaxy-pc --boot` = ventana + renderer + `gameMain()` (no retorna; el cierre de ventana/eventos llega con el modo present-driven de M9.5). |
+| `--boot` | `src/main.cpp` | `galaxy-pc --boot` = ventana + renderer + `gameMain()` (no retorna; `MainLoopFramework` bombea eventos SDL, así que cerrar la ventana o pulsar Esc sale por `compat::shutdownHostForExit()`). |
+| Captura de fotogramas | `src/compat/BootCapture.{h,cpp}` | `--boot --screenshot PATH` vuelca el EFB del presenta #1800 (`--frames N` elige otro) y sale; F12 durante un `--boot` vuelca el siguiente fotograma presentado a `luma-frame-NNNNN.ppm`. Ver `docs/title-widescreen.md`. |
 
 ### Integración de build (el commit M8-M9 añadió las fuentes SIN cablear)
 
@@ -293,9 +294,9 @@ PC_PORT in situ):
   de los archives staged (JKRArchive/RARC sobre el VFS) es prerrequisito de
   M9.5/M10 (los assets del usuario ya se montan como FST en el DVD compat, pero
   nada consume RARC todavía).
-- `--boot` no bombea eventos SDL (cerrar la ventana no sale; Alt+F4/kill).
-  El modo present-driven con bombeo de eventos está documentado en M9.3
-  (`fireRetrace()`).
+- ~~`--boot` no bombea eventos SDL~~ (ya no aplica): `MainLoopFramework::waitForRetrace`
+  llama a `CompatVi::pumpHostEvents()`, así que el cierre de ventana, Esc y F12 funcionan
+  durante un `--boot`; el modo present-driven está documentado en M9.3 (`fireRetrace()`).
 - `MR::getFileSize` devuelve 0 (TODO) y `MathUtil.cpp` real sigue pendiente
   (M9.4/M10 → escalares math ya provistos host-side en GameBoot.cpp).
 

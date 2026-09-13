@@ -30,6 +30,9 @@
 #include <vector>
 #include <cwchar>
 
+// PC_PORT: the picture-font replacement for the "Press both [A] and [B]." line.
+#include "compat/ui/ButtonPrompt.h"
+
 namespace nw4r {
     namespace lyt {
 
@@ -218,6 +221,28 @@ namespace nw4r {
             ut::Color minCol = GetColor(mpMaterial->GetTevColor(0));
             ut::Color maxCol = GetColor(mpMaterial->GetTevColor(1));
             writer.SetColorMapping(minCol, maxCol);
+
+            // PC_PORT (title widescreen): the "Press both [A] and [B]." line is
+            // drawn by the compat picture-font replacement — the A/B symbols are
+            // vector icons, the words keep this layout's font/colours. It draws
+            // through the position matrix LoadMtx just loaded, so it lands in
+            // the exact space the text below would occupy.
+            compat::ui::PromptDrawContext promptCtx;
+            promptCtx.writer = &writer;
+            promptCtx.text = mTextBuf;
+            promptCtx.textLen = mTextLen;
+            promptCtx.textLeft = textRect.left;
+            promptCtx.textTop = textRect.top;
+            promptCtx.capHeight = writer.GetFontAscent();
+            promptCtx.blockCenterX = 0.0f;  // layout space centre == screen centre
+            promptCtx.colorTop = GXColor{topCol.r, topCol.g, topCol.b, topCol.a};
+            promptCtx.colorBottom = GXColor{btmCol.r, btmCol.g, btmCol.b, btmCol.a};
+            promptCtx.globalAlpha = mGlbAlpha;
+
+            if (compat::ui::drawButtonPrompt(promptCtx)) {
+                return;
+            }
+
             writer.SetupGX();
 
             GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);

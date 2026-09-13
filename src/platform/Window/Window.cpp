@@ -8,6 +8,12 @@
 
 #include <SDL3/SDL.h>
 
+namespace {
+// PC_PORT: the process' current window (game boots own theirs on the stack;
+// the VI/renderer need the drawable size without being handed the object).
+SDL_Window* sCurrentWindow = nullptr;
+}  // namespace
+
 namespace Platform {
 
 namespace {
@@ -34,6 +40,7 @@ Window::Window(const WindowConfig& config) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
     mWindow = SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags);
+    sCurrentWindow = mWindow;
     if (!mWindow) {
         PL_LOG_FATAL("window", "SDL_CreateWindow failed: %s", SDL_GetError());
         return;
@@ -49,10 +56,36 @@ Window::~Window() {
     if (mWindow) {
         SDL_DestroyWindow(mWindow);
         mWindow = nullptr;
+    
+    if (sCurrentWindow == mWindow) {
+        sCurrentWindow = nullptr;
     }
+}
     if (--gWindowCount == 0) {
         SDL_Quit();
     }
+}
+
+SDL_Window* Window::currentHandle() {
+    return sCurrentWindow;
+}
+
+int Window::drawableWidth() const {
+    int w = width();
+    int pixels = 0;
+    if (mWindow != nullptr && SDL_GetWindowSizeInPixels(mWindow, &pixels, nullptr) && pixels > 0) {
+        w = pixels;
+    }
+    return w;
+}
+
+int Window::drawableHeight() const {
+    int h = height();
+    int pixels = 0;
+    if (mWindow != nullptr && SDL_GetWindowSizeInPixels(mWindow, nullptr, &pixels) && pixels > 0) {
+        h = pixels;
+    }
+    return h;
 }
 
 int Window::width() const {

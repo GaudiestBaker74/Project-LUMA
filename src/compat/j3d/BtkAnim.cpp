@@ -8,6 +8,8 @@
 
 #include "compat/j3d/BmdModel.h"  // readNameTable
 
+#include "platform/Log/Log.h"
+
 namespace compat::j3d {
 
 namespace {
@@ -45,19 +47,35 @@ bool BtkAnim::load(const u8* data, size_t size, std::string* error) {
     if (std::memcmp(data, "J3D1btk1", 8) != 0) {
         return fail(error, "btk: bad magic (expected J3D1btk1)");
     }
-    const u32 fileSize = be32(data + 8);
-    if (fileSize > size) {
-        return fail(error, "btk: header size exceeds buffer");
-    }
     // Single TTK1 block right after the 0x20 file header.
     const u8* blk = data + 0x20;
-    const size_t avail = fileSize - 0x20;
+    const size_t avail = size - 0x20;
     if (std::memcmp(blk, "TTK1", 4) != 0) {
         return fail(error, "btk: TTK1 block missing");
     }
-    const u32 blkSize = be32(blk + 4);
-    if (blkSize < 0x60 || blkSize > avail) {
-        return fail(error, "btk: TTK1 block size out of range");
+    // PC_PORT: the block length is NOT a reliable field in the wild, and the
+    // reference loader never reads it — petari's J3DAnmKeyLoader_v15::load
+    // walks the blocks by the FILE header's block count and the block header's
+    // "next" offset only, and the vendored struct even names 0x08 "unknown"
+    // (J3DGraphAnimator/J3DAnimation.hpp: J3DAnmDataHeader::_8). Some writers
+    // leave the block size at 0 ("no next block", which is what SMG's own
+    // /ObjectData/CometNearOrbitSky arc does — 'cometnearorbitsky.btk' failed
+    // to attach with the old check), others disagree with the file header.
+    //
+    // The buffer we were handed is ground truth: the file comes from the
+    // mounted arc, so its length is exact. Clamp instead of rejecting — every
+    // offset/length read below is bounds-checked against blkSize by the `has`
+    // lambda, so a clamped block can never read outside the buffer, and a
+    // genuinely truncated file still fails on those checks (or on the 0x60
+    // structural minimum, J3DAnmTextureSRTKeyData is 0x60 bytes).
+    size_t blkSize = be32(blk + 4);
+    if (blkSize == 0 || blkSize > avail) {
+        PL_LOG_TRACE("compat.j3d", "btk: TTK1 block size %zu clamped to the %zu byte buffer "
+                                   "(file header says %zu)", blkSize, avail, static_cast<size_t>(be32(data + 8)));
+        blkSize = avail;
+    }
+    if (blkSize < 0x60) {
+        return fail(error, "btk: TTK1 block smaller than its 0x60 byte header");
     }
     const auto has = [&](size_t off, size_t len) { return off <= blkSize && len <= blkSize - off; };
 

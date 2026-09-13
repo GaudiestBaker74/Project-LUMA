@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/images/luma-logo.png" alt="Project LUMA" width="300">
+<img src="docs/images/luma-logo.ico" alt="Project LUMA" width="160">
 
 # Project LUMA
 
@@ -47,7 +47,9 @@ The long-term goal is simple:
 
 ## 🕹️ Boot Progress
 
-<img src="docs/images/screenshots/Boot.jpg" alt="Project LUMA system boot" width="800"> </div>
+</div>
+
+*(Progress captures are no longer kept in the repository to keep it light; dump your own with `--screenshot frame.ppm` and convert it with `tools/ppm2png.py`.)*
 
 Project LUMA is currently working through the game's initialization and boot pipeline.
 
@@ -62,7 +64,7 @@ Note: These screenshots show the current technical boot progress. Gameplay and T
 
 <div align="center">
 
-<img src="docs/images/screenshot-gameplay.png" alt="Project LUMA gameplay" width="900">
+*(No versioned captures: use `--screenshot` to dump the current frame.)*
 
 </div>
 

@@ -54,6 +54,7 @@
 #include "Game/Util/SoundUtil.hpp"
 #include "compat/audio/AstStream.h"     // v7: streamed BGM
 #include "compat/game/LanguageCompat.h"
+#include "compat/game/UiAnchoring.h"
 #include "compat/kpad/KPADCompat.h"
 #include "platform/Log/Log.h"
 #include <revolution/kpad.h>
@@ -1332,16 +1333,32 @@ void drawInitFor2DModel() {
     // mtx into j3dSys; the GX state parts are ported verbatim.
     GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
 
+    // PC_PORT (title widescreen): the 2D-model space is 456 design units tall
+    // and spans the visible width at this aspect ratio. Using the console's
+    // fixed 608/832 for the width would stretch every 2D model on a window that
+    // is wider than the console's (31% at 3440x1440); the aspect-derived width
+    // keeps the space square-pixel at any resolution, and it equals the game's
+    // own 608/832 at 4:3/16:9.
+    f32 fbWidth = 0.0f;
+    f32 fbHeight = 0.0f;
+    compat::ui::framebufferSize(&fbWidth, &fbHeight);
+    const f32 modelWidth = compat::ui::visibleLayoutWidth(fbWidth, fbHeight);
+
     Mtx44 projMtx;
-    C_MTXOrtho(projMtx, 0.0f, -static_cast< f32 >(MR::getScreenHeight()), 0.0f,
-               static_cast< f32 >(MR::getScreenWidth()), cNearZ, cFarZ);
+    C_MTXOrtho(projMtx, 0.0f, -static_cast< f32 >(MR::getScreenHeight()), 0.0f, modelWidth, cNearZ,
+               cFarZ);
     GXSetProjection(projMtx, GX_ORTHOGRAPHIC);
 }
 
 void setDefaultViewportAndScissor() {
-    s32 width = MR::getFrameBufferWidth();
-    s32 height = MR::getScreenHeight();
-    GXSetViewport(0.0f, 0.0f, static_cast< f32 >(width), static_cast< f32 >(height), 0.0f, 1.0f);
+    // PC_PORT (title widescreen): a viewport is PIXELS. MR::getScreenHeight()
+    // is the 456-unit design height, which happens to equal the console's
+    // framebuffer height but not a PC window's: with 456 at 1920x1080 the whole
+    // 2D frame was squeezed into the top 456 rows of the EFB.
+    f32 width = 0.0f;
+    f32 height = 0.0f;
+    compat::ui::framebufferSize(&width, &height);
+    GXSetViewport(0.0f, 0.0f, width, height, 0.0f, 1.0f);
     GXSetScissor(0, 0, static_cast< u32 >(width), static_cast< u32 >(height));
 }
 
@@ -1560,8 +1577,18 @@ const char* getLanguagePrefixByIndex(u32 index) {
 }
 
 // Game/Util/SystemUtil.cpp additions.
+//
+// PC_PORT (title widescreen): the console answers this from the VI render mode
+// (a 16:9 mode => the 832-unit layout space). The host's "render mode" is the
+// window, so the answer comes from the framebuffer's aspect ratio — see
+// compat/game/UiAnchoring.h. A 16:9 window now really does take the game's 16:9
+// branch (camera FOV scaling, HBM adjust flag, movie player layout, the
+// 608/832 layout width) instead of always pretending to be 4:3.
 bool isScreen16Per9() {
-    return false;
+    f32 width = 0.0f;
+    f32 height = 0.0f;
+    compat::ui::framebufferSize(&width, &height);
+    return compat::ui::usesWideLayoutSpace(width, height);
 }
 
 // Game/Util/FileUtil.cpp addition.

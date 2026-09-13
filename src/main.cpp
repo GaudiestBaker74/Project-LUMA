@@ -12,8 +12,16 @@
 //   galaxy-pc [--help] [--version] [--log-level LVL] [--log-file PATH]
 //             [--assets-dir DIR] [--gpu-debug] [--width N] [--height N]
 //             [--no-vsync] [--fullscreen] [--frames N] [--boot]
+//             [--screenshot PATH] [--no-audio]
+//
+//   Frame capture: --screenshot PATH writes the EFB as a PPM/P6. In the native
+//   loop it captures the last of --frames N presents; with --boot it captures
+//   present #1800 (15-30 s in, i.e. the title screen; use --frames N to pick an
+//   earlier one) and then exits. During a --boot run F12 dumps the next
+//   presented frame (luma-frame-NNNNN.ppm when no PATH was given) and Esc quits.
 // =============================================================================
 
+#include "compat/BootCapture.h"
 #include "compat/audio/AstStream.h"
 #include "compat/dvd/DVDCompat.h"
 #include "compat/game/LanguageCompat.h"
@@ -27,6 +35,9 @@
 #include "platform/platform.h"
 
 #include <cmath>
+#include <cstdio>
+#include <string>
+#include <vector>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -59,6 +70,10 @@ struct Options {
     bool vsync = true;
     bool fullscreen = false;
     int maxFrames = 0; // 0 = run until quit
+    // PC_PORT: write the presented frame to a PPM (P6) once the frame count is
+    // reached — the dev tool for checking the title screen's composition and
+    // seam-freeness at any resolution (see docs/title-widescreen.md).
+    std::string screenshotPath;
     bool boot = false; // M9: run the real game boot (gameMain) instead of the demo
     bool audio = true; // M9.5.4 v7: open the audio device for the boot (music)
     float musicVolume = 1.0f; // 0..1
@@ -84,7 +99,15 @@ void printHelp() {
         "  --height N         window height (default 720)\n"
         "  --no-vsync         disable vsync (VK_PRESENT_MODE_IMMEDIATE)\n"
         "  --fullscreen       start fullscreen (F11 toggles)\n"
-        "  --frames N         run N frames then exit cleanly (0 = run forever)\n"
+        "  --frames N         run N frames then exit cleanly (0 = run forever); with\n"
+        "                     --boot: stop after N presents (also picks the\n"
+        "                     --screenshot frame)\n"
+        "  --screenshot PATH  write the EFB to PATH (PPM/P6): in the native loop the\n"
+        "                     last of --frames N presents; with --boot present #1800\n"
+        "                     (or #N with --frames N), then exit\n"
+        "  F12 / Esc          (in a --boot run) F12 = dump the next presented frame,\n"
+        "                     Esc = clean shutdown; F12 without --screenshot writes\n"
+        "                     luma-frame-NNNNN.ppm in the working directory\n"
         "  --boot             run the real game boot (M9: gameMain -> frameLoop,\n"
         "                     Logo scene) instead of the M5 demo\n"
         "  --no-audio         do not open the audio device (env GALAXY_NO_AUDIO=1);\n"
@@ -164,6 +187,10 @@ bool parseArgs(int argc, char** argv, Options& out) {
                 std::fprintf(stderr, "--frames must be >= 0\n");
                 return false;
             }
+        } else if (arg == "--screenshot") {
+            const char* v = next("--screenshot");
+            if (!v) return false;
+            out.screenshotPath = v;
         } else {
             std::fprintf(stderr, "unknown argument '%s' (see --help)\n", arg.c_str());
             return false;
@@ -225,6 +252,16 @@ void initDemoTexture() {
 }
 
 } // namespace
+
+
+// =============================================================================
+// PC_PORT: EFB readback to a PPM file (--screenshot). The implementation lives
+// in compat/BootCapture.cpp so the native loop and the --boot run (including
+// the F12 hotkey) share one path: no image library is linked and PPM (P6) is a
+// 3-line header plus raw RGB, convertible with any tool. The readback goes
+// through the renderer's own path (the same one the tests use), so what is
+// written is exactly what the EFB holds.
+// =============================================================================
 
 int main(int argc, char** argv) {
     Options opts;
@@ -329,6 +366,17 @@ int main(int argc, char** argv) {
             PL_LOG_INFO("main", "audio: %s (music volume %.2f)", Platform::Audio::statusString(), opts.musicVolume);
         }
 
+        if (!opts.screenshotPath.empty() || opts.maxFrames > 0) {
+            // --screenshot without --frames: dump the title screen (present
+            // #kBootCaptureDefaultFrame) and exit. --frames N: exit after N
+            // presents even with no file to write (headless smoke runs).
+            // --frames N wins when given (explicit), otherwise the default
+            // title-screen frame. Use e.g. --frames 900 for an early frame.
+            const u32 captureFrame = (opts.maxFrames > 0)
+                                         ? static_cast<u32>(opts.maxFrames)
+                                         : compat::kBootCaptureDefaultFrame;
+            compat::setBootCapture(opts.screenshotPath.c_str(), captureFrame, true);
+        }
         PL_LOG_INFO("main", "--boot: entering gameMain() (the vendored game boot)");
         gameMain(); // does not return
         return 0;   // unreachable
@@ -494,6 +542,15 @@ int main(int argc, char** argv) {
 
         renderer.endPass();
         GXCopyDisp(nullptr, GX_TRUE); // blit EFB -> swapchain (present)
+
+        // PC_PORT: optional frame dump (--screenshot <file.ppm>) for visual
+        // checks — the EFB is read back right after the present, while the pass
+        // result is still resolvable.
+        if (!opts.screenshotPath.empty() && opts.maxFrames > 0 &&
+            framesRendered + 1 >= opts.maxFrames) {
+            compat::writeEfbPpm(opts.screenshotPath.c_str());
+        }
+
         renderer.endFrame();
         GXCompatEndFrame(); // reset the dynamic vertex buffer cursor
 

@@ -1,0 +1,141 @@
+[2026-09-12 14:46:47.902] [INFO ] [filesystem] root dir set to 'assets'
+[2026-09-12 14:46:47.903] [INFO ] [platform] platform initialized
+[2026-09-12 14:46:47.903] [INFO ] [filesystem] root dir set to 'C:\Users\sergi\Downloads\dump\DATA\files'
+[2026-09-12 14:46:47.904] [INFO ] [compat.lang] game language: UsSpanish (region Us, pane suffix UsSp)
+[2026-09-12 14:46:47.904] [INFO ] [compat.os] console RAM arena: 512 MiB (MEM1 128 MiB, MEM2 384 MiB)
+[2026-09-12 14:46:47.931] [INFO ] [compat.dvd] FST built from 'C:\Users\sergi\Downloads\dump\DATA\files': 2452 entries
+[2026-09-12 14:46:47.931] [INFO ] [main] galaxy-pc 0.5.0 (Milestone 5) — built Sep 12 2026 14:44:17
+[2026-09-12 14:46:47.968] [INFO ] [window] SDL initialized (video+events)
+[2026-09-12 14:46:48.118] [INFO ] [window] window 'galaxy-pc — Super Mario Galaxy (boot)' 640x360
+[2026-09-12 14:46:48.193] [INFO ] [renderer] GPU: NVIDIA GeForce RTX 2060 (type 2)
+[2026-09-12 14:46:48.240] [INFO ] [renderer] GPU timestamps enabled (period 1.00 ns)
+[2026-09-12 14:46:48.498] [INFO ] [renderer] swapchain: 640x360, 3 images, format 44, present 2
+[2026-09-12 14:46:48.538] [INFO ] [Audio] audio device 'Audífono de los auriculares con micrófono (G435 Wireless Gaming Headset)' opened (game 32000 Hz → device 48000 Hz, 2 ch, ring 250 ms)
+[2026-09-12 14:46:48.539] [INFO ] [main] audio: enabled (music volume 1.00)
+[2026-09-12 14:46:48.539] [INFO ] [capture] boot capture armed: dump='(none)' at present #30, exit-after=yes
+[2026-09-12 14:46:48.540] [INFO ] [main] --boot: entering gameMain() (the vendored game boot)
+[2026-09-12 14:46:48.567] [INFO ] [compat.dvd] FST built from 'C:\Users\sergi\Downloads\dump\DATA\files': 2452 entries
+[2026-09-12 14:46:48.567] [INFO ] [vi] VIInit: host video interface (59.94 Hz field clock, present-driven mode hooks in GXCopyDisp)
+[2026-09-12 14:46:48.568] [INFO ] [boot] createGameHeap: GDDR free 366476408
+[2026-09-12 14:46:48.568] [INFO ] [vi] VIInit: host video interface (59.94 Hz field clock, present-driven mode hooks in GXCopyDisp)
+[2026-09-12 14:46:48.569] [INFO ] [vi] VIConfigure: tvmode 0x2, 640x456 (efb 456, xfb 456)
+[2026-09-12 14:46:48.602] [INFO ] [boot] createScene('Intermission')
+[2026-09-12 14:46:48.604] [INFO ] [vi] render mode -> 640x360 (window native: presenting 1:1)
+[2026-09-12 14:46:48.607] [INFO ] [gx] EFB render target created: 640x448 (2)
+[2026-09-12 14:46:48.607] [INFO ] [gx] GXLoadTexObj: Z24X8 depth texture (4x4) has no host image — the EFB pass depth-clear covers GXSetZTexture
+[2026-09-12 14:46:48.608] [INFO ] [renderer] present #0: result=0 hadContent=0 img=0
+[2026-09-12 14:46:48.610] [INFO ] [boot] waitForRetrace: first retrace received — the frame loop is cycling on the VI field clock
+[2026-09-12 14:46:48.621] [INFO ] [gx] EFB render target created: 640x360 (2)
+[2026-09-12 14:46:48.622] [INFO ] [gx] GXCopyDisp #0: efb=640x360 blit=OK
+[2026-09-12 14:46:48.623] [INFO ] [renderer] present #1: result=0 hadContent=1 img=0
+[2026-09-12 14:46:48.636] [INFO ] [gx] GXCopyDisp #1: efb=640x360 blit=OK
+[2026-09-12 14:46:48.637] [INFO ] [renderer] present #2: result=0 hadContent=1 img=0
+[2026-09-12 14:46:48.653] [INFO ] [gx] GXCopyDisp #2: efb=640x360 blit=OK
+[2026-09-12 14:46:48.654] [INFO ] [renderer] present #3: result=0 hadContent=1 img=0
+[2026-09-12 14:46:48.669] [INFO ] [gx] GXCopyDisp #3: efb=640x360 blit=OK
+[2026-09-12 14:46:48.670] [INFO ] [renderer] present #4: result=0 hadContent=1 img=0
+[2026-09-12 14:46:48.686] [INFO ] [gx] GXCopyDisp #4: efb=640x360 blit=OK
+[2026-09-12 14:46:48.686] [INFO ] [boot] createFileCacheHeap: request 17040384 (0x1040400), game GDDR free 366476408
+[2026-09-12 14:46:48.688] [INFO ] [boot] createScene('Logo')
+[2026-09-12 14:46:48.696] [INFO ] [compat.lyt] Build: block 0/19 'lyt1' size 20
+[2026-09-12 14:46:48.697] [INFO ] [compat.lyt] Build: block 1/19 'txl1' size 124
+[2026-09-12 14:46:48.697] [INFO ] [compat.lyt] Build: block 2/19 'mat1' size 380
+[2026-09-12 14:46:48.698] [INFO ] [compat.lyt] Build: block 3/19 'pan1' size 76
+[2026-09-12 14:46:48.698] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'RootPane' ...
+[2026-09-12 14:46:48.698] [INFO ] [compat.lyt] BuildPaneObj: pane 'RootPane' built (00000186A74F0580)
+[2026-09-12 14:46:48.699] [INFO ] [compat.lyt] Build: block 4/19 'pas1' size 8
+[2026-09-12 14:46:48.699] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 00000186A74F0580)
+[2026-09-12 14:46:48.699] [INFO ] [compat.lyt] Build: block 5/19 'pic1' size 128
+[2026-09-12 14:46:48.700] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicBG' ...
+[2026-09-12 14:46:48.700] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000018641230D80 id 0 ...
+[2026-09-12 14:46:48.700] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000018641230D80
+[2026-09-12 14:46:48.701] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (8 x 8, fmt 0)
+[2026-09-12 14:46:48.701] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicBG' built (00000186A76EF9E0)
+[2026-09-12 14:46:48.701] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74F0580
+[2026-09-12 14:46:48.702] [INFO ] [compat.lyt] Build: block 6/19 'pan1' size 76
+[2026-09-12 14:46:48.702] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'WiiRemoteStrap' ...
+[2026-09-12 14:46:48.703] [INFO ] [compat.lyt] BuildPaneObj: pane 'WiiRemoteStrap' built (00000186A74F01F0)
+[2026-09-12 14:46:48.703] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74F0580
+[2026-09-12 14:46:48.703] [INFO ] [compat.lyt] Build: block 7/19 'pas1' size 8
+[2026-09-12 14:46:48.704] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 00000186A74F01F0)
+[2026-09-12 14:46:48.704] [INFO ] [compat.lyt] Build: block 8/19 'pan1' size 76
+[2026-09-12 14:46:48.704] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'PlayMessage' ...
+[2026-09-12 14:46:48.705] [INFO ] [compat.lyt] BuildPaneObj: pane 'PlayMessage' built (00000186A74EF740)
+[2026-09-12 14:46:48.705] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74F01F0
+[2026-09-12 14:46:48.705] [INFO ] [compat.lyt] Build: block 9/19 'pas1' size 8
+[2026-09-12 14:46:48.706] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 00000186A74EF740)
+[2026-09-12 14:46:48.706] [INFO ] [compat.lyt] Build: block 10/19 'pic1' size 128
+[2026-09-12 14:46:48.706] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicPlay' ...
+[2026-09-12 14:46:48.707] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000018641230DE0 id 0 ...
+[2026-09-12 14:46:48.707] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000018641230DE0
+[2026-09-12 14:46:48.708] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (568 x 392, fmt 4)
+[2026-09-12 14:46:48.708] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicPlay' built (00000186A76EEF60)
+[2026-09-12 14:46:48.709] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74EF740
+[2026-09-12 14:46:48.709] [INFO ] [compat.lyt] Build: block 11/19 'pae1' size 8
+[2026-09-12 14:46:48.709] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 00000186A74F01F0)
+[2026-09-12 14:46:48.710] [INFO ] [compat.lyt] Build: block 12/19 'pan1' size 76
+[2026-09-12 14:46:48.710] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'HookMessage' ...
+[2026-09-12 14:46:48.711] [INFO ] [compat.lyt] BuildPaneObj: pane 'HookMessage' built (00000186A74EFF90)
+[2026-09-12 14:46:48.711] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74F01F0
+[2026-09-12 14:46:48.711] [INFO ] [compat.lyt] Build: block 13/19 'pas1' size 8
+[2026-09-12 14:46:48.712] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 00000186A74EFF90)
+[2026-09-12 14:46:48.712] [INFO ] [compat.lyt] Build: block 14/19 'pic1' size 128
+[2026-09-12 14:46:48.712] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicHook' ...
+[2026-09-12 14:46:48.713] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 000001864129D9A0 id 0 ...
+[2026-09-12 14:46:48.713] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 000001864129D9A0
+[2026-09-12 14:46:48.713] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (360 x 256, fmt 4)
+[2026-09-12 14:46:48.714] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 00000186412CA9E0 id 0 ...
+[2026-09-12 14:46:48.714] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 00000186412CA9E0
+[2026-09-12 14:46:48.715] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (40 x 40, fmt 0)
+[2026-09-12 14:46:48.715] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicHook' built (00000186A76EF350)
+[2026-09-12 14:46:48.715] [INFO ] [compat.lyt] Build: pane attached to parent 00000186A74EFF90
+[2026-09-12 14:46:48.716] [INFO ] [compat.lyt] Build: block 15/19 'pae1' size 8
+[2026-09-12 14:46:48.716] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 00000186A74F01F0)
+[2026-09-12 14:46:48.717] [INFO ] [compat.lyt] Build: block 16/19 'pae1' size 8
+[2026-09-12 14:46:48.717] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 00000186A74F0580)
+[2026-09-12 14:46:48.718] [INFO ] [compat.lyt] Build: block 17/19 'pae1' size 8
+[2026-09-12 14:46:48.718] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000000000000000)
+[2026-09-12 14:46:48.718] [INFO ] [compat.lyt] Build: block 18/19 'grp1' size 28
+[2026-09-12 14:46:48.718] [INFO ] [compat.lyt] Build: 'grp1' root -> creating GroupContainer ...
+[2026-09-12 14:46:48.719] [INFO ] [compat.lyt] Build: GroupContainer created (00000186A777A470)
+[2026-09-12 14:46:48.719] [INFO ] [compat.lyt] Build: done (root pane 00000186A74F0580, group container 00000186A777A470)
+[2026-09-12 14:46:48.719] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-12 14:46:48.720] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': 1/1 anim transforms created from brlans
+[2026-09-12 14:46:48.720] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': built from '/LayoutData/WiiRemoteStrap.arc' (4 textures/fonts in arc)
+[2026-09-12 14:46:48.720] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': 0 group(s) in the layout (group-bound animations bind normally; the by-name group controller API is not ported yet)
+[2026-09-12 14:46:48.753] [INFO ] [boot] stationed archives: host loader — initAfterStationedResourceLoaded (Font.arc)
+[2026-09-12 14:46:48.791] [INFO ] [compat.font] brfnt converted: 27x33, encoding 1
+[2026-09-12 14:46:48.791] [INFO ] [compat.font] brfnt converted: 32x32, encoding 1
+[2026-09-12 14:46:48.792] [INFO ] [compat.font] brfnt converted: 64x64, encoding 1
+[2026-09-12 14:46:48.792] [INFO ] [compat.font] brfnt converted: 32x32, encoding 1
+[2026-09-12 14:46:48.792] [INFO ] [compat.font] brfnt converted: 27x33, encoding 1
+[2026-09-12 14:46:48.793] [INFO ] [compat.font] Font.arc mounted: message=ok picture=ok menu=ok number=ok cinema=ok
+[2026-09-12 14:46:48.793] [INFO ] [compat.font] LUMA_PICFONT_DUMP=C:\Users\sergi\Downloads\Galaxy\galaxy-pc\picfont: dumping the picture font
+[2026-09-12 14:46:48.793] [INFO ] [compat.font] picture font: RFNT, 197036 bytes, header 16, 4 data block(s)
+[2026-09-12 14:46:48.794] [INFO ] [compat.font]   FINF: type=1 encoding=1 height=32 width=32 ascent=25 alterChar=0 glyphOff=56 widthOff=196712 mapOff=196880
+[2026-09-12 14:46:48.794] [INFO ] [compat.font]   TGLP sheet 0: 128x128 RGB5A3, grid 3x3, cell 34x35, size 32768, off 96
+[2026-09-12 14:46:48.795] [INFO ] [compat.font]   -> C:\Users\sergi\Downloads\Galaxy\galaxy-pc\picfont/picfont_sheet0.ppm
+[2026-09-12 14:46:48.795] [INFO ] [compat.font]   CMAP: codes 0x0020..0x0066 (method 1)
+[2026-09-12 14:46:48.803] [INFO ] [compat.font]   -> C:\Users\sergi\Downloads\Galaxy\galaxy-pc\picfont/picfont_glyphs.ppm (1408x1584, 71 glyph cells, order: code ascending)
+[2026-09-12 14:46:48.805] [INFO ] [compat.font]   -> C:\Users\sergi\Downloads\Galaxy\galaxy-pc\picfont/picfont_codes.txt (71 lines)
+[2026-09-12 14:46:48.806] [INFO ] [compat.font] picture font dump done: 1 sheet(s), 71 code(s)
+[2026-09-12 14:46:48.809] [INFO ] [renderer] pipeline cache insert #1 (hash 9460cc6cd76b7098)
+[2026-09-12 14:46:48.812] [INFO ] [compat.layout] LayoutManager::draw: first layout draw (M9.5.3c drawing active)
+[2026-09-12 14:46:48.813] [INFO ] [compat.layout] draw #1: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=640x360 uiScale=0.789 space=832
+[2026-09-12 14:46:48.813] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.814] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.814] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000018641230DC0 palette=0000000000000000/0
+[2026-09-12 14:46:48.815] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.815] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.815] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.816] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000018641230E20 palette=0000000000000000/0
+[2026-09-12 14:46:48.816] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-12 14:46:48.816] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-12 14:46:48.817] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=000001864129D9E0 palette=0000000000000000/0
+[2026-09-12 14:46:48.817] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=00000186412CAA20 palette=0000000000000000/0
+[2026-09-12 14:46:48.818] [INFO ] [compat.layout] draw #1: anim layer 0 frame 0.00/600 mode=2
+[2026-09-12 14:46:48.821] [INFO ] [renderer] pipeline cache insert #2 (hash 13aa06fb08da4317)
+[2026-09-12 14:46:48.826] [INFO ] [renderer] pipeline cache insert #3 (hash 6d067b6e1ae94676)
+[2026-09-12 14:46:49.136] [INFO ] [capture] boot capture: reached present #30 — shutting down
+[2026-09-12 14:46:49.137] [INFO ] [compat] host shutdown: joining worker threads, then releasing GX/renderer/platform
+[2026-09-12 14:46:49.240] [INFO ] [compat] host shutdown complete — exiting

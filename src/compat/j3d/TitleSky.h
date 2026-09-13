@@ -17,9 +17,10 @@
 //   * ProjmapEffectMtxSetter::updateMtxUseBaseMtx → effect matrix =
 //     inverse(base matrix),
 //   * the title camera of FileSelectCameraController::exeTitle (position
-//     (0, 15000, 15000) looking at (0, 15800, 0), up +Y, fovy 60) with
-//     CameraContext's near/far 100/800000 — the sky ignores the camera
-//     translation (Sky actors follow the camera).
+//     (0, 15000, 15000) looking at (0, 15800, 0), up +Y, fovy 60, aspect from
+//     the framebuffer) with CameraContext's near/far 100/800000. The base
+//     matrix above is rotation-only, so the dome sits at the WORLD ORIGIN and
+//     the camera's translation is part of the placement (do not cancel it).
 //
 // draw() sets the whole GX state it needs and leaves the layout pass to
 // restore its own (TitleScene::draw calls MR::drawInitFor2DModel afterwards).

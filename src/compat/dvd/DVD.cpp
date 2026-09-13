@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -356,6 +357,13 @@ void ensureWorker() {
         return;
     }
     gWorker = std::make_unique<Platform::Threading::Thread>("dvd-worker", workerMain);
+    // PC_PORT: the worker MUST be joined before the process tears down.
+    // Platform::Threading::Thread terminates the process if it is destroyed
+    // while joinable, and the boot leaves through std::exit (window close),
+    // which runs only the atexit handlers. shutdownDVD() is idempotent, so the
+    // explicit shutdown path (compat::shutdownHostForExit, main.cpp) can still
+    // call it first.
+    std::atexit(compat::shutdownDVD);
 }
 
 } // namespace

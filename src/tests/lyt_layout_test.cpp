@@ -2379,15 +2379,18 @@ TEST_CASE(layout_text_boxes_get_buffers_fonts_and_fallback_message) {
     CHECK_EQ(static_cast<int>(other->GetStringBufferLength()), 0x100);
     CHECK(start->mpFont == startFontBefore);
     REQUIRE(start->mTextBuf != nullptr);
-    CHECK(std::wcscmp(start->mTextBuf, L"Press A and B.") == 0);
-    CHECK_EQ(static_cast<int>(start->mTextLen), 14);
+    // PC_PORT (title widescreen): the fallback message is now the real
+    // instruction line, with the A/B picture-font slots as [A]/[B] tokens that
+    // compat/ui ButtonPrompt draws as vector icons.
+    CHECK(std::wcscmp(start->mTextBuf, L"Press both [A] and [B].") == 0);
+    CHECK_EQ(static_cast<int>(start->mTextLen), 23);
     REQUIRE(other->mTextBuf != nullptr);
     CHECK(std::wcscmp(other->mTextBuf, L"Hi!") == 0);
     CHECK_EQ(static_cast<int>(other->mTextLen), 3);
 
     // Idempotent: a second pass neither grows nor clobbers.
     mgr->initTextBoxRecursive(root, root, "PressStart", mgr->mTextBoxBufferLength);
-    CHECK(std::wcscmp(start->mTextBuf, L"Press A and B.") == 0);
+    CHECK(std::wcscmp(start->mTextBuf, L"Press both [A] and [B].") == 0);
     CHECK(std::wcscmp(other->mTextBuf, L"Hi!") == 0);
 
     // The text draw rect of the fallback string is non-empty (the width comes

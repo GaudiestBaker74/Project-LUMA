@@ -399,7 +399,13 @@ TEST_CASE(gx_texcoord_gen_identity) {
 }
 
 TEST_CASE(gx_texcoord_gen_from_position) {
-    // GX_TG_MTX3x4 with GX_TG_POS source: uv = M * position (projected by w).
+    // GX_TG_MTX3x4 with GX_TG_POS source: the generator applies M to the
+    // position and keeps the third row as the projective component q. The
+    // CONSOLE's texture unit divides s/t by q per pixel instead (see
+    // tools/shaders/gx_tev_frag.frag texCoord(), and dolphin's PixelShaderGen
+    // "coord.xy / coord.z"), so the CPU publishes q rather than dividing: a
+    // per-vertex divide destroys the perspective correction inside a triangle
+    // (the sea's affine steps).
     GXInit(nullptr, 0);
     GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
     GXSetVtxDesc(GX_VA_TEX0, GX_DIRECT);
@@ -422,8 +428,12 @@ TEST_CASE(gx_texcoord_gen_from_position) {
     int count = 0, stride = 0;
     const float* data = GXCompatDebugVertices(&count, &stride);
     REQUIRE(data != nullptr);
-    CHECK_NEAR(data[3], 2.0f, 1e-5f); // 4/2
-    CHECK_NEAR(data[4], 3.0f, 1e-5f); // 6/2
+    CHECK_NEAR(data[3], 4.0f, 1e-5f); // s = x (the divide is the texture unit's)
+    CHECK_NEAR(data[4], 6.0f, 1e-5f); // t = y
+    // ... and the projective component that goes with it.
+    float q = 0.0f;
+    REQUIRE(GXCompatDebugTexGenQ(0, &q));
+    CHECK_NEAR(q, 2.0f, 1e-5f);
 }
 
 TEST_CASE(gx_texcoord_no_gen_passthrough) {

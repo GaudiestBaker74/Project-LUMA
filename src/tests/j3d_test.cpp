@@ -1057,6 +1057,46 @@ TEST_CASE(j3d_renderer_skips_multi_matrix_shapes) {
 // ---------------------------------------------------------------------------
 // BTK / BCK.
 // ---------------------------------------------------------------------------
+// PC_PORT: the TTK1 block-size field is not trustworthy in the wild — the
+// reference loader never reads it (J3DAnmKeyLoader_v15::load walks the blocks
+// by the file header's block count), and SMG's CometNearOrbitSky btk carries a
+// value that does not describe the buffer the arc reader hands over, which used
+// to make the title-sky texture animation fail to attach ("TTK1 block size out
+// of range"). A zero ("no next block") or oversized value must clamp to the
+// buffer; the table bounds below the clamp keep a truncated file honest.
+TEST_CASE(j3d_btk_tolerates_wild_block_size) {
+    const std::vector<u8> bytes = makeSyntheticBtk("SkyMat", 10, 2);
+    std::string err;
+    TexSrt srt;
+
+    // Block size 0 = "no next block". Everything else in the file is intact.
+    std::vector<u8> zero(bytes);
+    zero[0x24] = 0; zero[0x25] = 0; zero[0x26] = 0; zero[0x27] = 0;
+    BtkAnim btkZero;
+    REQUIRE(btkZero.load(zero.data(), zero.size(), &err));
+    REQUIRE(btkZero.entries.size() == 1);
+    CHECK(btkZero.entries[0].materialName == "SkyMat");
+    CHECK_EQ(static_cast<int>(btkZero.duration), 10);
+    btkZero.evaluate(0, 5.0f, srt);
+    CHECK_NEAR(srt.transX, 0.5f, 1e-6f);
+
+    // Oversized value: clamp to the buffer instead of rejecting the file.
+    std::vector<u8> big(bytes);
+    const u32 tooBig = static_cast<u32>(bytes.size()) + 0x100u;
+    big[0x24] = static_cast<u8>(tooBig >> 24);
+    big[0x25] = static_cast<u8>(tooBig >> 16);
+    big[0x26] = static_cast<u8>(tooBig >> 8);
+    big[0x27] = static_cast<u8>(tooBig);
+    BtkAnim btkBig;
+    REQUIRE(btkBig.load(big.data(), big.size(), &err));
+    REQUIRE(btkBig.entries.size() == 1);
+    btkBig.evaluate(0, 10.0f, srt);
+    CHECK_NEAR(srt.transX, 1.0f, 1e-6f);
+
+    // The clamp is not a licence to read past the buffer: no block size makes
+    // a file that ends inside its tables parse.
+    CHECK(!btkZero.load(zero.data(), 0x20 + 0x80, &err));
+}
 TEST_CASE(j3d_btk_parse_and_evaluate) {
     const std::vector<u8> bytes = makeSyntheticBtk("SkyMat", 10, 2);
     BtkAnim btk;

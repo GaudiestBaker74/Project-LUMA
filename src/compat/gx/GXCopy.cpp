@@ -31,6 +31,8 @@
 
 #include "compat/gx/GXCompat.h"
 
+#include "compat/BootCapture.h"
+
 #include "platform/Log/Log.h"
 #include "platform/Renderer/Renderer.h"
 
@@ -471,6 +473,14 @@ void* Platform::CompatGx::getEfbRenderTarget() {
     return ensureEfb();
 }
 
+int Platform::CompatGx::getEfbWidth() {
+    return static_cast<int>(sEfbW);
+}
+
+int Platform::CompatGx::getEfbHeight() {
+    return static_cast<int>(sEfbH);
+}
+
 void Platform::CompatGx::shutdownEfb() {
     if (sEfbRt && Platform::Renderer::instance().isInitialized()) {
         Platform::Renderer::instance().destroyRenderTarget(sEfbRt);
@@ -678,13 +688,11 @@ void GXCopyDisp(void* dst, GXBool clear) {
     // mean the frame never opened/closed the EFB pass (beginFrame skipped or
     // pass ordering); blit=OK shifts the suspicion to vkQueuePresentKHR
     // (see Renderer::endFrame's "present #N" line).
-    {
-        static u32 sPresentDiagCount = 0;
-        const u32 n = sPresentDiagCount++;
-        if (n < 5 || (n % 600) == 0) {
-            PL_LOG_INFO("gx", "GXCopyDisp #%u: efb=%ux%u blit=%s", n, sEfbW, sEfbH,
-                        blitted ? "OK" : "NO-PASS");
-        }
+    static u32 sPresentDiagCount = 0;
+    const u32 presentIndex = sPresentDiagCount++; // 0-based present counter
+    if (presentIndex < 5 || (presentIndex % 600) == 0) {
+        PL_LOG_INFO("gx", "GXCopyDisp #%u: efb=%ux%u blit=%s", presentIndex, sEfbW, sEfbH,
+                    blitted ? "OK" : "NO-PASS");
     }
 
     // One-shot diagnostic (M9.5.3c): full EFB readback at present #300 —
@@ -752,6 +760,11 @@ void GXCopyDisp(void* dst, GXBool clear) {
             PL_LOG_WARN("gx", "EFB probe: readback failed");
         }
     }
+    // PC_PORT (--boot --screenshot): frame-dump / exit-after hook. The native
+    // loop arms nothing here (main.cpp owns that path), so this is a no-op
+    // unless a boot capture was armed before gameMain() (compat/BootCapture).
+    compat::notifyBootPresent(presentIndex + 1, blitted);
+
     // M8 (compat/vi): the VI retrace callbacks fire here, around the present.
 }
 

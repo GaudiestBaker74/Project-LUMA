@@ -22,7 +22,12 @@
 // while the clock thread runs; see the flag comment in VIInit).
 #include "compat/vi/VICompat.h"
 
+#include "compat/HostShutdown.h"
+
+#include "compat/BootCapture.h"
+
 #include "platform/Log/Log.h"
+#include "platform/Window/Window.h"
 
 #include <revolution/vi.h>
 
@@ -58,6 +63,34 @@ VIRetraceCallback sPreRetraceCallback = nullptr;
 VIRetraceCallback sPostRetraceCallback = nullptr;
 GXRenderModeObj* sRenderMode = nullptr;
 bool sHasRenderMode = false;
+
+// -----------------------------------------------------------------------------
+// PC_PORT (title widescreen): the host's render mode.
+//
+// Geometry only: the game never inspects viTVmode/AA bits for control flow on
+// the host (the console's 16:9 branch is MR::isScreen16Per9, which the compat
+// layer derives from the framebuffer's aspect ratio). Called before the window
+// exists (the boot creates the render mode first), so the defaults are the
+// console's 640x456 NTSC progressive entry.
+// -----------------------------------------------------------------------------
+GXRenderModeObj sHostRenderMode = {
+    VI_TVMODE_NTSC_PROG,
+    640,                                      // fbWidth
+    456,                                      // efbHeight
+    456,                                      // xfbHeight
+    (720 - 670) / 2,                          // viXOrigin
+    (480 - 456) / 2,                          // viYOrigin
+    670,                                      // viWidth
+    456,                                      // viHeight
+    VI_XFBMODE_SF,
+    GX_FALSE,
+    GX_FALSE,
+    {
+        {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6},
+        {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6}, {6, 6},
+    },
+    {32, 0, 32, 0, 0, 0, 0},
+};
 BOOL sBlack = FALSE;
 BOOL sDimming = FALSE;
 u32 sDimmingCount = 0;
@@ -95,17 +128,6 @@ void tickField() {
     sRetraceCv.notify_all();
 }
 
-// Stops the field clock at process exit. Registered once by VIInit.
-void shutdownFieldClock() {
-    sClockRunning.store(false, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock(sRetraceMutex);
-        sRetraceCv.notify_all();
-    }
-    if (sFieldClockThread.joinable()) {
-        sFieldClockThread.join();
-    }
-}
 
 // Sleeps the field period; busy-sleep correction keeps the cadence exact
 // when the callback work is short (it is: two ~microsecond callbacks).
@@ -161,8 +183,9 @@ void VIInit(void) {
     sClockRunning.store(true, std::memory_order_release);
     sFieldClockThread = std::thread(fieldClockMain);
     // The clock thread is joined at process exit from the atexit handler
-    // below; keeping it joinable lets the suite binary terminate cleanly.
-    std::atexit(shutdownFieldClock);
+    // below (and earlier, from compat::shutdownHostForExit); keeping it
+    // joinable lets the suite binary terminate cleanly.
+    std::atexit(Platform::CompatVi::shutdownFieldClock);
 }
 
 void VIFlush(void) {
@@ -290,6 +313,25 @@ void VISetTrapFilter(VIBool filter) {
 
 namespace Platform::CompatVi {
 
+// Stops the field clock and joins it. Registered with atexit by VIInit and
+// called explicitly by compat::shutdownHostForExit() before the renderer and
+// the platform go away — the clock thread runs retrace callbacks that touch
+// game state, so nothing may tear down underneath it.
+//
+// Idempotent (the second call finds a non-joinable thread) and safe to call
+// from the clock thread itself (a self-join would deadlock / terminate).
+void shutdownFieldClock() {
+    sClockRunning.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(sRetraceMutex);
+        sRetraceCv.notify_all();
+    }
+
+    if (sFieldClockThread.joinable() && sFieldClockThread.get_id() != std::this_thread::get_id()) {
+        sFieldClockThread.join();
+    }
+}
+
 void fireRetrace() {
     // Present-driven retrace (the future windowed/swapchain mode — M9.5).
     // While the field clock runs this would double the cadence, so it is
@@ -308,12 +350,85 @@ void pumpHostEvents() {
         if (event.type == SDL_EVENT_QUIT ||
             event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
             // gameMain never returns, so the window close button is the only
-            // way out of a boot run. Exit through the normal path so the
-            // atexit handlers stop the field clock and retire the renderer.
-            PL_LOG_INFO("vi", "close requested — exiting boot");
-            std::exit(0);
+            // way out of a boot run. PC_PORT: this used to be a bare
+            // std::exit(0), which runs ONLY the atexit handlers — the game's
+            // worker threads kept running (or were joined in an order that
+            // depended on atexit registration order) while the game heap and
+            // the compat subsystems were destroyed underneath them, and the
+            // renderer/platform shutdown in main.cpp never ran at all.
+            // compat::shutdownHostForExit() performs the whole teardown in a
+            // deterministic order and then exits (never returns).
+            PL_LOG_INFO("vi", "close requested — shutting down");
+            compat::shutdownHostForExit();
+        } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+            // PC_PORT: host-level keys for frame capture runs (F12 = dump the
+            // next presented frame as PPM, Esc = clean shutdown). The gamepad
+            // (KPAD) path is untouched; keyboard is only used for these.
+            if (event.key.scancode == SDL_SCANCODE_F12) {
+                compat::requestFrameDump();
+            } else if (event.key.scancode == SDL_SCANCODE_ESCAPE) {
+                PL_LOG_INFO("vi", "Escape pressed — shutting down");
+                compat::shutdownHostForExit();
+            }
         }
     }
+}
+
+
+// -----------------------------------------------------------------------------
+// PC_PORT (title widescreen): host render-mode geometry sync (see VICompat.h).
+// -----------------------------------------------------------------------------
+
+GXRenderModeObj* hostRenderMode() {
+    return &sHostRenderMode;
+}
+
+bool setHostFramebufferSize(unsigned width, unsigned height) {
+    if (width == 0 || height == 0) {
+        return false;
+    }
+    if (sHostRenderMode.fbWidth == width && sHostRenderMode.efbHeight == height) {
+        return false;
+    }
+
+    sHostRenderMode.fbWidth = static_cast<u16>(width);
+    sHostRenderMode.efbHeight = static_cast<u16>(height);
+    sHostRenderMode.xfbHeight = static_cast<u16>(height);
+    sHostRenderMode.viWidth = static_cast<u16>(width);
+    sHostRenderMode.viHeight = static_cast<u16>(height);
+    // Keep the VI object (and anything that cached the pointer) on the same
+    // geometry the compat GX layer will use for the next EFB.
+    //
+    // The object has to be MUTABLE: on the console it is a heap copy the game
+    // owns (GameSystemObjHolder::initRenderMode new's a GXRenderModeObj and
+    // copies MR::getSuitableRenderMode() into it) and on the host it is our own
+    // hostRenderMode(), so writing here is legal in both. A const console table
+    // (Game/System/RenderMode.cpp's GXNtscProg/GXNtscIntDf/GXEurgb60HzProg ...)
+    // must NOT be handed to VIConfigure: it lives in read-only memory and this
+    // write would fault.
+    if (sRenderMode != nullptr) {
+        sRenderMode->fbWidth = static_cast<u16>(width);
+        sRenderMode->efbHeight = static_cast<u16>(height);
+        sRenderMode->xfbHeight = static_cast<u16>(height);
+        sRenderMode->viWidth = static_cast<u16>(width);
+        sRenderMode->viHeight = static_cast<u16>(height);
+    }
+    PL_LOG_INFO("vi", "render mode -> %ux%u (window native: presenting 1:1)", width, height);
+    return true;
+}
+
+bool syncHostRenderModeWithWindow() {
+    SDL_Window* window = Platform::Window::currentHandle();
+    if (window == nullptr) {
+        return false;
+    }
+    int drawableWidth = 0;
+    int drawableHeight = 0;
+    if (!SDL_GetWindowSizeInPixels(window, &drawableWidth, &drawableHeight)) {
+        return false;
+    }
+    return setHostFramebufferSize(static_cast<unsigned>(drawableWidth),
+                                  static_cast<unsigned>(drawableHeight));
 }
 
 } // namespace Platform::CompatVi

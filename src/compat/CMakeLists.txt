@@ -191,6 +191,11 @@ add_library(pc_compat STATIC
     # --- M9.3: VI + frame control (docs/boot.md) -------------------------------
     os/OSAlarm.cpp
     vi/VICompat.cpp
+    # PC_PORT: the single exit path of the host process — stops/joins the
+    # worker threads (VI field clock, alarm thread, DVD reader) before the
+    # renderer/platform are released. See HostShutdown.h.
+    BootCapture.cpp
+    HostShutdown.cpp
     gx/GXSync.cpp
     jsystem/J2DGrafContextCompat.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/System/MainLoopFramework.cpp
@@ -271,6 +276,13 @@ add_library(pc_compat STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Animation/LayoutAnmPlayer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/PaneEffectKeeper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/game/LayoutManagerCompat.cpp
+    # PC_PORT (title widescreen): the layout-space -> framebuffer mapping and
+    # the A/B button icons of the "Press both [A] and [B]." line (the picture
+    # font's own glyphs when it is mounted, a vector reproduction otherwise).
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/UiAnchoring.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/ButtonPrompt.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureGlyphs.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureFontDump.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/jsystem/J3DFrameCtrlCompat.cpp
 )
 set_source_files_properties(

@@ -17,6 +17,7 @@
 #include "Game/Util/LayoutUtil.hpp"
 #include "Game/Util/NerveUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
+#include "compat/game/UiAnchoring.h"
 #include "compat/j3d/TitleSky.h"
 #include "platform/Log/Log.h"
 #include "platform/Timing/Timing.h"
@@ -191,8 +192,13 @@ namespace {
             initBackdropStars();
         }
 
-        const f32 width = static_cast< f32 >(MR::getFrameBufferWidth());
-        const f32 height = static_cast< f32 >(MR::getScreenHeight());
+        // PC_PORT: this fallback backdrop (no CometNearOrbitSky.arc) draws in
+        // PIXELS through the ortho set below, so both extents come from the
+        // framebuffer — using the 456-unit design height here squashed the
+        // gradient and the star field vertically on any PC window.
+        f32 width = 0.0f;
+        f32 height = 0.0f;
+        compat::ui::framebufferSize(&width, &height);
         const f32 t = static_cast< f32 >(Platform::Timing::nowSeconds());
 
         GXClearVtxDesc();

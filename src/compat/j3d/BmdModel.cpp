@@ -876,11 +876,34 @@ bool BmdModel::readTex1(const u8* p, size_t n, std::string* error) {
         // Offsets are relative to the BTI header start (JUTTexture layout).
         const size_t imageBytes = Platform::CompatGx::btiImageSize(t.header.width, t.header.height,
                                                                    t.header.format);
+        // M9.5.8: a mip-mapped texture stores its whole pyramid after the base
+        // level, each level tile-padded. Hand the loader as many levels as the
+        // block actually holds so the host can upload the chain the LOD range
+        // samples (the console's texture unit derives their addresses itself).
+        size_t blobBytes = imageBytes;
+        if (t.mipmap != 0) {
+            size_t chain = 0;
+            u16 w = t.header.width;
+            u16 hh = t.header.height;
+            while (chain < imageBytes * 8) {
+                const size_t levelBytes = Platform::CompatGx::btiImageSize(w, hh, t.header.format);
+                if (levelBytes == 0) {
+                    break;
+                }
+                chain += levelBytes;
+                if (w <= 1 && hh <= 1) {
+                    break;
+                }
+                if (w > 1) w = static_cast<u16>(w >> 1);
+                if (hh > 1) hh = static_cast<u16>(hh >> 1);
+            }
+            blobBytes = chain;
+        }
         const size_t imgOff = h + t.header.imageOffset;
-        if (t.header.imageOffset != 0 && c.has(imgOff, imageBytes) && imageBytes != 0) {
+        if (t.header.imageOffset != 0 && c.has(imgOff, blobBytes) && imageBytes != 0) {
             t.image = p + imgOff;
-            t.imageBytes = imageBytes;
-        } else {
+            t.imageBytes = blobBytes;
+        } else if (t.header.imageOffset != 0 && c.has(imgOff, imageBytes) && imageBytes != 0) {
             PL_LOG_WARN("j3d", "TEX1: texture '%s' image out of range (fmt 0x%x %ux%u)",
                         t.name.c_str(), t.header.format, t.header.width, t.header.height);
         }

@@ -56,6 +56,9 @@ public:
     nw4r::lyt::Group* getGroup(const char*) const;
     void initArc(const char*, const char*);
     void initDrawInfo();
+    // PC_PORT (title widescreen): keeps the DrawInfo view matrix in sync with
+    // the current framebuffer aspect ratio. See compat/game/UiAnchoring.h.
+    void updateUiAnchoring();
     void initPaneInfo();
     void initPaneInfoRecursive(u32&, nw4r::lyt::Pane*);
     u32 countPanes(nw4r::lyt::Pane*);
@@ -89,4 +92,9 @@ public:
     PaneMtxRef* mPaneMtxRefs;       // createPaneMtxRef/getPaneMtxRef storage
     u32 mPaneMtxRefNum;
     const char* mLayoutName;        // layout (brlyt) name, host-allocated copy
+
+    // PC_PORT (title widescreen): draws of THIS layout, so the per-layout
+    // diagnostics (pane tree / animation pose) sample every layout instead of
+    // only whichever one happened to draw first.
+    mutable u32 mDrawCount;
 };

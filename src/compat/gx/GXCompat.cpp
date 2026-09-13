@@ -20,6 +20,10 @@
 // =============================================================================
 
 #include "compat/gx/GXCompat.h"
+
+#include <chrono>
+
+#include <cstdio>
 #include "compat/gx/GXCompatFifo.h"
 
 #include "platform/Log/Log.h"
@@ -178,6 +182,82 @@ int sVtxWriteIndex = 0; // global write counter within the current vertex
 
 // Serialized vertex stream of the current primitive (floats, VCD order).
 std::vector<float> sVertexData;
+
+// The texcoords the texgen units produced for the vertex — 8 (s,t) pairs plus
+// their 8 projective components (q), in lockstep with sVertexData. Only the
+// attributes the GX VCD names are serialized into sVertexData (the sky dome
+// stores TEX0 alone), yet the hardware generates all eight coordinates for
+// every vertex from what the material configures (POS/TEX0) and the TEV stages
+// sample whichever they name. Carrying them here is what lets the fragment
+// stage read tc1/tc2 and finish the projective divide per pixel.
+std::vector<float> sVertexTexCoords;
+std::vector<float> sVertexTexQ;
+
+// M9.5.9 diagnostics: per-draw texcoord span. The reference frames and the port
+// disagree on how much texture the sea shows, and the only honest way to tell
+// whether a texgen maps one repeat or tens of repeats across the geometry is to
+// measure the resolved coordinates. Enabled with LUMA_GX_UV_LOG=1.
+float sTcMin[8][2];
+float sTcMax[8][2];
+float sQMin[8], sQMax[8];
+bool sTcSeen[8];
+float sPosMin[3] = {0, 0, 0}, sPosMax[3] = {0, 0, 0};
+int sTcSpanNverts = 0;
+
+void resetTcSpan() {
+    for (int i = 0; i < 8; ++i) {
+        sTcSeen[i] = false;
+    }
+    sTcSpanNverts = 0;
+}
+
+void logTcSpan() {
+    static const bool enabled = (std::getenv("LUMA_GX_UV_LOG") != nullptr);
+    static const auto t0 = std::chrono::steady_clock::now();
+    static int emitted = 0;
+    if (!enabled || emitted >= 24) {
+        return;
+    }
+    const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    if (elapsed < 2.0) {
+        return;
+    }
+    // Only the big environment shells are interesting (the title's sky dome and
+    // planet cylinder); the logo/UI quads are small and constant-texcoord.
+    float maxAbs = 0.0f;
+    for (int c = 0; c < 3; ++c) {
+        const float a = sPosMin[c] < 0.0f ? -sPosMin[c] : sPosMin[c];
+        const float b = sPosMax[c] < 0.0f ? -sPosMax[c] : sPosMax[c];
+        maxAbs = a > maxAbs ? a : maxAbs;
+        maxAbs = b > maxAbs ? b : maxAbs;
+    }
+    // Only the projective (projmap) generators are interesting: q != 1 in those
+    // draws identifies the planet shells, while the comet/halo shells use plain
+    // texcoords and would burn the line budget.
+    if ((sQMax[0] < 2.0f && sQMax[2] < 2.0f) || maxAbs < 100000.0f) {
+        return;
+    }
+    if (!sTcSeen[0] && !sTcSeen[1] && !sTcSeen[2]) {
+        return;
+    }
+    ++emitted;
+    PL_LOG_INFO("gx", "draw %d: verts=%d pos x[%.0f..%.0f] y[%.0f..%.0f] z[%.0f..%.0f]", emitted,
+                sTcSpanNverts, static_cast<double>(sPosMin[0]), static_cast<double>(sPosMax[0]),
+                static_cast<double>(sPosMin[1]), static_cast<double>(sPosMax[1]),
+                static_cast<double>(sPosMin[2]), static_cast<double>(sPosMax[2]));
+    for (int i = 0; i < 3; ++i) {
+        if (!sTcSeen[i]) {
+            continue;
+        }
+        PL_LOG_INFO("gx", "  UV=tc%d/q  u[%.2f..%.2f] v[%.2f..%.2f] (span u %.2f v %.2f) q[%.0f..%.0f]", i,
+                    static_cast<double>(sTcMin[i][0]), static_cast<double>(sTcMax[i][0]),
+                    static_cast<double>(sTcMin[i][1]), static_cast<double>(sTcMax[i][1]),
+                    static_cast<double>(sTcMax[i][0] - sTcMin[i][0]),
+                    static_cast<double>(sTcMax[i][1] - sTcMin[i][1]),
+                    static_cast<double>(sQMin[i]), static_cast<double>(sQMax[i]));
+    }
+}
 int sVertexStride = 0;
 
 // M5.2: one dynamic vertex buffer reused across primitives and frames (see
@@ -334,10 +414,59 @@ void flushDraw();
 void finishVertex() {
     // M5.3: resolve the texcoord generators (GXSetTexCoordGen2) on the CPU
     // using the completed vertex attributes before serializing.
-    for (const auto& slot : sVcdOrder) {
-        if (slot.attr >= GX_VA_TEX0 && slot.attr <= GX_VA_TEX7) {
-            Platform::CompatGx::resolveTexGen(slot.attr - GX_VA_TEX0, sCurAttr);
+    //
+    // M9.5.5: EVERY configured generator is evaluated, not only the ones whose
+    // destination attribute happens to be in the vertex stream. A BMD shape
+    // only declares the attributes it stores (the sky dome stores POS/NRM/TEX0),
+    // while its material can configure three texgens whose sources are POS and
+    // TEX0 — e.g. EarthFar_v: tc0 (projmap from POS), tc1 (TEX0 through TEXMTX1)
+    // and tc2 (projmap from POS). Driving the loop from the VCD left tc1/tc2 at
+    // whatever the previous vertex had put there, which sampled the earth
+    // crescent (EarthFarK, the teal of the sea) and the clouds at a stale
+    // texcoord. The generators also all read the *incoming* attributes, so the
+    // snapshot keeps a generator that writes TEX0 from feeding the next one.
+    if (sTcSpanNverts == 0) {
+        for (int c = 0; c < 3; ++c) {
+            sPosMin[c] = sPosMax[c] = sCurAttr[GX_VA_POS][c];
         }
+    } else {
+        for (int c = 0; c < 3; ++c) {
+            const float p = sCurAttr[GX_VA_POS][c];
+            sPosMin[c] = p < sPosMin[c] ? p : sPosMin[c];
+            sPosMax[c] = p > sPosMax[c] ? p : sPosMax[c];
+        }
+    }
+    ++sTcSpanNverts;
+    float snapshot[GX_VA_MAX_ATTR][4];
+    std::memcpy(snapshot, sCurAttr, sizeof(snapshot));
+    for (int coord = 0; coord < 8; ++coord) {
+        Platform::CompatGx::resolveTexGen(coord, sCurAttr, snapshot);
+    }
+    for (int coord = 0; coord < 8; ++coord) {
+        const int attr = GX_VA_TEX0 + coord;
+        const float u = sCurAttr[attr][0];
+        const float v = sCurAttr[attr][1];
+        const float q = Platform::CompatGx::texGenW(coord);
+        // The sampler sees u/q: a projective texgen's numerator alone says
+        // nothing about how much texture the geometry shows.
+        const float su = (q != 0.0f) ? u / q : u;
+        const float sv = (q != 0.0f) ? v / q : v;
+        if (!sTcSeen[coord]) {
+            sTcSeen[coord] = true;
+            sTcMin[coord][0] = sTcMax[coord][0] = su;
+            sTcMin[coord][1] = sTcMax[coord][1] = sv;
+            sQMin[coord] = sQMax[coord] = q;
+        } else {
+            sTcMin[coord][0] = su < sTcMin[coord][0] ? su : sTcMin[coord][0];
+            sTcMax[coord][0] = su > sTcMax[coord][0] ? su : sTcMax[coord][0];
+            sTcMin[coord][1] = sv < sTcMin[coord][1] ? sv : sTcMin[coord][1];
+            sTcMax[coord][1] = sv > sTcMax[coord][1] ? sv : sTcMax[coord][1];
+            sQMin[coord] = q < sQMin[coord] ? q : sQMin[coord];
+            sQMax[coord] = q > sQMax[coord] ? q : sQMax[coord];
+        }
+        sVertexTexCoords.push_back(u);
+        sVertexTexCoords.push_back(v);
+        sVertexTexQ.push_back(q);
     }
     // Serialize the vertex (VCD order) into the stream.
     for (const auto& slot : sVcdOrder) {
@@ -492,6 +621,8 @@ void flushDraw() {
         sNvertsDone = 0;
         return;
     }
+    logTcSpan();
+    resetTcSpan();
 
     const int nverts = static_cast<int>(sNvertsDone);
     sInBegin = false;
@@ -523,6 +654,8 @@ void flushDraw() {
     if (posOffset < 0) {
         PL_LOG_WARN("gx", "primitive without position attribute — dropped");
         sVertexData.clear();
+        sVertexTexCoords.clear();
+        sVertexTexQ.clear();
         return;
     }
 
@@ -535,6 +668,8 @@ void flushDraw() {
 
     if (!Platform::Renderer::instance().isInitialized()) {
         sVertexData.clear();
+        sVertexTexCoords.clear();
+        sVertexTexQ.clear();
         return;
     }
     Platform::Renderer& r = Platform::Renderer::instance();
@@ -561,11 +696,13 @@ void flushDraw() {
     // already taken, so capture tests still see the vertices).
     if (!r.inPass()) {
         sVertexData.clear();
+        sVertexTexCoords.clear();
+        sVertexTexQ.clear();
         return;
     }
 
-    // --- expand to the fixed TEV vertex layout (27 floats) ------------------
-    // pos(3) clr0(4) clr1(4) tex0..7(2 each). Missing attributes are filled:
+    // --- expand to the fixed TEV vertex layout (35 floats) ------------------
+    // pos(3) clr0(4) clr1(4) tex0..7(3 each: s, t, q). Missing attributes are filled:
     // colors default per channel state (M5.7a: with the channel disabled the
     // GX default SRC_VTX material keeps the vertex color; with SRC_REG it is
     // the material color — computed below), normals default to (0,0,1) like
@@ -580,7 +717,7 @@ void flushDraw() {
     // multiply; see buildMvp).
     const float* posMtx = Platform::CompatGx::currentPosMtx();
     const float* nrmMtx = Platform::CompatGx::currentNrmMtx();
-    constexpr int kFixedStride = 27;
+    constexpr int kFixedStride = 35;   // pos(3) clr0(4) clr1(4) tex0..7(3: s,t,q)
     const auto buildVertex = [&](int srcIdx, float* out) {
         const float* src = sVertexData.data() + static_cast<size_t>(srcIdx) * stride;
         out[0] = (posOffset >= 0) ? src[posOffset] : 0.0f;
@@ -625,9 +762,16 @@ void flushDraw() {
             out[3 + c] = lit0[c];
             out[7 + c] = lit1[c];
         }
+        // Generated texcoords (all eight), with their projective component:
+        // the GX vertex processor produces them for every vertex regardless of
+        // which attributes the shape stores, and the texture unit divides by q
+        // per pixel (gx_tev_frag.frag).
+        const float* tc = sVertexTexCoords.data() + static_cast<size_t>(srcIdx) * 16;
+        const float* tq = sVertexTexQ.data() + static_cast<size_t>(srcIdx) * 8;
         for (int t = 0; t < 8; ++t) {
-            out[11 + 2 * t] = (texOffset[t] >= 0) ? src[texOffset[t]] : 0.0f;
-            out[12 + 2 * t] = (texOffset[t] >= 0) ? src[texOffset[t] + 1] : 0.0f;
+            out[11 + 3 * t] = tc[2 * t];
+            out[12 + 3 * t] = tc[2 * t + 1];
+            out[13 + 3 * t] = tq[t];
         }
     };
     std::vector<float> drawData;
@@ -647,6 +791,8 @@ void flushDraw() {
         }
     }
     sVertexData.clear();
+    sVertexTexCoords.clear();
+    sVertexTexQ.clear();
     const int drawVerts = static_cast<int>(drawData.size()) / kFixedStride;
 
     // --- pipeline: universal TEV variant ------------------------------------
@@ -669,14 +815,14 @@ void flushDraw() {
         {0, 0, Platform::VertexFormat::R32G32B32_SFLOAT},
         {1, 12, Platform::VertexFormat::R32G32B32A32_SFLOAT},
         {2, 28, Platform::VertexFormat::R32G32B32A32_SFLOAT},
-        {3, 44, Platform::VertexFormat::R32G32_SFLOAT},
-        {4, 52, Platform::VertexFormat::R32G32_SFLOAT},
-        {5, 60, Platform::VertexFormat::R32G32_SFLOAT},
-        {6, 68, Platform::VertexFormat::R32G32_SFLOAT},
-        {7, 76, Platform::VertexFormat::R32G32_SFLOAT},
-        {8, 84, Platform::VertexFormat::R32G32_SFLOAT},
-        {9, 92, Platform::VertexFormat::R32G32_SFLOAT},
-        {10, 100, Platform::VertexFormat::R32G32_SFLOAT},
+        {3, 44, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {4, 56, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {5, 68, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {6, 80, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {7, 92, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {8, 104, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {9, 116, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {10, 128, Platform::VertexFormat::R32G32B32_SFLOAT},
     };
     // M5.5: map the pixel-engine state mirror onto the pipeline desc.
     desc.cullMode = cullModeFromGx(sCullMode);
@@ -1306,6 +1452,8 @@ void dlRun(const u8* data, size_t size) {
                     sNverts = nverts;
                     sNvertsDone = 0;
                     sVertexData.clear();
+                    sVertexTexCoords.clear();
+                    sVertexTexQ.clear();
                     sVtxWriteIndex = 0;
                     rebuildVcd();
                     sInBegin = (nverts > 0);
@@ -1371,6 +1519,8 @@ GXFifoObj* GXInit(void* fifoPtr, u32 fifoSize) {
     sZFormat = GX_ZC_LINEAR;
     sInBegin = false;
     sVertexData.clear();
+    sVertexTexCoords.clear();
+    sVertexTexQ.clear();
     sVcdOrder.clear();
     sVcdTotalWrites = 0;
     sDebugData.clear();
@@ -1455,6 +1605,8 @@ void GXBegin(GXPrimitive prim, GXVtxFmt vtxfmt, u16 nverts) {
     sNverts = nverts;
     sNvertsDone = 0;
     sVertexData.clear();
+    sVertexTexCoords.clear();
+    sVertexTexQ.clear();
     sVtxWriteIndex = 0;
     rebuildVcd();
     sInBegin = (nverts > 0);
@@ -1474,8 +1626,42 @@ void GXCallDisplayList(const void* list, u32 nbytes) {
     dlRun(static_cast<const u8*>(list), nbytes);
 }
 
-void GXSetProjection(const f32 mtx[4][4], GXProjectionType /*type*/) {
+// PC_PORT diagnostics: the mirrored viewport the next flushDraw will apply.
+// A 3D pass inherits whatever the previous pass set, and "the sky was drawn into
+// a 456-row viewport" is exactly the kind of bug a still image cannot tell apart
+// from a projection bug (both squash the image vertically), so the sky logs it.
+void debugViewport(f32* outX, f32* outY, f32* outW, f32* outH) {
+    if (outX != nullptr) {
+        *outX = sViewportX;
+    }
+    if (outY != nullptr) {
+        *outY = sViewportY;
+    }
+    if (outW != nullptr) {
+        *outW = sViewportW;
+    }
+    if (outH != nullptr) {
+        *outH = sViewportH;
+    }
+}
+
+void GXSetProjection(const f32 mtx[4][4], GXProjectionType type) {
     PL_LOG_TRACE("gx", "GXSetProjection");
+
+    // PC_PORT diagnostic: a 3D pass inherits whatever viewport the previous pass
+    // set, and a still image cannot tell "wrong projection" and "viewpoint
+    // squashed into a 456-row viewport" apart. Log the mirrored rect every 600
+    // perspective setups (~10 s) next to the depth range, so a capture carries
+    // the framing the pass was drawn with.
+    static u32 sProjectionLogCount = 0;
+    ++sProjectionLogCount;
+    if (type == GX_PERSPECTIVE && sProjectionLogCount % 600 == 0) {
+        PL_LOG_INFO("gx",
+                    "GXSetProjection #%u (perspective): viewport=(%.0f,%.0f %.0fx%.0f) "
+                    "depth=%.2f..%.2f",
+                    static_cast<unsigned>(sProjectionLogCount), sViewportX, sViewportY, sViewportW,
+                    sViewportH, sViewportNearZ, sViewportFarZ);
+    }
     std::memcpy(sProjection, mtx, sizeof(sProjection));
     sHasProjection = true;
 }
@@ -1618,6 +1804,14 @@ const float* GXCompatDebugVertices(int* outCount, int* outStride) {
     if (outCount) *outCount = static_cast<int>(sDebugData.size()) / (sDebugStride > 0 ? sDebugStride : 1);
     if (outStride) *outStride = sDebugStride;
     return sDebugData.empty() ? nullptr : sDebugData.data();
+}
+
+bool GXCompatDebugTexGenQ(int coord, float* outQ) {
+    if (coord < 0 || coord >= 8 || outQ == nullptr) {
+        return false;
+    }
+    *outQ = Platform::CompatGx::texGenW(coord);
+    return true;
 }
 
 void GXCompatDebugPeState(GxPeDebugState& out) {

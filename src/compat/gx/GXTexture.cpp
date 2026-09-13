@@ -20,6 +20,7 @@
 
 #include "compat/gx/GXCompat.h"
 
+
 #include "compat/gx/Bti.h"
 
 #include "platform/Log/Log.h"
@@ -38,7 +39,22 @@ namespace Platform::CompatGx {
 // vertex attributes, writing the generated (u,v) back into attrs[GX_VA_TEX0+
 // coordId][0..1]. attrs is sCurAttr (all attributes of the vertex being
 // built). No-op when no texgen is configured for that coord (pass-through).
-void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4]);
+void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4],
+                   const float inputs[GX_VA_MAX_ATTR][4]);
+
+// The projective component (q) of the texcoord the last resolveTexGen produced
+// for each coordinate, 1 when the generator is not projective. The GX texture
+// unit divides s and t by it per pixel (see gx_tev_frag.frag), so the value has
+// to reach the fragment stage instead of being divided away on the CPU — doing
+// the divide per vertex is what makes a projective texgen show affine steps.
+static f32 sTexGenW[8] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+
+f32 texGenW(int coordId) {
+    if (coordId < 0 || coordId >= 8) {
+        return 1.0f;
+    }
+    return sTexGenW[coordId];
+}
 
 // Returns the texture/sampler currently bound to TEXMAP0 (or nulls).
 void getTexMap0(Platform::TextureHandle* outTex, Platform::SamplerHandle* outSam);
@@ -56,6 +72,11 @@ namespace {
 // Per-GXTexObj state (the game owns the GXTexObj; we own this).
 struct TexObjData {
     const u8* image = nullptr;      // raw GX tiled data
+    // Bytes of `image` actually available. The console's texture unit derives
+    // the mip addresses from the object alone; the host has to upload them, so
+    // the loader hands the real length over (see setTexObjImageBytes). 0 =
+    // unknown / base level only.
+    size_t imageBytes = 0;
     u16 width = 0, height = 0;
     u8 format = 0;                  // GXTexFmt
     u8 wrapS = 0, wrapT = 0;        // GXTexWrapMode
@@ -74,6 +95,10 @@ struct TexObjData {
 
     Platform::TextureHandle texture = nullptr; // lazily created at first load
     Platform::SamplerHandle sampler = nullptr;
+    // Levels actually uploaded for `texture` (>= 1). The sampler's max LOD is
+    // clamped to this so a request for a coarser level than the chain holds can
+    // never sample past the end of the image view.
+    u32 uploadedLevels = 1;
     bool loaded = false;
 };
 
@@ -199,8 +224,12 @@ void setTexObjData(GXTexObj* obj, TexObjData* p) {
 
 // GX sampler state -> renderer SamplerDesc.
 Platform::SamplerDesc samplerFromGx(u8 wrapS, u8 wrapT, GXTexFilter minF,
-                                    GXTexFilter magF) {
+                                    GXTexFilter magF, f32 minLod = 0.0f,
+                                    f32 maxLod = 1000.0f, f32 lodBias = 0.0f) {
     Platform::SamplerDesc d;
+    d.minLod = minLod;
+    d.maxLod = maxLod;
+    d.lodBias = lodBias;
     const auto addr = [](u8 w) {
         switch (w) {
             case GX_REPEAT: return Platform::SamplerAddressMode::Repeat;
@@ -246,6 +275,30 @@ Platform::SamplerDesc samplerFromGx(u8 wrapS, u8 wrapT, GXTexFilter minF,
     return d;
 }
 
+// Number of mip levels of a GX texture whose base is w x h: the console's
+// chain runs down to 1x1 (GXGetTexBufferSize counts them all tile-padded).
+u32 mipLevelCount(u16 w, u16 h) {
+    u32 n = 1;
+    while (w > 1 || h > 1) {
+        w = (w > 1) ? static_cast<u16>(w >> 1) : 1;
+        h = (h > 1) ? static_cast<u16>(h >> 1) : 1;
+        ++n;
+    }
+    return n;
+}
+
+// Byte offset of mip level `level` inside a GX texture's image blob (each level
+// is tile-padded like the base, in the same GX tiled layout).
+size_t mipLevelOffset(u16 w, u16 h, u8 fmt, u32 level) {
+    size_t off = 0;
+    for (u32 i = 0; i < level; ++i) {
+        off += btiImageSize(w, h, fmt);
+        if (w > 1) w = static_cast<u16>(w >> 1);
+        if (h > 1) h = static_cast<u16>(h >> 1);
+    }
+    return off;
+}
+
 // Creates (or refreshes) the renderer texture + sampler for `d`.
 bool loadTexture(TexObjData& d) {
     Platform::Renderer& r = Platform::Renderer::instance();
@@ -253,6 +306,24 @@ bool loadTexture(TexObjData& d) {
         return false;
     }
     if (!d.loaded) {
+        if (d.format == GX_TF_Z24X8) {
+            // PC_PORT: the EFB's clear path (MainLoopFramework::clearEfb ->
+            // GXSetZTexture + GX_ZT_REPLACE, mirrored in compat/gx/GXSync.cpp)
+            // loads a Z24X8 depth texture EVERY frame. There is no host image
+            // for it BY DESIGN: the host writes depth with the pass's own
+            // depth clear instead (see the clearEfb note in GXCompat.cpp), so
+            // this object is left without a texture — GXLoadTexObj cannot fail
+            // and binding a texture-less object is the no-op the Z-replace
+            // emulation wants. Reported once, at INFO: it is expected
+            // behaviour, not an unsupported-format warning.
+            static std::atomic<bool> sLoggedZ24X8{false};
+            if (!sLoggedZ24X8.exchange(true, std::memory_order_relaxed)) {
+                PL_LOG_INFO("gx", "GXLoadTexObj: Z24X8 depth texture (%ux%u) has no host image — "
+                                  "the EFB pass depth-clear covers GXSetZTexture", d.width, d.height);
+            }
+            return false;
+        }
+
         std::vector<u8> rgba(static_cast<size_t>(d.width) * d.height * 4);
         const size_t need = btiImageSize(d.width, d.height, d.format);
         if (!btiDecodeToRgba8(d.image, need, d.width, d.height, d.format,
@@ -271,11 +342,73 @@ bool loadTexture(TexObjData& d) {
             }
             return false;
         }
+        // Mip chain (M9.5.8): the console samples the pyramid its LOD range
+        // selects; uploading only the base level made every minified texture
+        // (the title's sea above all) far crisper than the console — the BTI
+        // headers ask for GX_LIN_MIP_LIN with a max LOD of 4 levels.
+        std::vector<std::vector<u8>> mips;
+        std::vector<const void*> mipPtrs;
+        // DIAGNOSTIC (LUMA_GX_NO_MIPS=1): upload base level only, to A/B the
+        // pyramid against the console still.
+        static const bool noMips = (std::getenv("LUMA_GX_NO_MIPS") != nullptr);
+        if (d.mipmap && d.imageBytes > 0 && !noMips) {
+            const u32 maxLevels = mipLevelCount(d.width, d.height);
+            u32 levels = 0;
+            u32 w = d.width;
+            u32 h = d.height;
+            size_t off = 0;
+            for (u32 i = 0; i < maxLevels; ++i) {
+                const size_t levelBytes = btiImageSize(static_cast<u16>(w), static_cast<u16>(h),
+                                                       d.format);
+                if (levelBytes == 0 || off + levelBytes > d.imageBytes) {
+                    break;
+                }
+                off += levelBytes;
+                ++levels;
+                if (w > 1) w >>= 1;
+                if (h > 1) h >>= 1;
+            }
+            if (levels > 1) {
+                mips.resize(levels);
+                w = d.width;
+                h = d.height;
+                u32 decoded = 0;
+                for (u32 i = 0; i < levels; ++i) {
+                    const size_t levelBytes = btiImageSize(static_cast<u16>(w), static_cast<u16>(h),
+                                                           d.format);
+                    const size_t levelOff = mipLevelOffset(d.width, d.height, d.format, i);
+                    std::vector<u8>& out = mips[i];
+                    out.assign(static_cast<size_t>(w) * h * 4, 0);
+                    if (!btiDecodeToRgba8(d.image + levelOff, levelBytes, static_cast<u16>(w),
+                                          static_cast<u16>(h), d.format, d.palette,
+                                          d.paletteBytes, d.paletteFormat, out.data())) {
+                        break;
+                    }
+                    ++decoded;
+                    if (w > 1) w >>= 1;
+                    if (h > 1) h >>= 1;
+                }
+                mips.resize(decoded);
+                for (const std::vector<u8>& m : mips) {
+                    mipPtrs.push_back(m.data());
+                }
+                PL_LOG_INFO("gx", "GXLoadTexObj: %ux%u fmt 0x%x mip chain %u levels, LOD [%.2f, %.2f] "
+                                  "bias %.2f", d.width, d.height, static_cast<unsigned>(d.format),
+                            static_cast<unsigned>(decoded), static_cast<double>(d.minLod),
+                            static_cast<double>(d.maxLod), static_cast<double>(d.lodBias));
+            }
+        }
+
         Platform::TextureDesc td;
         td.width = d.width;
         td.height = d.height;
         td.format = Platform::TextureFormat::R8G8B8A8_UNORM;
         td.initialData = rgba.data();
+        if (mipPtrs.size() > 1) {
+            td.levels = static_cast<u32>(mipPtrs.size());
+            td.levelData = mipPtrs.data();
+        }
+        d.uploadedLevels = td.levels > 1 ? td.levels : 1;
         td.debugName = "gx-texture";
         d.texture = r.createTexture(td);
         if (!d.texture) {
@@ -285,9 +418,14 @@ bool loadTexture(TexObjData& d) {
         d.loaded = true;
     }
     // Sampler is cheap (cached by desc); refresh on every load so LOD/wrap
-    // changes made after the first load take effect.
-    d.sampler = r.getOrCreateSampler(
-        samplerFromGx(d.wrapS, d.wrapT, d.minFilter, d.magFilter));
+    // changes made after the first load take effect. max LOD is clamped to the
+    // uploaded chain: a texture whose data had no room for the coarse levels
+    // (or a chain we could not decode) must not ask the sampler for them.
+    const f32 maxUploaded = static_cast<f32>(d.uploadedLevels > 0 ? d.uploadedLevels - 1 : 0);
+    const f32 maxLod = d.maxLod < maxUploaded ? d.maxLod : maxUploaded;
+    const f32 minLod = d.minLod > maxLod ? maxLod : d.minLod;
+    d.sampler = r.getOrCreateSampler(samplerFromGx(
+        d.wrapS, d.wrapT, d.minFilter, d.magFilter, minLod, maxLod, d.lodBias));
     return d.sampler != nullptr;
 }
 
@@ -323,28 +461,52 @@ void refreshTlut(TexObjData& d) {
 
 } // namespace
 
+// Hands the tex object the length of its image blob so the loader can upload
+// the mip levels that follow the base (the console derives their addresses from
+// the object alone; a host texture needs the bytes). Called by the J3D/BMD
+// loader, which knows the block bounds; textures that skip it stay base-only.
+void setTexObjImageBytes(GXTexObj* obj, size_t bytes) {
+    TexObjData* d = texObjData(obj);
+    if (d == nullptr) {
+        return;
+    }
+    if (d->imageBytes != bytes) {
+        d->imageBytes = bytes;
+        if (d->loaded && Platform::Renderer::instance().isInitialized()) {
+            unbindTexMapHandle(d->texture);
+            Platform::Renderer::instance().destroyTexture(d->texture);
+            d->texture = nullptr;
+            d->loaded = false;
+        }
+    }
+}
+
+
 // --- PC hooks for GXCompat.cpp ------------------------------------------------
 
-void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4]) {
+void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4],
+                   const float inputs[GX_VA_MAX_ATTR][4]) {
     if (coordId < 0 || coordId >= 8) {
         return;
     }
     const TexGen& g = sTexGen[coordId];
     if (!g.set) {
-        return; // pass through the vertex texcoord
+        sTexGenW[coordId] = 1.0f;   // no generator: the attribute passes through
+        return;
     }
+    sTexGenW[coordId] = 1.0f;
 
     // Source vector (s[0..3], s[3]=1; missing components zero).
     float s[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     if (g.src >= GX_TG_TEX0 && g.src <= GX_TG_TEX7) {
         const int attr = GX_VA_TEX0 + (g.src - GX_TG_TEX0);
-        s[0] = attrs[attr][0];
-        s[1] = attrs[attr][1];
-        s[2] = attrs[attr][2];
+        s[0] = inputs[attr][0];
+        s[1] = inputs[attr][1];
+        s[2] = inputs[attr][2];
     } else if (g.src == GX_TG_POS) {
-        s[0] = attrs[GX_VA_POS][0];
-        s[1] = attrs[GX_VA_POS][1];
-        s[2] = attrs[GX_VA_POS][2];
+        s[0] = inputs[GX_VA_POS][0];
+        s[1] = inputs[GX_VA_POS][1];
+        s[2] = inputs[GX_VA_POS][2];
     } else {
         // Unsupported source (NRM/BINRM/TANGENT/COLOR...): pass through.
         return;
@@ -364,14 +526,16 @@ void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4]) {
         const f32(&m)[3][4] = sTexMtx[mtx];
         u = m[0][0] * s[0] + m[0][1] * s[1] + m[0][2] * s[2] + m[0][3];
         v = m[1][0] * s[0] + m[1][1] * s[1] + m[1][2] * s[2] + m[1][3];
+        // Projective generator: the divide belongs to the texture unit (per
+        // pixel). Keep s and t as the numerators and publish q for the vertex.
         if (g.type == GX_TG_MTX3x4) {
             const f32 w = m[2][0] * s[0] + m[2][1] * s[1] + m[2][2] * s[2] + m[2][3];
             if (w != 0.0f) {
-                u /= w;
-                v /= w;
+                sTexGenW[coordId] = w;
             }
         }
     }
+
 
     const int outAttr = GX_VA_TEX0 + coordId;
     attrs[outAttr][0] = u;
@@ -539,16 +703,25 @@ void GXInitTexObjLOD(GXTexObj* obj, GXTexFilter minFilter, GXTexFilter magFilter
     }
     PL_LOG_TRACE("gx", "GXInitTexObjLOD(min %d mag %d)", static_cast<int>(minFilter),
                  static_cast<int>(magFilter));
+    // M9.5.9 EXPERIMENT: how the BTI/BMD LOD bias field maps to level units is
+    // not documented; the sea's cloud layer asks for +2.0 and comes out as a
+    // smooth white veil, so the mapping is under test.
+    static const float kBiasScale = [] {
+        const char* e = std::getenv("LUMA_GX_BIAS_SCALE");
+        return (e != nullptr) ? static_cast<float>(std::atof(e)) : 1.0f;
+    }();
     d->minFilter = minFilter;
     d->magFilter = magFilter;
     d->minLod = minLod;
     d->maxLod = maxLod;
-    d->lodBias = lodBias;
+    d->lodBias = lodBias * kBiasScale;
     d->biasClamp = biasClamp;
     d->edgeLod = edgeLod;
     d->anisotropy = anisotropy;
-    // TODO(PC_PORT, M5.x): mip chain + LOD bias/range on the sampler (Vulkan
-    // maxLod/minLod); M5.3 uploads the base level only.
+    // M5.3+: the LOD range/bias reach the Vulkan sampler (VkSampler minLod/
+    // maxLod/mipLodBias). Whether a chain exists is decided by the data: the
+    // GX register path uploads base level only unless the loader reports the
+    // full chain length through setTexObjImageBytes (the BMD loader does).
 }
 
 void GXInitTexObjCI(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITexFmt format,

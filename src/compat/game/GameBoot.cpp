@@ -60,6 +60,8 @@
 #include <JSystem/JKernel/JKRSolidHeap.hpp>
 #include <JSystem/JUtility/JUTXfb.hpp>
 #include <nw4r/ut/ResFont.h>                   // v7: the brfnt fonts of Font.arc
+#include "compat/ui/PictureFontDump.h"         // diagnostic: picture-font glyph dump
+#include "compat/ui/PictureGlyphs.h"           // the [A]/[B] icons: the real glyphs
 #include <nw4r/lyt/init.h>
 #include <nw4r/lyt/layout.h>
 #include <revolution.h>
@@ -270,6 +272,7 @@ void GameSystemFontHolder::createFontFromFile() {
 
     if (!MR::isFileExist(cFontArcPath, false)) {
         PL_LOG_WARN("compat.font", "%s missing from the assets tree: layout text will not draw", cFontArcPath);
+        compat::ui::dumpPictureFontIfRequested(nullptr);  // LUMA_PICFONT_DUMP: logs why
         return;
     }
 
@@ -288,10 +291,22 @@ void GameSystemFontHolder::createFontFromFile() {
     mNumberFont = createFontFromArchive(pArchive, "/NumberFont.brfnt");
     mCinemaFont = createFontFromArchive(pArchive, "/CinemaFont26.brfnt");
 
+    // PC_PORT (title widescreen): the [A]/[B] icons of the instruction line are
+    // picture-font glyphs (codes 0x0030/0x0031, identified from the font dump).
+    // Hand this font to the UI layer so ButtonPrompt draws the console's own
+    // art; without a font installed it keeps drawing its vector reproduction.
+    compat::ui::setPictureFont(mPictureFont);
+
     PL_LOG_INFO("compat.font", "Font.arc mounted: message=%s picture=%s menu=%s number=%s cinema=%s",
                 mMessageFont != nullptr ? "ok" : "MISSING", mPictureFont != nullptr ? "ok" : "MISSING",
                 mMenuFont != nullptr ? "ok" : "MISSING", mNumberFont != nullptr ? "ok" : "MISSING",
                 mCinemaFont != nullptr ? "ok" : "MISSING");
+
+    // PC_PORT (title widescreen): the [A]/[B] icons of the instruction line are
+    // picture-font glyphs. With LUMA_PICFONT_DUMP=<dir> the font's code map and
+    // glyph sheets are written out so those two codes can be identified (the
+    // dump re-reads the very resource ResFont just loaded).
+    compat::ui::dumpPictureFontIfRequested(pArchive->getResource("/PictureFont.brfnt"));
 }
 
 // Game/Util/SystemUtil.cpp font getters (that file is not compiled on the
