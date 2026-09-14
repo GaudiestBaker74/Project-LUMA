@@ -100,6 +100,39 @@ namespace nw4r {
 
             bool IsVisible() const { return detail::TestBit(mFlag, 0); }
 
+            /// PC_PORT (M10.1): nw4r's Pane::SetVisible. The vendored game code
+            /// only ever READS the flag (the console toggles panes through the
+            /// animation system), but the host file-select screen has to show
+            /// and hide the operation buttons / info bar by hand while the
+            /// ButtonPaneController machinery is not ported. Same bit nw4r
+            /// uses (mFlag bit 0), so animations that drive visibility keep
+            /// working on top of it.
+            void SetVisible(bool visible) {
+                if (visible) {
+                    mFlag |= 1;
+                } else {
+                    mFlag &= static_cast< u8 >(~1);
+                }
+            }
+
+            /// PC_PORT (M10.1): the pane's box in layout units, Y-up, with the
+            /// origin at its top-left corner (nw4r's convention: the box
+            /// extends +width to the right and -height downwards).
+            void GetBox(f32* outMinX, f32* outMinY, f32* outMaxX, f32* outMaxY) const {
+                if (outMinX != nullptr) {
+                    *outMinX = mGlbMtx._03;
+                }
+                if (outMinY != nullptr) {
+                    *outMinY = mGlbMtx._13 - mSize.height;
+                }
+                if (outMaxX != nullptr) {
+                    *outMaxX = mGlbMtx._03 + mSize.width;
+                }
+                if (outMaxY != nullptr) {
+                    *outMaxY = mGlbMtx._13;
+                }
+            }
+
             Pane* mpParent;
             PaneList mChildList;
             AnimationList mAnimList;

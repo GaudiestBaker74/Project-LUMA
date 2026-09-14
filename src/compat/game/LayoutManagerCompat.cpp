@@ -56,6 +56,7 @@
 #include <nw4r/lyt/textBox.h>
 #include <nw4r/ut/Font.h>
 
+#include "compat/game/GameTextTable.h"
 #include "compat/game/LanguageCompat.h"
 #include "compat/nw4r/LytHost.h"
 #include "platform/Log/Log.h"
@@ -408,9 +409,24 @@ namespace {
 
     // `pPaneName` may carry a language suffix ("TxtStartUsEn"): match on the
     // prefix so every language pane gets the same fallback.
+    //
+    // PC_PORT (M10.1): the table in compat/game/GameTextTable resolves the REAL
+    // message id first — "Layout_" + layoutName + paneName(minus the language
+    // suffix), which is the id LayoutCoreUtil::initTextBoxPane asks the message
+    // system for. That is what makes the FileSelect / BackButton / PressStart
+    // text follow --language instead of showing the English text baked in the
+    // brlyt (the mixed-language bug of M10.1). Only ids the table does not know
+    // fall through to the embedded fallbacks below.
     const wchar_t* findLayoutMessageFallback(const char* pLayoutName, const char* pPaneName) {
         if (pLayoutName == nullptr || pPaneName == nullptr) {
             return nullptr;
+        }
+
+        char messageId[128];
+        compat::game::buildLayoutMessageId(messageId, sizeof(messageId), pLayoutName, pPaneName);
+
+        if (const wchar_t* pLocalized = compat::game::gameTextForMessageId(messageId)) {
+            return pLocalized;
         }
 
         for (const LayoutMessageFallback& entry : sLayoutMessageFallbacks) {

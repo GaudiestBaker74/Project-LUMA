@@ -50,10 +50,12 @@ private:
     /// (FileSelectSky stand-in, compat/j3d). Null when the archive is missing
     /// → the synthetic starfield is drawn instead.
     std::unique_ptr< compat::j3d::TitleSky > mSky;
-    /// PC_PORT (M10): post-Decide file-select stand-in — the real
-    /// FileSelect.arc layout (vendored SimpleLayout) plus host-side
-    /// cursor/selection (compat/game/FileSelectHost). Null until the title
+    /// PC_PORT (M10): the post-Decide file-select screen
+    /// (compat/game/FileSelectHost). It owns every layout of the family —
+    /// FileSelect/FileInfo/BackButton/BrosButton/FileNumber all mount
+    /// themselves through MR::connectToScene — plus the 3D planet field, the
+    /// pointer and the save store, so the scene only calls init()/update()
+    /// and places the 3D + cursor passes in draw(). Null until the title
     /// sequence decides (A+B).
-    SimpleLayout* mFileSelect = nullptr;
     std::unique_ptr< compat::game::FileSelectHost > mFileHost;
 };

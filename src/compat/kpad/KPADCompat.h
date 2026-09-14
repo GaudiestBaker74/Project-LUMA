@@ -53,6 +53,30 @@ uint32_t getTrigButtons(int chan);
 // channel has no samples yet.
 bool getPointerPos(int chan, float* outX, float* outY);
 
+// --- PC_PORT (M10.1): menu semantics ----------------------------------------
+// The console menus are pointer-driven: A decides (StarPointer "menu decide"),
+// B cancels. On the PC the pointer's natural click is the LEFT mouse button,
+// but the default gameplay mapping binds mouse-left to B (B = star bits), so a
+// menu that read WPAD_BUTTON_A ignored every click and the FileSelect screen
+// looked broken. These two queries give menu code the console semantics:
+//   getMenuDecideTrigger = A edge OR left-click edge (while the pointer is live)
+//   getMenuCancelTrigger = B edge OR right-click edge (while the pointer is live)
+// Gameplay code keeps reading hold/trig and its own bindings.
+bool getMenuDecideTrigger(int chan);
+bool getMenuCancelTrigger(int chan);
+
+// Bits of getMenuNav().
+enum MenuNav : int {
+    kMenuNavUp = 1 << 0,
+    kMenuNavDown = 1 << 1,
+    kMenuNavLeft = 1 << 2,
+    kMenuNavRight = 1 << 3,
+};
+// Up/down/left/right of the pointer channel as a menu D-pad: the arrow
+// bindings plus the stick of a gamepad on the same channel, so a pad-only
+// player can move a selection without a pointer.
+int getMenuNav(int chan);  // bit 0 up, 1 down, 2 left, 3 right (edge-triggered)
+
 // --- Test hooks -------------------------------------------------------------
 // Replaces the config used by updateFrame (bypasses the config file).
 void setConfig(const InputConfig& config);

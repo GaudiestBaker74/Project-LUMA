@@ -10,7 +10,6 @@
 #include "Game/Scene/TitleScene.hpp"
 
 #include "Game/LiveActor/Nerve.hpp"
-#include "Game/Screen/SimpleLayout.hpp"
 #include "Game/Screen/TitleSequenceProduct.hpp"
 #include "Game/Scene/SceneFunction.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
@@ -111,17 +110,18 @@ void TitleScene::exeEnd() {
     }
 
     // PC_PORT (M10): on console the FileSelector fades in over this same sky
-    // right after Decide. Stand-in v1: the REAL FileSelect.arc layout through
-    // the vendored SimpleLayout (same mount path as TitleLogo/PressStart; a
-    // missing arc degrades to the null-layout path) plus host-side cursor and
-    // A/B selection in compat/game/FileSelectHost. The pane tree of the arc
-    // is dumped by the layout manager on build, which is what the
-    // pane-accurate cursor iteration will key on.
-    if (mFileSelect == nullptr) {
-        mFileSelect = new SimpleLayout("FileSelect", "FileSelect", 1, -1);
-        mFileSelect->appear();
+    // right after Decide. The host screen (compat/game/FileSelectHost) owns
+    // every layout of the family now — FileSelect.arc (the operation buttons +
+    // the "choose a file" line), FileInfo.arc (the save bar), BackButton.arc,
+    // BrosButton.arc and a FileNumber.arc per planet — plus the 3D field, the
+    // pointer and the save store. Each SimpleLayout registers itself with the
+    // scene through MR::connectToScene, so the movement/calcAnim/layout-draw
+    // passes run them; the scene only has to place the 3D field and the
+    // cursor in draw().
+    if (mFileHost == nullptr) {
         mFileHost.reset(new compat::game::FileSelectHost());
-        PL_LOG_INFO("boot", "TitleScene: FileSelect stand-in mounted (FileSelect.arc + host cursor)");
+        mFileHost->init();
+        PL_LOG_INFO("boot", "TitleScene: FileSelect screen mounted (layouts + planets + pointer)");
     }
 
     if (mFileHost != nullptr) {
@@ -400,9 +400,22 @@ void TitleScene::draw() const {
             drawSpaceBackdrop();
         }
         MR::clearZBuffer();
+        // PC_PORT (M10): the file-select 3D half (six planets + the character
+        // heads) between the sky and the 2D pass, exactly where the console's
+        // FileSelector actors are drawn (DrawBufferType_3DModel). Set the
+        // programmable camera itself: on console FileSelectCameraController
+        // owns it, here compat/j3d/FileSelectField carries the same states.
+        if (mFileHost != nullptr) {
+            mFileHost->draw3D();
+        }
         MR::drawInitFor2DModel();
         CategoryList::execute(MR::DrawType_Layout);
         if (mFileHost != nullptr) {
+            // The guidance balloon ("Please choose a file."), the P1 Wii-remote
+            // badge over the pointed item and the pointer itself (the glove +
+            // star of StarPointer) — all in this 2D pass.
+            mFileHost->drawGuidance();
+            mFileHost->drawPlayerIcon();
             mFileHost->drawCursor();
         }
     }

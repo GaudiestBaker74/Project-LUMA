@@ -78,6 +78,28 @@ struct KpadChannel {
     float sensorHeight = 0.35f;
     int dpdValid = 0;
 
+    // PC_PORT (M10.1): "menu decide" — the pointer's confirm click.
+    //
+    // On the console the menus are driven by the star pointer: A decides, B
+    // cancels, and MR::testDPDMenuPadDecideTrigger()/testSystemTriggerA() see
+    // the Wiimote's A. On the PC the natural gesture is CLICKING with the
+    // mouse, but the default config binds mouse-left to B (the gameplay
+    // mapping: B = the star bits) — so clicking a menu entry played the
+    // *cancel* path and the FileSelect screen looked unclickable (M10.1 bug
+    // report: "no funcionan los clics").
+    //
+    // This records the raw mouse-left press edge of the frame, before any
+    // binding, so menu screens can read it as A (getMenuDecideTrigger below)
+    // while gameplay keeps its own mapping.
+    bool mouseLeftTrig = false;
+    bool mouseRightTrig = false;
+    // Edge state for the stick-driven menu navigation (getMenuNav).
+    int prevMenuNavStick = 0;
+
+    // Previous raw mouse-button states, for the edges above.
+    bool prevMouseLeft = false;
+    bool prevMouseRight = false;
+
     // Synthesized shake (frames of impulse left).
     double shakeFrames = 0.0;
 
@@ -296,6 +318,19 @@ void updateFrame(const InputState& state, double dt) {
         c.release = c.prevHold & ~newHold;
         c.hold = newHold;
         c.prevHold = newHold;
+
+        // PC_PORT (M10.1): raw pointer-button edges for the menus, taken from
+        // the platform frame (not from the bindings — see mouseLeftTrig).
+        {
+            const bool hasMouse = cfg.source == Source::KeyboardMouse ||
+                                  cfg.source == Source::KeyboardMouseGamepad;
+            const bool left = hasMouse && state.keys[static_cast<int>(Platform::Key::MouseLeft)];
+            const bool right = hasMouse && state.keys[static_cast<int>(Platform::Key::MouseRight)];
+            c.mouseLeftTrig = left && !c.prevMouseLeft;
+            c.mouseRightTrig = right && !c.prevMouseRight;
+            c.prevMouseLeft = left;
+            c.prevMouseRight = right;
+        }
 
         // Auto-repeat: while any button is held, after `delay` the
         // KPAD_BUTTON_RPT flag stays set (pulse cadence `pulse`). RPT only in
@@ -643,5 +678,76 @@ uint32_t getTrigButtons(int chan) {
     const KpadChannel& c = gChannels[chan];
     return c.initialized && c.prevConnected ? c.trig : 0;
 }
+
+// PC_PORT (M10.1): see KPADCompat.h — A, or the pointer's confirm click.
+bool getMenuDecideTrigger(int chan) {
+    if (chan < 0 || chan >= kChannels) {
+        return false;
+    }
+    const KpadChannel& c = gChannels[chan];
+    if (!c.initialized || !c.prevConnected) {
+        return false;
+    }
+    if ((c.trig & WPAD_BUTTON_A) != 0) {
+        return true;
+    }
+    // The click only counts as "decide" when the pointer is live (the mouse is
+    // over the window): a click outside the play area must not activate the
+    // item under a stale pointer position.
+    return c.mouseLeftTrig && c.dpdValid > 0;
+}
+
+// PC_PORT (M10.1): the pointer's cancel click (right button), same rule.
+bool getMenuCancelTrigger(int chan) {
+    if (chan < 0 || chan >= kChannels) {
+        return false;
+    }
+    const KpadChannel& c = gChannels[chan];
+    if (!c.initialized || !c.prevConnected) {
+        return false;
+    }
+    if ((c.trig & WPAD_BUTTON_B) != 0) {
+        return true;
+    }
+    return c.mouseRightTrig && c.dpdValid > 0;
+}
+
+// PC_PORT (M10.1): a menu D-pad built from the bound direction buttons AND the
+// analog stick of a pad on the same channel, so a selection can be moved with
+// the D-pad, the arrow keys or the stick without touching the pointer.
+int getMenuNav(int chan) {
+    if (chan < 0 || chan >= kChannels) {
+        return 0;
+    }
+    KpadChannel& c = gChannels[chan];
+    if (!c.initialized || !c.prevConnected) {
+        return 0;
+    }
+
+    int nav = 0;
+    const uint32_t t = c.trig;
+    if ((t & WPAD_BUTTON_UP) != 0) nav |= kMenuNavUp;
+    if ((t & WPAD_BUTTON_DOWN) != 0) nav |= kMenuNavDown;
+    if ((t & WPAD_BUTTON_LEFT) != 0) nav |= kMenuNavLeft;
+    if ((t & WPAD_BUTTON_RIGHT) != 0) nav |= kMenuNavRight;
+
+    // Stick (digital threshold, edge-triggered against the previous frame's
+    // level so a held stick does not scroll at 60 Hz).
+    if (c.unconsumed > 0 || c.ringWrite != 0) {
+        const int last = (c.ringWrite + kRingSize - 1) % kRingSize;
+        const Vec2 stick = c.ring[last].ex_status.fs.stick;
+        const bool up = stick.y > 0.55f;
+        const bool down = stick.y < -0.55f;
+        const bool left = stick.x < -0.55f;
+        const bool right = stick.x > 0.55f;
+        const int level = (up ? kMenuNavUp : 0) | (down ? kMenuNavDown : 0) | (left ? kMenuNavLeft : 0) |
+                          (right ? kMenuNavRight : 0);
+        nav |= level & ~c.prevMenuNavStick;
+        c.prevMenuNavStick = level;
+    }
+
+    return nav;
+}
+
 
 } // namespace Platform::CompatInput

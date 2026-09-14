@@ -225,6 +225,11 @@ add_library(pc_compat STATIC
     j3d/BckAnim.cpp
     j3d/BmdRenderer.cpp
     j3d/TitleSky.cpp
+    # M10: the FileSelect screen's 3D half — the six planets and the character
+    # heads (FileSelectData{Planet,Mario,Luigi,…}.arc) placed by the
+    # reconstructed FileSelector::calcBasePos table, through the real
+    # FileSelectCameraController camera states.
+    j3d/FileSelectField.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Screen/EncouragePal60Window.cpp
     ${PETARI_ROOT}/src/Game/Screen/TitleSequenceProduct.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/Game/Scene/SceneFactory.cpp
@@ -280,11 +285,20 @@ add_library(pc_compat STATIC
     # the A/B button icons of the "Press both [A] and [B]." line (the picture
     # font's own glyphs when it is mounted, a vector reproduction otherwise).
     ${CMAKE_CURRENT_SOURCE_DIR}/game/UiAnchoring.cpp
-    # PC_PORT (M10): host-side file-select logic (cursor over the pointer,
-    # A/B selection, host save store) for the FileSelect.arc stand-in that
-    # TitleScene mounts after the title sequence decides.
+    # PC_PORT (M10): the file-select screen itself — every FileSelect-family
+    # layout (FileSelect/FileInfo/BackButton/BrosButton/FileNumber), the 3D
+    # field hook-up, pointer/click handling and the host save store. Mounted
+    # by TitleScene once the title sequence decides.
     ${CMAKE_CURRENT_SOURCE_DIR}/game/FileSelectHost.cpp
+    # PC_PORT (M10.1): the game's messages for the screen — one language per
+    # boot (Language.cpp's language), so the FileSelect text cannot mix the
+    # arc's authored Japanese with another language's button strings.
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/GameTextTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/ButtonPrompt.cpp
+    # PC_PORT (M10.1): the StarPointer 1P guidance balloon ("Please choose a
+    # file.") — the string of System_FileSelect008 with the geometry measured
+    # off the reference captures (it is not a pane of FileSelect.arc).
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/GuidanceBanner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureGlyphs.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/PictureFontDump.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/jsystem/J3DFrameCtrlCompat.cpp

@@ -144,6 +144,45 @@ struct LabelEntry {
 };
 
 const LabelEntry kLabelTable[] = {
+    // --- PC_PORT (M10.1): the MBGM_* stage-BGM labels ------------------------
+    // The game does NOT start streams by their STM_* file label: it calls
+    // MR::startStageBGM("MBGM_FILE_SELECT", …) / playStageBGM("MBGM_…"), and on
+    // the console the SMR sound archive resolves that music id to the stream
+    // (and to its "near/far" variants used by setStageBGMState). The host has
+    // no SMR archive, so the music ids the game actually uses are listed here
+    // and mapped to the same stream files as their STM_* twins — without this
+    // every MBGM_* request fell through to "/AudioRes/Stream/MBGM_X.ast",
+    // which does not exist, i.e. the screen ran silent (the M10.1 bug: the
+    // FileSelect BGM never played while the title's STM_TITLE stream did).
+    {"MBGM_FILE_SELECT", "SMG_fileselect_strm"},
+    {"MBGM_STAR_EXIST", "SMG_ev_starchance_strm"},
+    {"MBGM_STAR_EXIST_2", "SMG_ev_starchance02_strm"},
+    {"MBGM_RACE_01", "SMG_ev_race_strm"},
+    {"MBGM_RACE_02", "SMG_ev_race02_multi"},
+    {"MBGM_GALAXY_05", "SMG_galaxy05_strm"},
+    {"MBGM_GALAXY_15_HURRY", "SMG_galaxy15_hurry_strm"},
+    {"MBGM_GALAXY_02_HURRY", "SMG_galaxy02_hurry_strm"},
+    {"MBGM_GALAXY_02_CHASE", "SMG_ev_rabbit_strm"},
+    {"MBGM_GALAXY_24", "SMG_galaxy24_multi"},
+    {"MBGM_GALAXY_INTER", "SMG_galaxy_inter_strm"},
+    {"MBGM_BOSS_01_A", "SMG_boss01a_strm"},
+    {"MBGM_BOSS_01_B", "SMG_boss01b_strm"},
+    {"MBGM_BOSS_02_A", "SMG_boss02a_strm"},
+    {"MBGM_BOSS_02_B", "SMG_boss02a_strm"},
+    {"MBGM_BOSS_03_A", "SMG_boss03a_strm"},
+    {"MBGM_BOSS_03_B", "SMG_boss03b_strm"},
+    {"MBGM_BOSS_04", "SMG_boss04_strm"},
+    {"MBGM_BOSS_05_A", "SMG_boss05a_strm"},
+    {"MBGM_BOSS_05_B", "SMG_boss05b_strm"},
+    {"MBGM_BOSS_06_A", "SMG_boss06a_strm"},
+    {"MBGM_BOSS_06_B", "SMG_boss06b_strm"},
+    {"MBGM_BOSS_09_A", "SMG_boss09a_strm"},
+    {"MBGM_BOSS_09_B", "SMG_boss09b_strm"},
+    {"MBGM_BOSS_KOOPA_FINAL", "SMG_boss09b_strm"},
+    {"MBGM_ASTRO_DOME_2", "SMG_astrodome02_strm"},
+    // STM_* are the ids the game uses for the *streamed* sequences
+    // (startStageBGM("STM_PROLOGUE_01")-style calls and the STM ids in
+    // Game/System/GameSequence*).
     {"STM_TITLE", "SMG_title_strm"},
     {"STM_FILE_SELECT", "SMG_fileselect_strm"},
     {"STM_STAFF_ROLL", "SMG_staffroll_strm"},

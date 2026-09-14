@@ -1,0 +1,1321 @@
+[2026-09-14 20:50:24.945] [INFO ] [filesystem] root dir set to 'assets'
+[2026-09-14 20:50:24.945] [INFO ] [platform] platform initialized
+[2026-09-14 20:50:24.946] [INFO ] [filesystem] root dir set to 'C:\Users\sergi\Downloads\dump\DATA\files'
+[2026-09-14 20:50:24.946] [INFO ] [compat.lang] game language: UsSpanish (region Us, pane suffix UsSp)
+[2026-09-14 20:50:24.946] [INFO ] [compat.os] console RAM arena: 512 MiB (MEM1 128 MiB, MEM2 384 MiB)
+[2026-09-14 20:50:25.006] [INFO ] [compat.dvd] FST built from 'C:\Users\sergi\Downloads\dump\DATA\files': 2452 entries
+[2026-09-14 20:50:25.006] [INFO ] [main] galaxy-pc 0.5.0 (Milestone 5) — built Sep 14 2026 20:48:33
+[2026-09-14 20:50:25.152] [INFO ] [window] SDL initialized (video+events)
+[2026-09-14 20:50:25.277] [INFO ] [window] window 'galaxy-pc — Super Mario Galaxy (boot)' 1280x720
+[2026-09-14 20:50:25.341] [INFO ] [renderer] GPU: NVIDIA GeForce RTX 2060 (type 2)
+[2026-09-14 20:50:25.409] [INFO ] [renderer] GPU timestamps enabled (period 1.00 ns)
+[2026-09-14 20:50:25.627] [INFO ] [renderer] swapchain: 1280x720, 3 images, format 44, present 2
+[2026-09-14 20:50:25.654] [INFO ] [Audio] audio device 'Audífono de los auriculares con micrófono (G435 Wireless Gaming Headset)' opened (game 32000 Hz → device 48000 Hz, 2 ch, ring 250 ms)
+[2026-09-14 20:50:25.654] [INFO ] [main] audio: enabled (music volume 1.00)
+[2026-09-14 20:50:25.654] [INFO ] [main] --boot: input wired (gamepad/keyboard/mouse -> KPAD/WPAD via the retrace pump)
+[2026-09-14 20:50:25.656] [INFO ] [main] --boot: entering gameMain() (the vendored game boot)
+[2026-09-14 20:50:25.678] [INFO ] [compat.dvd] FST built from 'C:\Users\sergi\Downloads\dump\DATA\files': 2452 entries
+[2026-09-14 20:50:25.679] [INFO ] [vi] VIInit: host video interface (59.94 Hz field clock, present-driven mode hooks in GXCopyDisp)
+[2026-09-14 20:50:25.679] [INFO ] [boot] createGameHeap: GDDR free 366476408
+[2026-09-14 20:50:25.679] [INFO ] [vi] VIInit: host video interface (59.94 Hz field clock, present-driven mode hooks in GXCopyDisp)
+[2026-09-14 20:50:25.680] [INFO ] [vi] VIConfigure: tvmode 0x2, 640x456 (efb 456, xfb 456)
+[2026-09-14 20:50:25.681] [INFO ] [platform.input] SDL gamepad subsystem initialized; 0 pad(s) attached
+[2026-09-14 20:50:25.714] [INFO ] [boot] createScene('Intermission')
+[2026-09-14 20:50:25.714] [INFO ] [vi] render mode -> 1280x720 (window native: presenting 1:1)
+[2026-09-14 20:50:25.716] [INFO ] [gx] EFB render target created: 640x448 (2)
+[2026-09-14 20:50:25.716] [INFO ] [gx] GXLoadTexObj: Z24X8 depth texture (4x4) has no host image — the EFB pass depth-clear covers GXSetZTexture
+[2026-09-14 20:50:25.717] [INFO ] [renderer] present #0: result=0 hadContent=0 img=0
+[2026-09-14 20:50:25.718] [INFO ] [boot] waitForRetrace: first retrace received — the frame loop is cycling on the VI field clock
+[2026-09-14 20:50:25.732] [INFO ] [gx] EFB render target created: 1280x720 (2)
+[2026-09-14 20:50:25.732] [INFO ] [gx] GXCopyDisp #0: efb=1280x720 blit=OK
+[2026-09-14 20:50:25.733] [INFO ] [renderer] present #1: result=0 hadContent=1 img=0
+[2026-09-14 20:50:25.746] [INFO ] [gx] GXCopyDisp #1: efb=1280x720 blit=OK
+[2026-09-14 20:50:25.747] [INFO ] [renderer] present #2: result=0 hadContent=1 img=0
+[2026-09-14 20:50:25.764] [INFO ] [gx] GXCopyDisp #2: efb=1280x720 blit=OK
+[2026-09-14 20:50:25.764] [INFO ] [renderer] present #3: result=0 hadContent=1 img=0
+[2026-09-14 20:50:25.780] [INFO ] [gx] GXCopyDisp #3: efb=1280x720 blit=OK
+[2026-09-14 20:50:25.781] [INFO ] [renderer] present #4: result=0 hadContent=1 img=0
+[2026-09-14 20:50:25.798] [INFO ] [gx] GXCopyDisp #4: efb=1280x720 blit=OK
+[2026-09-14 20:50:25.798] [INFO ] [boot] createFileCacheHeap: request 17040384 (0x1040400), game GDDR free 366476408
+[2026-09-14 20:50:25.799] [INFO ] [boot] createScene('Logo')
+[2026-09-14 20:50:25.805] [INFO ] [compat.lyt] Build: block 0/19 'lyt1' size 20
+[2026-09-14 20:50:25.806] [INFO ] [compat.lyt] Build: block 1/19 'txl1' size 124
+[2026-09-14 20:50:25.806] [INFO ] [compat.lyt] Build: block 2/19 'mat1' size 380
+[2026-09-14 20:50:25.806] [INFO ] [compat.lyt] Build: block 3/19 'pan1' size 76
+[2026-09-14 20:50:25.807] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'RootPane' ...
+[2026-09-14 20:50:25.807] [INFO ] [compat.lyt] BuildPaneObj: pane 'RootPane' built (0000029EE965CCA0)
+[2026-09-14 20:50:25.807] [INFO ] [compat.lyt] Build: block 4/19 'pas1' size 8
+[2026-09-14 20:50:25.808] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965CCA0)
+[2026-09-14 20:50:25.808] [INFO ] [compat.lyt] Build: block 5/19 'pic1' size 128
+[2026-09-14 20:50:25.808] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicBG' ...
+[2026-09-14 20:50:25.808] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83600D80 id 0 ...
+[2026-09-14 20:50:25.809] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83600D80
+[2026-09-14 20:50:25.809] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (8 x 8, fmt 0)
+[2026-09-14 20:50:25.810] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicBG' built (0000029EE951B010)
+[2026-09-14 20:50:25.810] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965CCA0
+[2026-09-14 20:50:25.810] [INFO ] [compat.lyt] Build: block 6/19 'pan1' size 76
+[2026-09-14 20:50:25.811] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'WiiRemoteStrap' ...
+[2026-09-14 20:50:25.811] [INFO ] [compat.lyt] BuildPaneObj: pane 'WiiRemoteStrap' built (0000029EE965C320)
+[2026-09-14 20:50:25.811] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965CCA0
+[2026-09-14 20:50:25.811] [INFO ] [compat.lyt] Build: block 7/19 'pas1' size 8
+[2026-09-14 20:50:25.812] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965C320)
+[2026-09-14 20:50:25.812] [INFO ] [compat.lyt] Build: block 8/19 'pan1' size 76
+[2026-09-14 20:50:25.812] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'PlayMessage' ...
+[2026-09-14 20:50:25.813] [INFO ] [compat.lyt] BuildPaneObj: pane 'PlayMessage' built (0000029EE965B150)
+[2026-09-14 20:50:25.813] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C320
+[2026-09-14 20:50:25.813] [INFO ] [compat.lyt] Build: block 9/19 'pas1' size 8
+[2026-09-14 20:50:25.813] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965B150)
+[2026-09-14 20:50:25.814] [INFO ] [compat.lyt] Build: block 10/19 'pic1' size 128
+[2026-09-14 20:50:25.814] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicPlay' ...
+[2026-09-14 20:50:25.814] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83600DE0 id 0 ...
+[2026-09-14 20:50:25.814] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83600DE0
+[2026-09-14 20:50:25.815] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (568 x 392, fmt 4)
+[2026-09-14 20:50:25.815] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicPlay' built (0000029EE951B6A0)
+[2026-09-14 20:50:25.815] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965B150
+[2026-09-14 20:50:25.815] [INFO ] [compat.lyt] Build: block 11/19 'pae1' size 8
+[2026-09-14 20:50:25.816] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965C320)
+[2026-09-14 20:50:25.816] [INFO ] [compat.lyt] Build: block 12/19 'pan1' size 76
+[2026-09-14 20:50:25.816] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'HookMessage' ...
+[2026-09-14 20:50:25.817] [INFO ] [compat.lyt] BuildPaneObj: pane 'HookMessage' built (0000029EE965B4E0)
+[2026-09-14 20:50:25.817] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C320
+[2026-09-14 20:50:25.817] [INFO ] [compat.lyt] Build: block 13/19 'pas1' size 8
+[2026-09-14 20:50:25.817] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965B4E0)
+[2026-09-14 20:50:25.818] [INFO ] [compat.lyt] Build: block 14/19 'pic1' size 128
+[2026-09-14 20:50:25.818] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicHook' ...
+[2026-09-14 20:50:25.818] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8366D9A0 id 0 ...
+[2026-09-14 20:50:25.819] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E8366D9A0
+[2026-09-14 20:50:25.819] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (360 x 256, fmt 4)
+[2026-09-14 20:50:25.819] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8369A9E0 id 0 ...
+[2026-09-14 20:50:25.819] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E8369A9E0
+[2026-09-14 20:50:25.820] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (40 x 40, fmt 0)
+[2026-09-14 20:50:25.820] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicHook' built (0000029EE951B7F0)
+[2026-09-14 20:50:25.820] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965B4E0
+[2026-09-14 20:50:25.820] [INFO ] [compat.lyt] Build: block 15/19 'pae1' size 8
+[2026-09-14 20:50:25.821] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965C320)
+[2026-09-14 20:50:25.821] [INFO ] [compat.lyt] Build: block 16/19 'pae1' size 8
+[2026-09-14 20:50:25.821] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965CCA0)
+[2026-09-14 20:50:25.821] [INFO ] [compat.lyt] Build: block 17/19 'pae1' size 8
+[2026-09-14 20:50:25.822] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000000000000000)
+[2026-09-14 20:50:25.822] [INFO ] [compat.lyt] Build: block 18/19 'grp1' size 28
+[2026-09-14 20:50:25.822] [INFO ] [compat.lyt] Build: 'grp1' root -> creating GroupContainer ...
+[2026-09-14 20:50:25.823] [INFO ] [compat.lyt] Build: GroupContainer created (0000029EA2B92AA0)
+[2026-09-14 20:50:25.823] [INFO ] [compat.lyt] Build: done (root pane 0000029EE965CCA0, group container 0000029EA2B92AA0)
+[2026-09-14 20:50:25.823] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:25.824] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': 1/1 anim transforms created from brlans
+[2026-09-14 20:50:25.824] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': built from '/LayoutData/WiiRemoteStrap.arc' (4 textures/fonts in arc)
+[2026-09-14 20:50:25.824] [INFO ] [compat.layout] LayoutManager 'WiiRemoteStrap': 0 group(s) in the layout (group-bound animations bind normally; the by-name group controller API is not ported yet)
+[2026-09-14 20:50:25.864] [INFO ] [boot] stationed archives: host loader — initAfterStationedResourceLoaded (Font.arc)
+[2026-09-14 20:50:25.897] [INFO ] [compat.font] brfnt converted: 27x33, encoding 1
+[2026-09-14 20:50:25.897] [INFO ] [compat.font] brfnt converted: 32x32, encoding 1
+[2026-09-14 20:50:25.898] [INFO ] [compat.font] brfnt converted: 64x64, encoding 1
+[2026-09-14 20:50:25.898] [INFO ] [compat.font] brfnt converted: 32x32, encoding 1
+[2026-09-14 20:50:25.899] [INFO ] [compat.font] brfnt converted: 27x33, encoding 1
+[2026-09-14 20:50:25.899] [INFO ] [compat.font] picture font installed for the [A]/[B] icons (cell 34x35)
+[2026-09-14 20:50:25.899] [INFO ] [compat.font] picture font: code 0x0030 -> cell (36,1) 34x35 of 128x128, CWDH left=-1 glyph=32 advance=30, icon 28x28 texels, with edge 30x30
+[2026-09-14 20:50:25.900] [INFO ] [compat.font] picture font: code 0x0031 -> cell (71,1) 34x35 of 128x128, CWDH left=-1 glyph=32 advance=30, icon 22x28 texels, with edge 22x28
+[2026-09-14 20:50:25.900] [INFO ] [compat.font] picture font: [A]=real glyph [B]=real glyph
+[2026-09-14 20:50:25.901] [INFO ] [compat.font] Font.arc mounted: message=ok picture=ok menu=ok number=ok cinema=ok
+[2026-09-14 20:50:25.903] [INFO ] [renderer] pipeline cache insert #1 (hash 9460cc6cd76b7098)
+[2026-09-14 20:50:25.905] [INFO ] [compat.layout] LayoutManager::draw: first layout draw (M9.5.3c drawing active)
+[2026-09-14 20:50:25.905] [INFO ] [compat.layout] draw #1: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:25.906] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.906] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.906] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:25.906] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.907] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.907] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.907] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:25.908] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:25.908] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.908] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:25.908] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:25.909] [INFO ] [compat.layout] draw #1: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:25.910] [INFO ] [compat.lyt] screen-covering pane 'PicBG': 608x456 design units widened x1.333 to cover the framebuffer
+[2026-09-14 20:50:25.911] [INFO ] [renderer] pipeline cache insert #2 (hash 13aa06fb08da4317)
+[2026-09-14 20:50:25.914] [INFO ] [renderer] pipeline cache insert #3 (hash 6d067b6e1ae94676)
+[2026-09-14 20:50:25.917] [INFO ] [compat.layout] draw #2: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:25.917] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.917] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.918] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:25.918] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.918] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.919] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.919] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:25.919] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:25.919] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.920] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:25.920] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:25.920] [INFO ] [compat.layout] draw #2: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:25.931] [INFO ] [compat.layout] draw #3: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:25.932] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.932] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.933] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:25.933] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.933] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.933] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.934] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:25.934] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:25.934] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.935] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:25.935] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:25.935] [INFO ] [compat.layout] draw #3: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:25.948] [INFO ] [compat.layout] draw #4: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:25.948] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.949] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.949] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:25.949] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.950] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.950] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.950] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:25.951] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:25.951] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.951] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:25.952] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:25.952] [INFO ] [compat.layout] draw #4: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:25.980] [INFO ] [compat.layout] draw #6: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:25.981] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.981] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.982] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:25.983] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.983] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.983] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.984] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:25.984] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:25.984] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:25.985] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:25.985] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:25.985] [INFO ] [compat.layout] draw #6: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:26.030] [INFO ] [compat.layout] draw #9: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.031] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.031] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.032] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.032] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.032] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.033] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.033] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.033] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.034] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.034] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.035] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.035] [INFO ] [compat.layout] draw #9: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:26.097] [INFO ] [compat.layout] draw #13: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.098] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.098] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.098] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.099] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.099] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.099] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.100] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.100] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.100] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.101] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.101] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.101] [INFO ] [compat.layout] draw #13: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:26.180] [INFO ] [compat.layout] draw #18: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.180] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.181] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.181] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.181] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.181] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.182] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.182] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.182] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.183] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.183] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.183] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.184] [INFO ] [compat.layout] draw #18: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:26.297] [INFO ] [compat.layout] draw #25: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.298] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.298] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.298] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.299] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.299] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.299] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.300] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.300] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.300] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.300] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.301] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.301] [INFO ] [compat.layout] draw #25: anim layer 0 frame 0.00/600 mode=2
+[2026-09-14 20:50:26.465] [INFO ] [compat.layout] draw #35: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.465] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.466] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.466] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.466] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.467] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.467] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.467] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.468] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.468] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.468] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.469] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.470] [INFO ] [compat.layout] draw #35: anim layer 0 frame 3.00/600 mode=2
+[2026-09-14 20:50:26.715] [INFO ] [compat.layout] draw #50: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:26.715] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.715] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.716] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:26.716] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.716] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.717] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.717] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:26.717] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:26.717] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:26.718] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:26.718] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:26.718] [INFO ] [compat.layout] draw #50: anim layer 0 frame 18.00/600 mode=2
+[2026-09-14 20:50:27.049] [INFO ] [compat.layout] draw #70: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:27.049] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.050] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.050] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:27.050] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.051] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.051] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.051] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:27.052] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:27.052] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.053] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:27.053] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:27.054] [INFO ] [compat.layout] draw #70: anim layer 0 frame 38.00/600 mode=2
+[2026-09-14 20:50:27.552] [INFO ] [compat.layout] draw #100: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:27.553] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.555] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.556] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:27.560] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.562] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.564] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.568] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:27.569] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:27.569] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:27.569] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:27.570] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:27.570] [INFO ] [compat.layout] draw #100: anim layer 0 frame 68.00/600 mode=2
+[2026-09-14 20:50:28.300] [INFO ] [compat.layout] draw #140: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:28.300] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.301] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.301] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:28.301] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.302] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.302] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.302] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:28.303] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:28.303] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:28.303] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:28.304] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:28.304] [INFO ] [compat.layout] draw #140: anim layer 0 frame 108.00/600 mode=2
+[2026-09-14 20:50:29.134] [INFO ] [compat.layout] draw #190: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:29.135] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.135] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.136] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:29.136] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.137] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.137] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.137] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:29.138] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:29.138] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:29.139] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:29.139] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:29.139] [INFO ] [compat.layout] draw #190: anim layer 0 frame 158.00/600 mode=2
+[2026-09-14 20:50:30.135] [INFO ] [compat.layout] draw #250: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:30.136] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.136] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.136] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:30.137] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.137] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.137] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.138] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:30.138] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:30.138] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:30.139] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:30.139] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:30.140] [INFO ] [compat.layout] draw #250: anim layer 0 frame 218.00/600 mode=2
+[2026-09-14 20:50:31.081] [INFO ] [gx] EFB probe: 1280x720 nonBlack=921600/921600 avgRGB=(241,244,245) bbox=(0,0)-(1279,719)
+[2026-09-14 20:50:31.081] [INFO ] [gx] EFB probe px center (640,360) = (109,108,109,255)
+[2026-09-14 20:50:31.081] [INFO ] [gx] EFB probe px tl (8,8) = (255,255,255,255)
+[2026-09-14 20:50:31.082] [INFO ] [gx] EFB probe px tr (1271,8) = (255,255,255,255)
+[2026-09-14 20:50:31.082] [INFO ] [gx] EFB probe px bl (8,711) = (255,255,255,255)
+[2026-09-14 20:50:31.083] [INFO ] [gx] EFB probe px br (1271,711) = (255,255,255,255)
+[2026-09-14 20:50:31.083] [INFO ] [gx] EFB probe px upmid (640,180) = (255,255,255,255)
+[2026-09-14 20:50:31.083] [INFO ] [gx] EFB probe px dnmid (640,540) = (255,255,255,255)
+[2026-09-14 20:50:31.206] [INFO ] [compat.layout] draw #300: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:31.208] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.210] [INFO ] [compat.layout] tree   'PicBG' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.211] [INFO ] [compat.layout] tree     mat 'PicBG' tex[0] 8x8 fmt=0 img=0000029E83600DC0 palette=0000000000000000/0
+[2026-09-14 20:50:31.211] [INFO ] [compat.layout] tree   'WiiRemoteStrap' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.217] [INFO ] [compat.layout] tree     'PlayMessage' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.220] [INFO ] [compat.layout] tree       'PicPlay' vis=1 alpha=255/255 glbPos=(1.5,0.0) pos=(2.0,0.0) basePos=4 size=(568x392) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.220] [INFO ] [compat.layout] tree         mat 'PicPlay' tex[0] 568x392 fmt=4 img=0000029E83600E20 palette=0000000000000000/0
+[2026-09-14 20:50:31.220] [INFO ] [compat.layout] tree     'HookMessage' vis=0 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:31.221] [INFO ] [compat.layout] tree       'PicHook' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(106.0,20.0) basePos=4 size=(360x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:31.221] [INFO ] [compat.layout] tree         mat 'PicHook' tex[0] 360x256 fmt=4 img=0000029E8366D9E0 palette=0000000000000000/0
+[2026-09-14 20:50:31.221] [INFO ] [compat.layout] tree         mat 'PicHook' tex[1] 40x40 fmt=0 img=0000029E8369AA20 palette=0000000000000000/0
+[2026-09-14 20:50:31.222] [INFO ] [compat.layout] draw #300: anim layer 0 frame 268.00/600 mode=2
+[2026-09-14 20:50:31.740] [INFO ] [renderer] pipeline cache insert #4 (hash 873f31e2e5fc4fbb)
+[2026-09-14 20:50:34.133] [INFO ] [renderer] present #482: result=-1000001004 hadContent=1 img=1
+[2026-09-14 20:50:34.504] [INFO ] [renderer] swapchain: 1280x720, 3 images, format 44, present 2
+[2026-09-14 20:50:34.505] [WARN ] [boot] beginRender: Renderer::beginFrame FAILED (host frame skipped, 1 so far)
+[2026-09-14 20:50:36.527] [INFO ] [gx] GXCopyDisp #600: efb=1280x720 blit=OK
+[2026-09-14 20:50:36.645] [INFO ] [boot] LogoScene: alive, 600 updates (~10 s)
+[2026-09-14 20:50:46.540] [INFO ] [gx] GXCopyDisp #1200: efb=1280x720 blit=OK
+[2026-09-14 20:50:46.657] [INFO ] [boot] LogoScene: alive, 1200 updates (~20 s)
+[2026-09-14 20:50:47.819] [INFO ] [boot] destroyGameHeap: begin
+[2026-09-14 20:50:47.870] [INFO ] [boot] createFileCacheHeap: request 17040384 (0x1040400), game GDDR free 366476408
+[2026-09-14 20:50:47.871] [INFO ] [boot] createScene('Title')
+[2026-09-14 20:50:47.872] [INFO ] [boot] TitleScene::init: begin
+[2026-09-14 20:50:47.883] [INFO ] [compat.lyt] Build: block 0/39 'lyt1' size 20
+[2026-09-14 20:50:47.883] [INFO ] [compat.lyt] Build: block 1/39 'txl1' size 268
+[2026-09-14 20:50:47.883] [INFO ] [compat.lyt] Build: block 2/39 'mat1' size 1444
+[2026-09-14 20:50:47.884] [INFO ] [compat.lyt] Build: block 3/39 'pan1' size 76
+[2026-09-14 20:50:47.884] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'RootPane' ...
+[2026-09-14 20:50:47.884] [INFO ] [compat.lyt] BuildPaneObj: pane 'RootPane' built (0000029EE965BE60)
+[2026-09-14 20:50:47.884] [INFO ] [compat.lyt] Build: block 4/39 'pas1' size 8
+[2026-09-14 20:50:47.885] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965BE60)
+[2026-09-14 20:50:47.885] [INFO ] [compat.lyt] Build: block 5/39 'pan1' size 76
+[2026-09-14 20:50:47.885] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'SMGTitleLogo' ...
+[2026-09-14 20:50:47.886] [INFO ] [compat.lyt] BuildPaneObj: pane 'SMGTitleLogo' built (0000029EE965C0C0)
+[2026-09-14 20:50:47.886] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965BE60
+[2026-09-14 20:50:47.886] [INFO ] [compat.lyt] Build: block 6/39 'pas1' size 8
+[2026-09-14 20:50:47.887] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE965C0C0)
+[2026-09-14 20:50:47.887] [INFO ] [compat.lyt] Build: block 7/39 'pic1' size 128
+[2026-09-14 20:50:47.887] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicBloomA' ...
+[2026-09-14 20:50:47.888] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8363A300 id 0 ...
+[2026-09-14 20:50:47.888] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E8363A300
+[2026-09-14 20:50:47.889] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (288 x 176, fmt 1)
+[2026-09-14 20:50:47.889] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicBloomA' built (0000029EE951B940)
+[2026-09-14 20:50:47.889] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.889] [INFO ] [compat.lyt] Build: block 8/39 'pic1' size 128
+[2026-09-14 20:50:47.890] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicBloomB' ...
+[2026-09-14 20:50:47.890] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8363A300 id 0 ...
+[2026-09-14 20:50:47.890] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (288 x 176, fmt 1)
+[2026-09-14 20:50:47.891] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicBloomB' built (0000029EE951AEC0)
+[2026-09-14 20:50:47.891] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.891] [INFO ] [compat.lyt] Build: block 9/39 'pic1' size 128
+[2026-09-14 20:50:47.891] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicLogoGalaxy' ...
+[2026-09-14 20:50:47.892] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8364D2C0 id 0 ...
+[2026-09-14 20:50:47.892] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E8364D2C0
+[2026-09-14 20:50:47.892] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (512 x 96, fmt 4)
+[2026-09-14 20:50:47.892] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83648000 id 0 ...
+[2026-09-14 20:50:47.893] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83648000
+[2026-09-14 20:50:47.893] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (440 x 96, fmt 0)
+[2026-09-14 20:50:47.893] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicLogoGalaxy' built (0000029EE951AC20)
+[2026-09-14 20:50:47.894] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.894] [INFO ] [compat.lyt] Build: block 10/39 'pas1' size 8
+[2026-09-14 20:50:47.894] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE951AC20)
+[2026-09-14 20:50:47.894] [INFO ] [compat.lyt] Build: block 11/39 'pic1' size 128
+[2026-09-14 20:50:47.895] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicLogo' ...
+[2026-09-14 20:50:47.895] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E836032C0 id 0 ...
+[2026-09-14 20:50:47.896] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E836032C0
+[2026-09-14 20:50:47.896] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (440 x 256, fmt 5)
+[2026-09-14 20:50:47.896] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicLogo' built (0000029EE951AD70)
+[2026-09-14 20:50:47.896] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AC20
+[2026-09-14 20:50:47.897] [INFO ] [compat.lyt] Build: block 12/39 'pas1' size 8
+[2026-09-14 20:50:47.897] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029EE951AD70)
+[2026-09-14 20:50:47.897] [INFO ] [compat.lyt] Build: block 13/39 'pan1' size 76
+[2026-09-14 20:50:47.898] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition1' ...
+[2026-09-14 20:50:47.898] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition1' built (0000029EE965C450)
+[2026-09-14 20:50:47.898] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.898] [INFO ] [compat.lyt] Build: block 14/39 'pan1' size 76
+[2026-09-14 20:50:47.899] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition2' ...
+[2026-09-14 20:50:47.899] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition2' built (0000029EE965C580)
+[2026-09-14 20:50:47.899] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.900] [INFO ] [compat.lyt] Build: block 15/39 'pan1' size 76
+[2026-09-14 20:50:47.900] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition3' ...
+[2026-09-14 20:50:47.900] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition3' built (0000029EE965C6B0)
+[2026-09-14 20:50:47.900] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.901] [INFO ] [compat.lyt] Build: block 16/39 'pan1' size 76
+[2026-09-14 20:50:47.901] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition4' ...
+[2026-09-14 20:50:47.902] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition4' built (0000029F2E8C6D20)
+[2026-09-14 20:50:47.902] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.902] [INFO ] [compat.lyt] Build: block 17/39 'pan1' size 76
+[2026-09-14 20:50:47.902] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition5' ...
+[2026-09-14 20:50:47.903] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition5' built (0000029F2E8C7900)
+[2026-09-14 20:50:47.903] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.903] [INFO ] [compat.lyt] Build: block 18/39 'pan1' size 76
+[2026-09-14 20:50:47.904] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition6' ...
+[2026-09-14 20:50:47.904] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition6' built (0000029F2E8C8020)
+[2026-09-14 20:50:47.904] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.904] [INFO ] [compat.lyt] Build: block 19/39 'pan1' size 76
+[2026-09-14 20:50:47.905] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'EffPosition7' ...
+[2026-09-14 20:50:47.905] [INFO ] [compat.lyt] BuildPaneObj: pane 'EffPosition7' built (0000029F2E8C6BF0)
+[2026-09-14 20:50:47.905] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AD70
+[2026-09-14 20:50:47.905] [INFO ] [compat.lyt] Build: block 20/39 'pae1' size 8
+[2026-09-14 20:50:47.906] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE951AC20)
+[2026-09-14 20:50:47.906] [INFO ] [compat.lyt] Build: block 21/39 'pic1' size 128
+[2026-09-14 20:50:47.906] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicSpeculum' ...
+[2026-09-14 20:50:47.907] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83665300 id 0 ...
+[2026-09-14 20:50:47.907] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83665300
+[2026-09-14 20:50:47.907] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (176 x 96, fmt 1)
+[2026-09-14 20:50:47.908] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicSpeculum' built (0000029EE951B160)
+[2026-09-14 20:50:47.908] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE951AC20
+[2026-09-14 20:50:47.909] [INFO ] [compat.lyt] Build: block 22/39 'pae1' size 8
+[2026-09-14 20:50:47.909] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965C0C0)
+[2026-09-14 20:50:47.909] [INFO ] [compat.lyt] Build: block 23/39 'pic1' size 128
+[2026-09-14 20:50:47.910] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicLogoShine' ...
+[2026-09-14 20:50:47.911] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E8363A300 id 0 ...
+[2026-09-14 20:50:47.911] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (288 x 176, fmt 1)
+[2026-09-14 20:50:47.912] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicLogoShine' built (0000029EE951B2B0)
+[2026-09-14 20:50:47.912] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.913] [INFO ] [compat.lyt] Build: block 24/39 'pan1' size 76
+[2026-09-14 20:50:47.914] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'TM' ...
+[2026-09-14 20:50:47.915] [INFO ] [compat.lyt] BuildPaneObj: pane 'TM' built (0000029F2E8C7B60)
+[2026-09-14 20:50:47.916] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.916] [INFO ] [compat.lyt] Build: block 25/39 'pas1' size 8
+[2026-09-14 20:50:47.916] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029F2E8C7B60)
+[2026-09-14 20:50:47.917] [INFO ] [compat.lyt] Build: block 26/39 'pic1' size 128
+[2026-09-14 20:50:47.917] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicTM' ...
+[2026-09-14 20:50:47.918] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83647F00 id 0 ...
+[2026-09-14 20:50:47.918] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83647F00
+[2026-09-14 20:50:47.918] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (24 x 16, fmt 0)
+[2026-09-14 20:50:47.919] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicTM' built (0000029EE951B400)
+[2026-09-14 20:50:47.919] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C7B60
+[2026-09-14 20:50:47.919] [INFO ] [compat.lyt] Build: block 27/39 'pic1' size 128
+[2026-09-14 20:50:47.920] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicRJpJa' ...
+[2026-09-14 20:50:47.920] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83647E00 id 0 ...
+[2026-09-14 20:50:47.921] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83647E00
+[2026-09-14 20:50:47.921] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (24 x 16, fmt 0)
+[2026-09-14 20:50:47.922] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicRJpJa' built (0000029F2E8C8630)
+[2026-09-14 20:50:47.922] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C7B60
+[2026-09-14 20:50:47.922] [INFO ] [compat.lyt] Build: block 28/39 'pae1' size 8
+[2026-09-14 20:50:47.923] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965C0C0)
+[2026-09-14 20:50:47.924] [INFO ] [compat.lyt] Build: block 29/39 'pan1' size 76
+[2026-09-14 20:50:47.924] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'SubLogo' ...
+[2026-09-14 20:50:47.924] [INFO ] [compat.lyt] BuildPaneObj: pane 'SubLogo' built (0000029F2E8C7DC0)
+[2026-09-14 20:50:47.925] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.925] [INFO ] [compat.lyt] Build: block 30/39 'pas1' size 8
+[2026-09-14 20:50:47.925] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029F2E8C7DC0)
+[2026-09-14 20:50:47.926] [INFO ] [compat.lyt] Build: block 31/39 'pan1' size 76
+[2026-09-14 20:50:47.926] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'PicTitleLogo' ...
+[2026-09-14 20:50:47.927] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicTitleLogo' built (0000029F2E8C8280)
+[2026-09-14 20:50:47.927] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C7DC0
+[2026-09-14 20:50:47.927] [INFO ] [compat.lyt] Build: block 32/39 'pic1' size 128
+[2026-09-14 20:50:47.928] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicTitleLogoJpJa' ...
+[2026-09-14 20:50:47.928] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83646940 id 0 ...
+[2026-09-14 20:50:47.928] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83646940
+[2026-09-14 20:50:47.928] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (328 x 32, fmt 0)
+[2026-09-14 20:50:47.929] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicTitleLogoJpJa' built (0000029F2E8C90B0)
+[2026-09-14 20:50:47.929] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C7DC0
+[2026-09-14 20:50:47.929] [INFO ] [compat.lyt] Build: block 33/39 'pae1' size 8
+[2026-09-14 20:50:47.930] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965C0C0)
+[2026-09-14 20:50:47.930] [INFO ] [compat.lyt] Build: block 34/39 'pic1' size 128
+[2026-09-14 20:50:47.930] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicNintendo' ...
+[2026-09-14 20:50:47.930] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E836022C0 id 0 ...
+[2026-09-14 20:50:47.931] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E836022C0
+[2026-09-14 20:50:47.931] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (168 x 24, fmt 2)
+[2026-09-14 20:50:47.931] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicNintendo' built (0000029F2E8C95F0)
+[2026-09-14 20:50:47.931] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965C0C0
+[2026-09-14 20:50:47.932] [INFO ] [compat.lyt] Build: block 35/39 'pae1' size 8
+[2026-09-14 20:50:47.932] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029EE965BE60)
+[2026-09-14 20:50:47.932] [INFO ] [compat.lyt] Build: block 36/39 'pic1' size 128
+[2026-09-14 20:50:47.933] [INFO ] [compat.lyt] BuildPaneObj: 'pic1' pane 'PicFlash' ...
+[2026-09-14 20:50:47.933] [INFO ] [compat.lyt] TexMap::ReplaceImage: palette 0000029E83602260 id 0 ...
+[2026-09-14 20:50:47.933] [INFO ] [compat.tpl] TPL converted: 1 descriptor(s) from 0000029E83602260
+[2026-09-14 20:50:47.934] [INFO ] [compat.lyt] TexMap::ReplaceImage: done (8 x 8, fmt 0)
+[2026-09-14 20:50:47.934] [INFO ] [compat.lyt] BuildPaneObj: pane 'PicFlash' built (0000029F2E8C8F60)
+[2026-09-14 20:50:47.934] [INFO ] [compat.lyt] Build: pane attached to parent 0000029EE965BE60
+[2026-09-14 20:50:47.935] [INFO ] [compat.lyt] Build: block 37/39 'pae1' size 8
+[2026-09-14 20:50:47.935] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000000000000000)
+[2026-09-14 20:50:47.935] [INFO ] [compat.lyt] Build: block 38/39 'grp1' size 28
+[2026-09-14 20:50:47.935] [INFO ] [compat.lyt] Build: 'grp1' root -> creating GroupContainer ...
+[2026-09-14 20:50:47.936] [INFO ] [compat.lyt] Build: GroupContainer created (0000029F3CDE7220)
+[2026-09-14 20:50:47.936] [INFO ] [compat.lyt] Build: done (root pane 0000029EE965BE60, group container 0000029F3CDE7220)
+[2026-09-14 20:50:47.936] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.937] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.937] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.938] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.938] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.938] [INFO ] [compat.layout] LayoutManager 'TitleLogo': 5/5 anim transforms created from brlans
+[2026-09-14 20:50:47.938] [INFO ] [compat.layout] LayoutManager 'TitleLogo': built from '/LayoutData/TitleLogo.arc' (10 textures/fonts in arc)
+[2026-09-14 20:50:47.939] [INFO ] [compat.layout] LayoutManager 'TitleLogo': 0 group(s) in the layout (group-bound animations bind normally; the by-name group controller API is not ported yet)
+[2026-09-14 20:50:47.940] [INFO ] [compat.lyt] Build: block 0/15 'lyt1' size 20
+[2026-09-14 20:50:47.940] [INFO ] [compat.lyt] Build: block 1/15 'fnl1' size 40
+[2026-09-14 20:50:47.941] [INFO ] [compat.lyt] Build: block 2/15 'mat1' size 148
+[2026-09-14 20:50:47.941] [INFO ] [compat.lyt] Build: block 3/15 'pan1' size 76
+[2026-09-14 20:50:47.941] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'RootPane' ...
+[2026-09-14 20:50:47.942] [INFO ] [compat.lyt] BuildPaneObj: pane 'RootPane' built (0000029F2E8C7EF0)
+[2026-09-14 20:50:47.942] [INFO ] [compat.lyt] Build: block 4/15 'pas1' size 8
+[2026-09-14 20:50:47.942] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029F2E8C7EF0)
+[2026-09-14 20:50:47.943] [INFO ] [compat.lyt] Build: block 5/15 'pan1' size 76
+[2026-09-14 20:50:47.943] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'PressStart' ...
+[2026-09-14 20:50:47.943] [INFO ] [compat.lyt] BuildPaneObj: pane 'PressStart' built (0000029F2E8C6E50)
+[2026-09-14 20:50:47.944] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C7EF0
+[2026-09-14 20:50:47.944] [INFO ] [compat.lyt] Build: block 6/15 'pas1' size 8
+[2026-09-14 20:50:47.944] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029F2E8C6E50)
+[2026-09-14 20:50:47.945] [INFO ] [compat.lyt] Build: block 7/15 'pan1' size 76
+[2026-09-14 20:50:47.945] [INFO ] [compat.lyt] BuildPaneObj: 'pan1' pane 'PressAB' ...
+[2026-09-14 20:50:47.945] [INFO ] [compat.lyt] BuildPaneObj: pane 'PressAB' built (0000029F2E8C71E0)
+[2026-09-14 20:50:47.946] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C6E50
+[2026-09-14 20:50:47.946] [INFO ] [compat.lyt] Build: block 8/15 'pas1' size 8
+[2026-09-14 20:50:47.946] [INFO ] [compat.lyt] Build: 'pas1' descend (parent 0000029F2E8C71E0)
+[2026-09-14 20:50:47.947] [INFO ] [compat.lyt] Build: block 9/15 'txt1' size 140
+[2026-09-14 20:50:47.947] [INFO ] [compat.lyt] BuildPaneObj: 'txt1' pane 'ShaStart' ...
+[2026-09-14 20:50:47.947] [INFO ] [compat.lyt] BuildPaneObj: pane 'ShaStart' built (0000029EE966AFE0)
+[2026-09-14 20:50:47.948] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C71E0
+[2026-09-14 20:50:47.948] [INFO ] [compat.lyt] Build: block 10/15 'txt1' size 140
+[2026-09-14 20:50:47.948] [INFO ] [compat.lyt] BuildPaneObj: 'txt1' pane 'TxtStart' ...
+[2026-09-14 20:50:47.949] [INFO ] [compat.lyt] BuildPaneObj: pane 'TxtStart' built (0000029EE966C290)
+[2026-09-14 20:50:47.949] [INFO ] [compat.lyt] Build: pane attached to parent 0000029F2E8C71E0
+[2026-09-14 20:50:47.949] [INFO ] [compat.lyt] Build: block 11/15 'pae1' size 8
+[2026-09-14 20:50:47.949] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029F2E8C6E50)
+[2026-09-14 20:50:47.950] [INFO ] [compat.lyt] Build: block 12/15 'pae1' size 8
+[2026-09-14 20:50:47.950] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000029F2E8C7EF0)
+[2026-09-14 20:50:47.950] [INFO ] [compat.lyt] Build: block 13/15 'pae1' size 8
+[2026-09-14 20:50:47.951] [INFO ] [compat.lyt] Build: 'pae1' ascend (parent now 0000000000000000)
+[2026-09-14 20:50:47.951] [INFO ] [compat.lyt] Build: block 14/15 'grp1' size 28
+[2026-09-14 20:50:47.951] [INFO ] [compat.lyt] Build: 'grp1' root -> creating GroupContainer ...
+[2026-09-14 20:50:47.952] [INFO ] [compat.lyt] Build: GroupContainer created (0000029F3CDE6690)
+[2026-09-14 20:50:47.952] [INFO ] [compat.lyt] Build: done (root pane 0000029F2E8C7EF0, group container 0000029F3CDE6690)
+[2026-09-14 20:50:47.952] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.953] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.953] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.953] [INFO ] [compat.lyt] brlan: pat1 present (metadata only; RLTP handled via pai1)
+[2026-09-14 20:50:47.954] [INFO ] [compat.layout] LayoutManager 'PressStart': 4/4 anim transforms created from brlans
+[2026-09-14 20:50:47.954] [INFO ] [compat.layout] LayoutManager 'PressStart': built from '/LayoutData/PressStart.arc' (0 textures/fonts in arc)
+[2026-09-14 20:50:47.954] [INFO ] [compat.layout] LayoutManager 'PressStart': 0 group(s) in the layout (group-bound animations bind normally; the by-name group controller API is not ported yet)
+[2026-09-14 20:50:47.955] [INFO ] [compat.layout] LayoutManager 'PressStart': text box 'ShaStart' font=0000029F29C147D0 len=23 (embedded fallback message)
+[2026-09-14 20:50:47.955] [INFO ] [compat.layout] LayoutManager 'PressStart': text box 'TxtStart' font=0000029F29C147D0 len=23 (embedded fallback message)
+[2026-09-14 20:50:47.955] [INFO ] [boot] TitleScene::init: TitleSequenceProduct created
+[2026-09-14 20:50:47.972] [INFO ] [j3d] bmd loaded: 8 joints, 9 shapes, 9 materials, 12 textures, 9 draw items
+[2026-09-14 20:50:47.972] [INFO ] [j3d] btk attached: 5 entries (5 bound), 10000 frames, loop 2
+[2026-09-14 20:50:47.972] [INFO ] [j3d] bck attached: 8 joints, 3000 frames, loop 2
+[2026-09-14 20:50:47.973] [INFO ] [j3d] TitleSky: '/ObjectData/CometNearOrbitSky.arc' ready (cometnearorbitsky, 1 btk, 1 bck)
+[2026-09-14 20:50:47.973] [INFO ] [j3d] TitleSky model: 1029 verts, 8 joints, 9 shapes, 9 materials, 12 textures, 9 draw items
+[2026-09-14 20:50:47.974] [INFO ] [j3d]   draw 0: material 'CometCoreMat_v_x' shape 0 joint 2 mtxType=0 groups=1 bbox=(-124383,-93551,-710098)-(710803,93551,507839) texGens=1 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=0 cull=2 mode=4 blend=(1,4,5) z=(1,3,0)
+[2026-09-14 20:50:47.974] [INFO ] [j3d]   draw 1: material 'CoreRock' shape 1 joint 3 mtxType=0 groups=1 bbox=(-39808,-38940,-40234)-(39906,35807,40082) texGens=0 tc0=(type=1 src=4 mtx=60) tm0=(valid=0 mode=0 proj=1) tex0=-1 cull=2 mode=1 blend=(0,1,0) z=(1,3,1)
+[2026-09-14 20:50:47.974] [INFO ] [j3d]   draw 2: material 'ACometHalo_v' shape 2 joint 5 mtxType=0 groups=1 bbox=(-67291,-190793,-714151)-(708334,190793,516158) texGens=1 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=1 cull=1 mode=4 blend=(1,1,1) z=(1,3,0)
+[2026-09-14 20:50:47.975] [INFO ] [j3d]   draw 3: material 'CometHalo_v' shape 3 joint 6 mtxType=0 groups=1 bbox=(-285613,-183030,-718696)-(712596,183030,515366) texGens=2 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=2 cull=2 mode=1 blend=(1,1,1) z=(1,3,0)
+[2026-09-14 20:50:47.975] [INFO ] [j3d]   draw 4: material 'EarthFar_v' shape 4 joint 7 mtxType=0 groups=1 bbox=(-780778,-331847,-780778)-(780779,-17190,780778) texGens=3 tc0=(type=0 src=0 mtx=30) tm0=(valid=1 mode=8 proj=0) tex0=9 cull=2 mode=1 blend=(0,1,0) z=(1,3,1)
+[2026-09-14 20:50:47.976] [INFO ] [j3d]   draw 5: material 'EarthNightMat_v' shape 5 joint 7 mtxType=0 groups=1 bbox=(-692620,-331847,-692620)-(692621,-331847,692621) texGens=2 tc0=(type=0 src=0 mtx=30) tm0=(valid=1 mode=8 proj=0) tex0=9 cull=2 mode=1 blend=(0,1,0) z=(1,3,1)
+[2026-09-14 20:50:47.976] [INFO ] [j3d]   draw 6: material 'Sky_Mat_v' shape 8 joint 7 mtxType=0 groups=1 bbox=(-785133,-17190,-785132)-(785133,65341,785133) texGens=1 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=8 cull=2 mode=1 blend=(0,1,0) z=(1,3,1)
+[2026-09-14 20:50:47.976] [INFO ] [j3d]   draw 7: material 'Space_Mat_v' shape 7 joint 7 mtxType=0 groups=1 bbox=(-785012,65341,-785012)-(785013,793869,785013) texGens=3 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=5 cull=2 mode=1 blend=(0,1,0) z=(1,3,0)
+[2026-09-14 20:50:47.977] [INFO ] [j3d]   draw 8: material 'Sun_Mat_v' shape 6 joint 7 mtxType=0 groups=1 bbox=(-183538,-71914,-721513)-(182887,56251,-690543) texGens=1 tc0=(type=1 src=4 mtx=30) tm0=(valid=1 mode=0 proj=1) tex0=4 cull=2 mode=4 blend=(1,4,1) z=(1,3,1)
+[2026-09-14 20:50:47.977] [INFO ] [j3d]   texture 0 'AstroPlanetWall': 128x128 fmt=0x1 wrap=(1,1) mip=0
+[2026-09-14 20:50:47.977] [INFO ] [j3d]   texture 1 'CometHalo': 256x256 fmt=0x0 wrap=(1,1) mip=0
+[2026-09-14 20:50:47.977] [INFO ] [j3d]   texture 2 'IndBendMud': 128x128 fmt=0x1 wrap=(1,1) mip=1
+[2026-09-14 20:50:47.978] [INFO ] [j3d]   texture 3 'IndBendMud': 128x128 fmt=0x1 wrap=(1,1) mip=0
+[2026-09-14 20:50:47.978] [INFO ] [j3d]   texture 4 'PlanetSun': 64x64 fmt=0x1 wrap=(0,0) mip=0
+[2026-09-14 20:50:47.979] [INFO ] [j3d]   texture 5 'OrbitUniverseL': 1024x512 fmt=0x0 wrap=(1,1) mip=0
+[2026-09-14 20:50:47.979] [INFO ] [j3d]   texture 6 'Galaxy': 64x64 fmt=0xe wrap=(1,1) mip=0
+[2026-09-14 20:50:47.979] [INFO ] [j3d]   texture 7 'GalaxyRiverK': 64x64 fmt=0xe wrap=(0,1) mip=0
+[2026-09-14 20:50:47.980] [INFO ] [boot] TitleScene::init: CometNearOrbitSky backdrop ready
+[2026-09-14 20:50:48.037] [INFO ] [game.audio] startStageBGM('STM_TITLE'): prepared '/AudioRes/Stream/SMG_title_strm.ast' (starts on unlockStageBGM)
+[2026-09-14 20:50:48.053] [INFO ] [j3d] TitleSky draw #1: fb=1280.0x720.0 fovy=60.0 aspect=1.7778 angleX=0.0000 angleY=0.0010 step=1
+[2026-09-14 20:50:48.056] [INFO ] [renderer] pipeline cache insert #5 (hash e7c0ba443842a546)
+[2026-09-14 20:50:48.058] [INFO ] [gx] GXLoadTexObj: 128x128 fmt 0x1 mip chain 6 levels, LOD [0.00, 3.00] bias -0.51
+[2026-09-14 20:50:48.062] [INFO ] [renderer] pipeline cache insert #6 (hash c87eb8a32aec3c98)
+[2026-09-14 20:50:48.065] [INFO ] [gx] GXLoadTexObj: 256x256 fmt 0x0 mip chain 7 levels, LOD [0.00, 4.00] bias 1.00
+[2026-09-14 20:50:48.068] [INFO ] [gx] GXLoadTexObj: 256x256 fmt 0xe mip chain 6 levels, LOD [0.00, 3.00] bias 2.00
+[2026-09-14 20:50:48.078] [INFO ] [renderer] pipeline cache insert #7 (hash 886666afe2477c36)
+[2026-09-14 20:50:48.083] [INFO ] [renderer] pipeline cache insert #8 (hash 61c4ff31c1efbd59)
+[2026-09-14 20:50:48.089] [INFO ] [renderer] pipeline cache insert #9 (hash bf145fcfc30a00b5)
+[2026-09-14 20:50:48.103] [INFO ] [game.audio] unlockStageBGM: playing '/AudioRes/Stream/SMG_title_strm.ast'
+[2026-09-14 20:50:48.104] [INFO ] [game.audio] AST '/AudioRes/Stream/SMG_title_strm.ast': 32000 Hz, 2 ch, PCM16, 1421275 samples, loop yes [565526..1421275], 282 blocks
+[2026-09-14 20:50:48.109] [INFO ] [compat.layout] draw #1: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.109] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.110] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,-22.5) pos=(-0.0,-22.5) basePos=4 size=(30x40) scale=(0.25,0.25) anm=1
+[2026-09-14 20:50:48.110] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.2,-6.8) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.110] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.110] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.2,-6.8) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.111] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.111] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,-17.5) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.111] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.111] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.112] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,-6.5) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.112] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.113] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-10.3,12.8) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.113] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(21.0,12.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.113] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-25.5,-4.8) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.114] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(3.2,-4.2) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.114] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-22.9,-27.5) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.114] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(7.1,-26.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.115] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(28.9,-28.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.115] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,-17.5) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.116] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.116] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=254/254 glbPos=(0.0,-6.5) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.116] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.117] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,-22.5) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.117] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(36.8,-37.1) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.117] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.117] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-43.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.118] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(1.7,-43.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.118] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-0.4,-69.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.118] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.118] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.119] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.119] [INFO ] [compat.layout] draw #1: anim layer 0 frame 1.00/201 mode=0
+[2026-09-14 20:50:48.119] [INFO ] [compat.layout] draw #1: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.121] [INFO ] [renderer] pipeline cache insert #10 (hash 52b8f7b6d4282b8f)
+[2026-09-14 20:50:48.134] [INFO ] [compat.lyt] screen-covering pane 'PicFlash': 608x456 design units widened x1.333 to cover the framebuffer
+[2026-09-14 20:50:48.142] [INFO ] [compat.layout] draw #2: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.142] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.142] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,-15.0) pos=(-0.0,-15.0) basePos=4 size=(30x40) scale=(0.50,0.50) anm=1
+[2026-09-14 20:50:48.143] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.4,16.5) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.143] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.143] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.4,16.5) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.143] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.144] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,-5.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.144] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.145] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.145] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,17.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.146] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.146] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-20.6,55.5) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.146] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(42.0,54.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.147] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-51.0,20.5) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.147] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(6.4,21.5) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.147] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-45.8,-25.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.148] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(14.3,-22.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.148] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(57.8,-26.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.149] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,-5.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.149] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.149] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=254/254 glbPos=(0.0,17.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.150] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.150] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,-15.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.150] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(73.7,-44.2) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.150] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.151] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-56.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.151] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(3.4,-56.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.151] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-0.8,-108.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.152] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.152] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.152] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.153] [INFO ] [compat.layout] draw #2: anim layer 0 frame 2.00/201 mode=0
+[2026-09-14 20:50:48.153] [INFO ] [compat.layout] draw #2: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.172] [INFO ] [compat.layout] draw #3: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.172] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.173] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,-7.5) pos=(-0.0,-7.5) basePos=4 size=(30x40) scale=(0.75,0.75) anm=1
+[2026-09-14 20:50:48.173] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.6,39.8) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.173] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.174] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.6,39.8) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.174] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.174] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,7.5) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.174] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.175] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.175] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,40.5) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.175] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.175] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-30.9,98.2) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.176] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(63.0,96.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.176] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-76.5,45.8) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.177] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(9.6,47.2) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.177] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-68.6,-22.5) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.178] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(21.4,-18.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.179] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(86.6,-24.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.179] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,7.5) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.179] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.179] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=253/253 glbPos=(0.0,40.5) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.180] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.180] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,-7.5) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.180] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(110.5,-51.4) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.180] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.181] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-69.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.181] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(5.1,-69.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.181] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.1,-147.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.181] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.182] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.182] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.182] [INFO ] [compat.layout] draw #3: anim layer 0 frame 3.00/201 mode=0
+[2026-09-14 20:50:48.183] [INFO ] [compat.layout] draw #3: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.196] [INFO ] [compat.layout] draw #4: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.196] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.197] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.197] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.197] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.197] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.198] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.198] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.199] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.199] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.199] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.199] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.200] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.200] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.200] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.200] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.201] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.201] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.201] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.202] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.202] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.202] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=251/251 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.202] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.203] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.203] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.203] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.203] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.204] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.204] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.204] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.204] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.205] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.205] [INFO ] [compat.layout] draw #4: anim layer 0 frame 4.00/201 mode=0
+[2026-09-14 20:50:48.205] [INFO ] [compat.layout] draw #4: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.240] [INFO ] [compat.layout] draw #6: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.241] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.241] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.241] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.242] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.242] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.242] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.242] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.243] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.243] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.243] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.243] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.244] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.244] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.244] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.245] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.245] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.245] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.246] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.246] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.246] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.247] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=247/247 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.247] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.247] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.248] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.248] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.248] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.248] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.249] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.249] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.249] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=179/179 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.249] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.250] [INFO ] [compat.layout] draw #6: anim layer 0 frame 6.00/201 mode=0
+[2026-09-14 20:50:48.250] [INFO ] [compat.layout] draw #6: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.308] [INFO ] [compat.layout] draw #9: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.309] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.309] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.310] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.310] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.311] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.311] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.311] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.312] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.312] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.312] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.313] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.313] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.314] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.314] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.314] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.314] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.315] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.315] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.315] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.316] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.316] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=239/239 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.316] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.317] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.317] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.317] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.318] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.318] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.318] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.318] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.319] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=179/179 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.319] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.319] [INFO ] [compat.layout] draw #9: anim layer 0 frame 9.00/201 mode=0
+[2026-09-14 20:50:48.319] [INFO ] [compat.layout] draw #9: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.395] [INFO ] [compat.layout] draw #13: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.396] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.396] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.397] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.397] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.398] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.398] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.398] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.399] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.399] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.399] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.399] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.400] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.400] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.400] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.401] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.401] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.402] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.402] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.402] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.402] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.403] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=224/224 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.403] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.404] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.404] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.404] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.404] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.405] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.405] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.405] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.405] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=178/178 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.406] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.406] [INFO ] [compat.layout] draw #13: anim layer 0 frame 13.00/201 mode=0
+[2026-09-14 20:50:48.406] [INFO ] [compat.layout] draw #13: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.488] [INFO ] [compat.layout] draw #18: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.488] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.488] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.489] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.489] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.489] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.490] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.490] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.490] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.490] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.491] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.491] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.491] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.492] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.492] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.492] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.492] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.493] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.493] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.493] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.494] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.494] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=199/199 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.494] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.494] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.495] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.495] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.495] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.495] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.496] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.496] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.496] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=176/176 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.497] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.497] [INFO ] [compat.layout] draw #18: anim layer 0 frame 18.00/201 mode=0
+[2026-09-14 20:50:48.497] [INFO ] [compat.layout] draw #18: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.605] [INFO ] [compat.layout] draw #25: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.605] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.605] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.606] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.606] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.606] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.607] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.607] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.607] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.608] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.608] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.608] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.608] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.609] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.609] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.609] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.610] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.610] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.610] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.610] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.611] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.611] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=159/159 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.611] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.612] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.612] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.612] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.613] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.613] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.613] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.614] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.614] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=171/171 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.614] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.615] [INFO ] [compat.layout] draw #25: anim layer 0 frame 25.00/201 mode=0
+[2026-09-14 20:50:48.615] [INFO ] [compat.layout] draw #25: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:48.772] [INFO ] [compat.layout] draw #35: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:48.772] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.772] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.773] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.773] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.773] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.774] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.774] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.774] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:48.774] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:48.775] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.775] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:48.775] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.776] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.776] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.776] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.777] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.777] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.777] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.778] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.778] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:48.778] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=95/95 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:48.778] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:48.779] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.779] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:48.779] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:48.780] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.780] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:48.780] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.781] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:48.781] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=162/162 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:48.781] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:48.781] [INFO ] [compat.layout] draw #35: anim layer 0 frame 35.00/201 mode=0
+[2026-09-14 20:50:48.782] [INFO ] [compat.layout] draw #35: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:49.022] [INFO ] [compat.layout] draw #50: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:49.023] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.023] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.023] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.024] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.024] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.024] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.024] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.025] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:49.025] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:49.025] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.026] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:49.026] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.026] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.027] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.027] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.027] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.028] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.028] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.028] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.028] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:49.029] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=18/18 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:49.029] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.029] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.030] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:49.030] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:49.030] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.030] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.031] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.031] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:49.031] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=143/143 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.032] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:49.032] [INFO ] [compat.layout] draw #50: anim layer 0 frame 50.00/201 mode=0
+[2026-09-14 20:50:49.032] [INFO ] [compat.layout] draw #50: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:49.355] [INFO ] [compat.layout] draw #70: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:49.356] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.356] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.356] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.357] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.357] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.357] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.358] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.358] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:49.358] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:49.358] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.359] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:49.359] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.359] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.360] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.360] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.360] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.360] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.360] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.361] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.361] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:49.361] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=0/0 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:49.362] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.362] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.362] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:49.363] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:49.363] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.363] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.364] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.364] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:49.364] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=111/111 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.364] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:49.365] [INFO ] [compat.layout] draw #70: anim layer 0 frame 70.00/201 mode=0
+[2026-09-14 20:50:49.365] [INFO ] [compat.layout] draw #70: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:49.454] [INFO ] [renderer] present #1366: result=-1000001004 hadContent=1 img=0
+[2026-09-14 20:50:49.497] [INFO ] [renderer] swapchain: 1280x720, 3 images, format 44, present 2
+[2026-09-14 20:50:49.497] [WARN ] [boot] beginRender: Renderer::beginFrame FAILED (host frame skipped, 2 so far)
+[2026-09-14 20:50:49.890] [INFO ] [compat.layout] draw #100: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:49.890] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.890] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.891] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.891] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.891] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.891] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.892] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.892] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:49.892] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:49.893] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.893] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:49.893] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.894] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.894] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.894] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.895] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.895] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.896] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.896] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.896] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:49.896] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=0/0 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:49.897] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:49.897] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.897] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:49.898] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:49.898] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=0/0 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.898] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/0 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:49.898] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=0/0 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.899] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:49.899] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=60/60 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:49.899] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:49.899] [INFO ] [compat.layout] draw #100: anim layer 0 frame 100.00/201 mode=0
+[2026-09-14 20:50:49.900] [INFO ] [compat.layout] draw #100: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:50.557] [INFO ] [compat.layout] draw #140: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:50.557] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.558] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.558] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.558] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:50.559] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.559] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:50.559] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.560] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:50.560] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:50.561] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.561] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:50.561] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.562] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.562] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.562] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.562] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.563] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.563] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.563] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.563] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:50.564] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=0/0 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:50.564] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:50.564] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.565] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:50.565] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:50.565] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=255/255 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.566] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/255 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:50.566] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=39/39 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.566] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:50.566] [INFO ] [compat.layout] tree   'PicFlash' vis=1 alpha=8/8 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:50.567] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:50.567] [INFO ] [compat.layout] draw #140: anim layer 0 frame 140.00/201 mode=0
+[2026-09-14 20:50:50.567] [INFO ] [compat.layout] draw #140: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:51.391] [INFO ] [compat.layout] draw #190: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:51.391] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.392] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.392] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.392] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:51.392] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.393] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:51.393] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.393] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:51.394] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:51.394] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.394] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:51.394] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.395] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.395] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.395] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.395] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.396] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.396] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.396] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.396] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:51.397] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=0/0 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:51.397] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:51.397] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.397] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:51.398] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:51.398] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=255/255 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.398] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/255 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:51.398] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=255/255 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.399] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:51.399] [INFO ] [compat.layout] tree   'PicFlash' vis=0 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:51.399] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:51.399] [INFO ] [compat.layout] draw #190: anim layer 0 frame 190.00/201 mode=0
+[2026-09-14 20:50:51.400] [INFO ] [compat.layout] draw #190: anim layer 1 frame 0.00/0 mode=2
+[2026-09-14 20:50:52.049] [INFO ] [compat.layout] draw #1: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.050] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.050] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.050] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=0/0 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.051] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/0 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.051] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/0 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.051] [INFO ] [compat.layout] draw #1: anim layer 0 frame 1.00/31 mode=0
+[2026-09-14 20:50:52.053] [INFO ] [renderer] pipeline cache insert #11 (hash a254cc1d1f1e8ea0)
+[2026-09-14 20:50:52.072] [INFO ] [compat.layout] draw #2: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.072] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.072] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.073] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=3/3 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.073] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/3 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.073] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/3 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.074] [INFO ] [compat.layout] draw #2: anim layer 0 frame 2.00/31 mode=0
+[2026-09-14 20:50:52.087] [INFO ] [compat.layout] draw #3: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.088] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.088] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.088] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=7/7 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.089] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/7 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.089] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/7 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.089] [INFO ] [compat.layout] draw #3: anim layer 0 frame 3.00/31 mode=0
+[2026-09-14 20:50:52.106] [INFO ] [compat.layout] draw #4: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.106] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.107] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.107] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=12/12 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.107] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/12 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.108] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/12 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.108] [INFO ] [compat.layout] draw #4: anim layer 0 frame 4.00/31 mode=0
+[2026-09-14 20:50:52.139] [INFO ] [compat.layout] draw #6: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.140] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.140] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.140] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=26/26 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.141] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/26 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.141] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/26 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.141] [INFO ] [compat.layout] draw #6: anim layer 0 frame 6.00/31 mode=0
+[2026-09-14 20:50:52.187] [INFO ] [compat.layout] draw #9: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.188] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.188] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.188] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=55/55 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.189] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/55 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.189] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/55 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.189] [INFO ] [compat.layout] draw #9: anim layer 0 frame 9.00/31 mode=0
+[2026-09-14 20:50:52.251] [INFO ] [compat.layout] draw #13: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.251] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.251] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.252] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=102/102 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.252] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/102 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.252] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/102 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.252] [INFO ] [compat.layout] draw #13: anim layer 0 frame 13.00/31 mode=0
+[2026-09-14 20:50:52.334] [INFO ] [compat.layout] draw #18: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.334] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.334] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.335] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=165/165 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.335] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/165 glbPos=(2.3,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.335] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/165 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.335] [INFO ] [compat.layout] draw #18: anim layer 0 frame 18.00/31 mode=0
+[2026-09-14 20:50:52.392] [INFO ] [compat.layout] draw #250: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.392] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.392] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.393] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.393] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:52.393] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.8,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.394] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:52.394] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.394] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:52.394] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:52.395] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.395] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:52.395] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.396] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.396] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.396] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.396] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.397] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.397] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.397] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.398] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:52.398] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=0/0 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=0
+[2026-09-14 20:50:52.398] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:52.398] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.399] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/255 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:52.399] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:52.399] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=255/255 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.399] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/255 glbPos=(6.8,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.400] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=255/255 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.400] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:52.400] [INFO ] [compat.layout] tree   'PicFlash' vis=0 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.401] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:52.401] [INFO ] [compat.layout] draw #250: anim layer 0 frame 48.00/10000 mode=2
+[2026-09-14 20:50:52.401] [INFO ] [compat.layout] draw #250: anim layer 1 frame 0.00/81 mode=0
+[2026-09-14 20:50:52.452] [INFO ] [compat.layout] draw #25: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.452] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.453] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.453] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=199/199 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(0.98,1.18) anm=1
+[2026-09-14 20:50:52.454] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/199 glbPos=(2.2,-137.5) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.454] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/199 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.454] [INFO ] [compat.layout] draw #25: anim layer 0 frame 4.00/16 mode=0
+[2026-09-14 20:50:52.617] [INFO ] [compat.layout] draw #35: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.618] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.618] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.618] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=199/199 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.01) anm=1
+[2026-09-14 20:50:52.619] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/199 glbPos=(2.2,-137.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.619] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/199 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.619] [INFO ] [compat.layout] draw #35: anim layer 0 frame 14.00/16 mode=0
+[2026-09-14 20:50:52.868] [INFO ] [compat.layout] draw #50: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:52.868] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.868] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.869] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=255/255 glbPos=(0.0,-133.8) pos=(-0.0,0.2) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:52.869] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/255 glbPos=(2.3,-136.8) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.869] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/255 glbPos=(0.0,-133.8) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:52.870] [INFO ] [compat.layout] draw #50: anim layer 0 frame 13.00/120 mode=2
+[2026-09-14 20:50:53.202] [INFO ] [compat.layout] draw #70: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:53.202] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.202] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.203] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.02) anm=1
+[2026-09-14 20:50:53.203] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/255 glbPos=(2.2,-137.1) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.203] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.203] [INFO ] [compat.layout] draw #70: anim layer 0 frame 1.00/16 mode=0
+[2026-09-14 20:50:53.204] [INFO ] [game.audio] stopStageBGM(75): fading out '/AudioRes/Stream/SMG_title_strm.ast'
+[2026-09-14 20:50:53.204] [INFO ] [game.audio] startSystemSE('SE_SY_GAME_START') — sound effects not ported yet (sequenced JAudio2 driver)
+[2026-09-14 20:50:53.205] [INFO ] [game.audio] startCSSound('CS_CLICK_CLOSE') — sound effects not ported yet (sequenced JAudio2 driver)
+[2026-09-14 20:50:53.226] [INFO ] [compat.layout] draw #300: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:53.227] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.227] [INFO ] [compat.layout] tree   'SMGTitleLogo' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.227] [INFO ] [compat.layout] tree     'PicBloomA' vis=1 alpha=255/255 glbPos=(0.7,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.228] [INFO ] [compat.layout] tree       mat 'PicBloomA' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:53.228] [INFO ] [compat.layout] tree     'PicBloomB' vis=1 alpha=255/255 glbPos=(0.7,63.0) pos=(1.0,63.0) basePos=4 size=(576x352) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.228] [INFO ] [compat.layout] tree       mat 'PicBloomB' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:53.228] [INFO ] [compat.layout] tree     'PicLogoGalaxy' vis=0 alpha=255/255 glbPos=(0.0,20.0) pos=(0.0,20.0) basePos=4 size=(440x96) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.229] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[0] 512x96 fmt=4 img=0000029E8364D300 palette=0000000000000000/0
+[2026-09-14 20:50:53.229] [INFO ] [compat.layout] tree       mat 'PicLogoGalaxy' tex[1] 440x96 fmt=0 img=0000029E83648040 palette=0000000000000000/0
+[2026-09-14 20:50:53.230] [INFO ] [compat.layout] tree       'PicLogo' vis=1 alpha=255/255 glbPos=(0.0,64.0) pos=(-0.0,44.0) basePos=4 size=(440x256) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.230] [INFO ] [compat.layout] tree         mat 'PicLogo' tex[0] 440x256 fmt=5 img=0000029E83603300 palette=0000000000000000/0
+[2026-09-14 20:50:53.230] [INFO ] [compat.layout] tree         'EffPosition1' vis=1 alpha=255/255 glbPos=(-41.3,141.0) pos=(-55.0,77.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.230] [INFO ] [compat.layout] tree         'EffPosition2' vis=1 alpha=255/255 glbPos=(84.0,138.0) pos=(112.0,74.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.231] [INFO ] [compat.layout] tree         'EffPosition3' vis=1 alpha=255/255 glbPos=(-102.0,71.0) pos=(-136.0,7.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.231] [INFO ] [compat.layout] tree         'EffPosition4' vis=1 alpha=255/255 glbPos=(12.8,73.0) pos=(17.0,9.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.231] [INFO ] [compat.layout] tree         'EffPosition5' vis=1 alpha=255/255 glbPos=(-91.5,-20.0) pos=(-122.0,-84.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.231] [INFO ] [compat.layout] tree         'EffPosition6' vis=1 alpha=255/255 glbPos=(28.5,-14.0) pos=(38.0,-78.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.232] [INFO ] [compat.layout] tree         'EffPosition7' vis=1 alpha=255/255 glbPos=(115.5,-22.0) pos=(154.0,-86.0) basePos=4 size=(10x10) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.232] [INFO ] [compat.layout] tree       'PicSpeculum' vis=1 alpha=255/255 glbPos=(0.0,20.0) pos=(-0.0,-0.0) basePos=4 size=(176x96) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.232] [INFO ] [compat.layout] tree         mat 'PicSpeculum' tex[0] 176x96 fmt=1 img=0000029E83665340 palette=0000000000000000/0
+[2026-09-14 20:50:53.233] [INFO ] [compat.layout] tree     'PicLogoShine' vis=1 alpha=254/254 glbPos=(0.0,64.0) pos=(-0.0,64.0) basePos=4 size=(288x176) scale=(2.00,2.00) anm=1
+[2026-09-14 20:50:53.233] [INFO ] [compat.layout] tree       mat 'PicLogoShine' tex[0] 288x176 fmt=1 img=0000029E8363A340 palette=0000000000000000/0
+[2026-09-14 20:50:53.233] [INFO ] [compat.layout] tree     'TM' vis=1 alpha=254/254 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.233] [INFO ] [compat.layout] tree       'PicTM' vis=1 alpha=255/254 glbPos=(147.4,-58.5) pos=(196.5,-58.5) basePos=4 size=(24x16) scale=(0.90,0.90) anm=0
+[2026-09-14 20:50:53.234] [INFO ] [compat.layout] tree         mat 'PicTM' tex[0] 24x16 fmt=0 img=0000029E83647F40 palette=0000000000000000/0
+[2026-09-14 20:50:53.234] [INFO ] [compat.layout] tree     'SubLogo' vis=1 alpha=254/254 glbPos=(0.0,-82.0) pos=(-0.0,-82.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.234] [INFO ] [compat.layout] tree       'PicTitleLogo' vis=1 alpha=255/254 glbPos=(6.7,-82.0) pos=(9.0,0.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.234] [INFO ] [compat.layout] tree     'PicNintendo' vis=1 alpha=254/254 glbPos=(-1.5,-186.0) pos=(-2.0,-186.0) basePos=4 size=(168x24) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.235] [INFO ] [compat.layout] tree       mat 'PicNintendo' tex[0] 168x24 fmt=2 img=0000029E83602300 palette=0000000000000000/0
+[2026-09-14 20:50:53.235] [INFO ] [compat.layout] tree   'PicFlash' vis=0 alpha=0/0 glbPos=(0.0,0.0) pos=(-0.0,-0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=1
+[2026-09-14 20:50:53.235] [INFO ] [compat.layout] tree     mat 'PicFlash' tex[0] 8x8 fmt=0 img=0000029E836022A0 palette=0000000000000000/0
+[2026-09-14 20:50:53.235] [INFO ] [compat.layout] draw #300: anim layer 0 frame 1.00/101 mode=0
+[2026-09-14 20:50:53.236] [INFO ] [compat.layout] draw #300: anim layer 1 frame 0.00/81 mode=0
+[2026-09-14 20:50:53.695] [INFO ] [compat.layout] draw #100: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:53.696] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.696] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.696] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=89/89 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(0.90,0.90) anm=1
+[2026-09-14 20:50:53.697] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/89 glbPos=(2.0,-136.7) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.697] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/89 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:53.697] [INFO ] [compat.layout] draw #100: anim layer 0 frame 29.00/41 mode=0
+[2026-09-14 20:50:54.362] [INFO ] [compat.layout] draw #140: yAxisUp=1 glbAlpha=1.00 viewRect=(-416,228)-(416,-228) fb=1280x720 uiScale=1.579 space=832
+[2026-09-14 20:50:54.363] [INFO ] [compat.layout] tree 'RootPane' vis=1 alpha=255/255 glbPos=(0.0,0.0) pos=(0.0,0.0) basePos=4 size=(608x456) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:54.363] [INFO ] [compat.layout] tree   'PressStart' vis=1 alpha=255/255 glbPos=(0.0,-134.0) pos=(-0.0,-134.0) basePos=4 size=(30x40) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:54.363] [INFO ] [compat.layout] tree     'PressAB' vis=1 alpha=0/0 glbPos=(0.0,-134.0) pos=(-0.0,0.0) basePos=4 size=(30x40) scale=(0.00,0.00) anm=1
+[2026-09-14 20:50:54.364] [INFO ] [compat.layout] tree       'ShaStart' vis=1 alpha=255/0 glbPos=(0.0,-134.0) pos=(3.0,-3.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:54.364] [INFO ] [compat.layout] tree       'TxtStart' vis=1 alpha=255/0 glbPos=(0.0,-134.0) pos=(-0.0,-0.0) basePos=4 size=(552x33) scale=(1.00,1.00) anm=0
+[2026-09-14 20:50:54.364] [INFO ] [compat.layout] draw #140: anim layer 0 frame 41.00/41 mode=0
+[2026-09-14 20:50:54.471] [INFO ] [game.audio] AST '/AudioRes/Stream/SMG_title_strm.ast': stream ended (faded out)
+[2026-09-14 20:50:54.914] [INFO ] [boot] TitleScene: A+B decided (sequence reached Decide/Dead) — the input path works; mounting the FileSelect stand-in over the live sky
+[2026-09-14 20:50:54.921] [INFO ] [j3d] bmd loaded: 1 joints, 1 shapes, 1 materials, 1 textures, 1 draw items
+
+*** CRASH *** EXCEPTION_ACCESS_VIOLATION (0xC0000005)
+  exception addr: 00007FF66923B858
+  fault address : 0x88 (read)
+  thread id     : 15904
+  backtrace     :
+    #00 00007FF66923B858 galaxy-pc.exe!compat::j3d::FileSelectField::loadModel+0x608  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\j3d\FileSelectField.cpp:550)
+    #01 00007FF66923AF05 galaxy-pc.exe!compat::j3d::FileSelectField::init+0x55  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\j3d\FileSelectField.cpp:559)
+    #02 00007FF669229870 galaxy-pc.exe!compat::game::FileSelectHost::init+0x70  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\game\FileSelectHost.cpp:362)
+    #03 00007FF6692122B1 galaxy-pc.exe!TitleScene::exeEnd+0x81  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\Scene\TitleScene.cpp:124)
+    #04 00007FF6691E37CA galaxy-pc.exe!Spine::update+0x1a  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\third_party\petari\src\Game\LiveActor\Spine.cpp:10)
+    #05 00007FF669212858 galaxy-pc.exe!TitleScene::update+0x78  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\Scene\TitleScene.cpp:142)
+    #06 00007FF6691DDF55 galaxy-pc.exe!GameSystemSceneController::updateScene+0x25  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\third_party\petari\src\Game\System\GameSystemSceneController.cpp:220)
+    #07 00007FF6691CF369 galaxy-pc.exe!GameSystem::updateSceneController+0xc9  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\System\GameSystem.cpp:310)
+    #08 00007FF6691CE92E galaxy-pc.exe!GameSystem::exeNormal+0xe  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\System\GameSystem.cpp:200)
+    #09 00007FF6691E37CA galaxy-pc.exe!Spine::update+0x1a  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\third_party\petari\src\Game\LiveActor\Spine.cpp:10)
+    #10 00007FF6691CE991 galaxy-pc.exe!GameSystem::frameLoop+0x31  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\System\GameSystem.cpp:242)
+    #11 00007FF6691CEB6E galaxy-pc.exe!gameMain+0x18e  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\compat\patches\Game\System\GameSystem.cpp:114)
+    #12 00007FF6691592F2 galaxy-pc.exe!main+0x742  (C:\Users\sergi\Downloads\Galaxy\galaxy-pc\src\main.cpp:399)
+    #13 00007FF6694817E0 galaxy-pc.exe!__scrt_common_main_seh+0x10c  (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288)
+    #14 00007FF935A2E957 KERNEL32.DLL!BaseThreadInitThunk+0x17
+    #15 00007FF93774AD6C ntdll.dll!RtlUserThreadStart+0x2c
+*** END CRASH ***

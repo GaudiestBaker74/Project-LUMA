@@ -68,6 +68,10 @@ add_executable(galaxy-pc-tests
     # M9.5.4 v8: compat/j3d — BMD parser, BTK/BCK, host renderer (headless GX
     # capture) and the TitleSky mount path over a synthetic archive.
     j3d_test.cpp
+    # M10/M10.1: the file-select screen — save store, guidance-balloon geometry
+    # against the reference capture, the one-language text table, the planet
+    # layout/camera solved from that capture and the screen's phase machine.
+    fileselect_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)
