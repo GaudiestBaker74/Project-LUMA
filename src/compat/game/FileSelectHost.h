@@ -110,10 +110,15 @@ public:
     /// file-select camera. Call BEFORE the layout pass of the scene.
     void draw3D();
 
-    /// Draws the Wii pointer cursor and the player-1 badge — call AFTER the
-    /// layout pass (2D).
+    /// True while the star pointer is drawn from the game's own DPDPointer
+    /// layout (the P1 StarPointer — the white glove holding the blue star).
+    /// When false (the arc is missing), the scene draws the immediate-mode
+    /// fallback cursor instead.
+    bool pointerLayoutActive() const { return mPointerLayoutOk; }
+
+    /// Fallback pointer (immediate-mode glove + star) — only drawn by the
+    /// scene when pointerLayoutActive() is false. Call AFTER the layout pass.
     void drawCursor() const;
-    void drawPlayerIcon() const;
     /// The StarPointer 1P guidance balloon ("Please choose a file.") under the
     /// planets; also drawn in the 2D pass. Returns false when there is no font
     /// or when the screen is past the select phase.
@@ -132,8 +137,9 @@ public:
     /// Slot chosen with "Play This File" (-1: none yet).
     s32 playingSlot() const { return mPlayingSlot; }
 
-    /// True when the P1 Wii-remote badge has something to sit on (an item is
-    /// pointed at, or one is selected) — the same condition drawPlayerIcon uses.
+    /// True when the P1 marker (the star pointer the console attaches to the
+    /// file a player is working with) has an item to sit on — one is pointed
+    /// at, or one is selected.
     bool playerBadgeVisible() const {
         return (mPhase == FileSelectPhase::Confirm ? mSelectedItem : mPointedItem) >= 0;
     }
@@ -150,6 +156,10 @@ public:
 
 private:
     void updatePointer();
+    /// Positions the game's StarPointer layout (DPDPointer arc) at the pointer
+    /// and shows the target ring over the pointed item — the console's
+    /// StarPointerLayout::setPosition + the FileSelector's target circles.
+    void updatePointerLayout();
     void updateItems();
     void updateSelectPhase();
     void updateConfirmPhase();
@@ -190,8 +200,9 @@ private:
     SimpleLayout* mBack = nullptr;      // BackButton.arc
     SimpleLayout* mBros = nullptr;      // BrosButton.arc (the 2P star)
     SimpleLayout* mBadges[compat::j3d::FileSelectField::kItemNum] = {};  // FileNumber.arc
+    SimpleLayout* mPointer = nullptr;   // DPDPointer.arc: the P1 star pointer (the cursor)
 
-    // Item/badge layout-space reference points, captured at init.
+    // Layout-space reference points, captured at init.
     struct PaneRef {
         f32 layoutX = 0.0f;   // authored box centre, layout units (Y up)
         f32 layoutY = 0.0f;
@@ -200,6 +211,20 @@ private:
         bool valid = false;
     };
     PaneRef mBadgeRefs[compat::j3d::FileSelectField::kItemNum];
+
+    // The star-pointer panes, captured at init (DPDPointer arc): the root the
+    // cursor is translated to the pointer with, the StarPointer tree (the P1
+    // cursor art — nw4r visibility is per pane, so it is toggled, not the
+    // root), the HandPointer tree (gameplay only: stays hidden) and the
+    // target ring (the cyan circle the console puts around the pointed
+    // item's badge).
+    nw4r::lyt::Pane* mPointerRoot = nullptr;
+    PaneRef mPointerRef;                // authored root translate (compensation)
+    nw4r::lyt::Pane* mStarPane = nullptr;
+    nw4r::lyt::Pane* mHandPane = nullptr;
+    nw4r::lyt::Pane* mRingPane = nullptr;
+    PaneRef mRingRef;                   // the ring's ancestors' authored offset
+    bool mPointerLayoutOk = false;      // the arc mounted and has a StarPointer pane
 
     FileSelectPhase mPhase = FileSelectPhase::Appear;
     s32 mPointedItem = -1;

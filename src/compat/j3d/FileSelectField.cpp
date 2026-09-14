@@ -545,12 +545,16 @@ bool FileSelectField::loadModel(const char* arcPath, const char* modelName, std:
     // and is visually identical for the opaque ones.
     renderer->setCullModeOverride(GX_CULL_NONE);
 
+    // Capture the diagnostics BEFORE the move: after `*out = std::move(renderer)`
+    // the local unique_ptr is empty, and logging renderer->model() then reads
+    // through a null pointer (the 0x88 access violation of the crash report).
+    const u32 vertexCount = static_cast< u32 >(renderer->model().vertexCount);
+    const size_t materialCount = renderer->model().materials.size();
+
     *out = std::move(renderer);
 
-    PL_LOG_INFO("fileselect", "FileSelectField: '%s' -> model '%s' (%zu verts, %zu materials, %zu bck)", arcPath,
-                baseName(models[pick].name.c_str()).c_str(),
-                static_cast< unsigned >(renderer->model().vertexCount),
-                renderer->model().materials.size(), bcks.size());
+    PL_LOG_INFO("fileselect", "FileSelectField: '%s' -> model '%s' (%u verts, %zu materials, %zu bck)", arcPath,
+                baseName(models[pick].name.c_str()).c_str(), vertexCount, materialCount, bcks.size());
 
     return true;
 }

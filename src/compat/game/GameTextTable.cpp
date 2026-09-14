@@ -100,8 +100,13 @@ const TextEntry sTable[] = {
      {L"もどる", L"Back", L"Atrás", L"Retour", L"Back", L"Atrás", L"Retour", L"Zurück", L"Indietro", L"Terug", L"返回",
       L"뒤로"}},
 
-    // --- the P2 badge ------------------------------------------------------
-    {"Layout_FileSelect2P", {L"2P", L"2P", L"2J", L"2J", L"2P", L"2J", L"2J", L"2S", L"2G", L"2P", L"2P", L"2P"}},
+    // --- the 2P star badge ---------------------------------------------------
+    // The yellow star next to "Play This File" reads "P2" in EVERY language
+    // (the reference captures — English and Japanese alike — show the same
+    // "P2", which is a player number, not a translatable word).
+    {"Layout_FileSelect2P", {L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2"}},
+    {"Layout_BrosButtonTxt2P", {L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2"}},
+    {"Layout_BrosButton2P", {L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2", L"P2"}},
 
     // --- the file-select info bar (FileInfo.arc) ---------------------------
     // The name of a file that has no icon yet (a "new" slot).

@@ -133,17 +133,13 @@ nw4r::lyt::TextBox* firstTextBoxUnder(nw4r::lyt::Pane* pPane) {
     return nullptr;
 }
 
-// --- the pointer cursor -----------------------------------------------------
+// --- the pointer cursor (fallback) -------------------------------------------
 //
-// The SMG menus draw the star pointer as a gloved hand holding a blue star
-// (the three reference captures show it moving over the planets). The art lives
-// in the StarPointer layout arc, which the port does not mount yet, so the
-// cursor is drawn here with the compat GX immediate path — the same approach
-// the M10 stand-in used for its disc, now with the real shape:
-//   * a white mitten (palm + pointing finger + cuff) with a blue rim,
-//   * a five-point star in the palm (blue fill, white outline),
-//   * and, attached to the pointed item, the PLAYER-1 Wii remote icon — the
-//     blue disc with the "1" that marks the player on the console.
+// The pointer is the game's own StarPointer: the "StarPointer" pane of the
+// DPDPointer layout arc (the white glove holding the blue star — the P1 cursor
+// of the reference captures), mounted and positioned by updatePointerLayout.
+// The immediate-mode glove below is only drawn when that arc cannot be mounted
+// (it keeps the screen usable on a partial dump).
 void drawQuad(f32 x, f32 y, f32 w, f32 h, u8 r, u8 g, u8 b, u8 a) {
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     GXPosition2f32(x, y);
@@ -184,31 +180,6 @@ void drawDisc(f32 cx, f32 cy, f32 radius, u8 r, u8 g, u8 b, u8 a) {
         GXColor4u8(r, g, b, a);
     }
     GXEnd();
-}
-
-void drawRing(f32 cx, f32 cy, f32 outer, f32 inner, u8 r, u8 g, u8 b, u8 a) {
-    constexpr int kSeg = 24;
-    GXBegin(GX_TRIANGLESTRIP, GX_VTXFMT0, (kSeg + 1) * 2);
-
-    for (int i = 0; i <= kSeg; ++i) {
-        const f32 ang = static_cast< f32 >(i) * (2.0f * 3.14159265f / static_cast< f32 >(kSeg));
-        const f32 s = std::sin(ang);
-        const f32 c = std::cos(ang);
-        GXPosition2f32(cx + s * inner, cy + c * inner);
-        GXColor4u8(r, g, b, a);
-        GXPosition2f32(cx + s * outer, cy + c * outer);
-        GXColor4u8(r, g, b, a);
-    }
-    GXEnd();
-}
-
-/// The "1" of the player badge: the same stick shape the console's pointer icon
-/// shows, built from two quads.
-void drawDigitOne(f32 cx, f32 cy, f32 h) {
-    const f32 w = h * 0.34f;
-    drawQuad(cx - w * 0.5f, cy - h * 0.5f, w, h, 255, 255, 255, 255);
-    drawQuad(cx - w * 1.1f, cy + h * 0.32f, w * 0.75f, h * 0.22f, 255, 255, 255, 255);
-    drawQuad(cx - w * 0.85f, cy + h * 0.32f, w * 0.85f, h * 0.2f, 255, 255, 255, 255);
 }
 
 }  // namespace
@@ -383,6 +354,16 @@ void FileSelectHost::init() {
     mBros = new SimpleLayout("FileSelectBros", "BrosButton", 1, -1);
     mBros->appear();
 
+    // The star badge reads "P2" in every language (the reference capture shows
+    // it unchanged next to "Play This File"); whatever the brlyt baked in (or
+    // the language of the pane that survived removeUnnecessaryPanes), force the
+    // one wording the screen shows on the console.
+    if (nw4r::lyt::Pane* pBrosRoot = findPane(mBros, "RootPane")) {
+        if (nw4r::lyt::TextBox* pBrosText = firstTextBoxUnder(pBrosRoot)) {
+            setText(pBrosText, L"P2");
+        }
+    }
+
     for (s32 i = 0; i < kSlotCount; ++i) {
         mBadges[i] = new SimpleLayout("FileSelectNumber", "FileNumber", 2, -1);
         mBadges[i]->appear();
@@ -411,6 +392,83 @@ void FileSelectHost::init() {
         }
     }
 
+    // --- the star pointer (the P1 cursor) — the game's own art ---------------
+    // On the console the FileSelector's pointer is the StarPointer actor:
+    // changeToStarPointer() shows the "StarPointer" pane of the DPDPointer
+    // layout arc (the white glove holding the blue star) and
+    // setPosition() translates it to the Wiimote pointer every frame. The
+    // port mounts that same arc and the same panes, so the cursor is game art
+    // only. It is created LAST among the screen's layouts, which makes the
+    // layout pass draw it over everything (the console's pointer is on top
+    // too). When the arc is unavailable the screen falls back to the
+    // immediate-mode glove in drawCursor().
+    mPointer = new SimpleLayout("FileSelectStarPointer", "DPDPointer", 1, -1);
+    mPointer->appear();
+
+    LayoutManager* pPointerManager = mPointer->getLayoutManager();
+
+    if (pPointerManager != nullptr && pPointerManager->mLayout != nullptr &&
+        pPointerManager->mLayout->mpRootPane != nullptr) {
+        mPointerRoot = pPointerManager->mLayout->mpRootPane;
+
+        f32 ax = 0.0f;
+        f32 ay = 0.0f;
+        paneAuthoredTranslate(mPointerRoot, &ax, &ay);
+        mPointerRef.layoutX = ax;
+        mPointerRef.layoutY = ay;
+        mPointerRef.valid = true;
+
+        // StarPointerLayout::changeToStarPointer: the StarPointer tree is the
+        // cursor, the HandPointer tree (the gameplay hand, with the player
+        // number pictures) is hidden. nw4r's visibility is per pane (a child
+        // draws even when its parent is off), so both trees are toggled as
+        // trees — the StarPointer one starts off until the pointer is live
+        // (updatePointerLayout turns it on).
+        bool starPane = false;
+
+        if (nw4r::lyt::Pane* pStar = findPaneRecursive(mPointerRoot, "StarPointer")) {
+            mStarPane = pStar;
+            setPaneTreeVisible(pStar, false);
+            starPane = true;
+        }
+
+        if (nw4r::lyt::Pane* pHand = findPaneRecursive(mPointerRoot, "HandPointer")) {
+            mHandPane = pHand;
+            setPaneTreeVisible(pHand, false);
+        }
+
+        // The target ring: the cyan circle the console puts around the pointed
+        // item's badge (StarPointerUtil::addStarPointerTargetCircle drives the
+        // layout's GroupRing group). Positioned per frame in
+        // updatePointerLayout; hidden until something is pointed.
+        mRingPane = findPaneRecursive(mPointerRoot, "GroupRing");
+
+        if (mRingPane == nullptr) {
+            mRingPane = findPaneRecursive(mPointerRoot, "Ring");
+        }
+
+        if (mRingPane != nullptr) {
+            // The compensation is the ring's ANCESTORS' offset (its own local
+            // translate is what we write every frame, relative to the parent).
+            f32 fullX = 0.0f;
+            f32 fullY = 0.0f;
+            paneAuthoredTranslate(mRingPane, &fullX, &fullY);
+            mRingRef.layoutX = fullX - mRingPane->mTranslate.x;
+            mRingRef.layoutY = fullY - mRingPane->mTranslate.y;
+            mRingRef.valid = true;
+            setPaneTreeVisible(mRingPane, false);
+        }
+
+        mPointerLayoutOk = starPane;
+        mPointerRoot->SetVisible(false);  // appears once the pointer is live
+
+        if (!starPane) {
+            PL_LOG_WARN("fileselect", "DPDPointer layout has no 'StarPointer' pane — using the drawn fallback cursor");
+        }
+    } else {
+        PL_LOG_WARN("fileselect", "DPDPointer layout did not mount — using the drawn fallback cursor");
+    }
+
     // --- the operation buttons start hidden ---------------------------------
     // On the console they belong to FileSelectButton, which appears only once a
     // file is selected (FileSelector::onSelect -> FileConfirmStart). The M10
@@ -435,7 +493,9 @@ void FileSelectHost::init() {
 
     PL_LOG_INFO("fileselect",
                 "file-select screen mounted: FileSelect/FileInfo/BackButton/BrosButton/FileNumber arcs + "
-                "3D field (%s)", mField->loaded() ? "models loaded" : "no planet models");
+                "3D field (%s) + star pointer (%s)",
+                mField->loaded() ? "models loaded" : "no planet models",
+                mPointerLayoutOk ? "DPDPointer layout (game art)" : "drawn fallback");
 
     // The console starts the FileSelect BGM when the items appear
     // (FileSelector::exeTitleEnd). Without the MBGM label mapping this call used
@@ -453,6 +513,7 @@ bool FileSelectHost::update() {
     mAppearTimer += 1.0f / 60.0f;
 
     updatePointer();
+    updatePointerLayout();
     updateCamera();
     updateItems();
 
@@ -545,6 +606,89 @@ void FileSelectHost::updatePointer() {
     }
 }
 
+void FileSelectHost::updatePointerLayout() {
+    if (!mPointerLayoutOk || mPointerRoot == nullptr) {
+        return;
+    }
+
+    f32 fbWidth = 0.0f;
+    f32 fbHeight = 0.0f;
+    compat::ui::framebufferSize(&fbWidth, &fbHeight);
+
+    if (fbWidth <= 0.0f || fbHeight <= 0.0f) {
+        return;
+    }
+
+    // The cursor follows the pointer (StarPointerLayout::setPosition ->
+    // setTrans: the root pane is translated to the pointer's layout position).
+    // The StarPointer tree itself is what makes the cursor visible (nw4r: a
+    // child draws even when its parent is off, so the tree is toggled).
+    mPointerRoot->SetVisible(mHavePointer);
+
+    if (mStarPane != nullptr) {
+        setPaneTreeVisible(mStarPane, mHavePointer);
+    }
+
+    if (mHandPane != nullptr) {
+        setPaneTreeVisible(mHandPane, false);
+    }
+
+    if (!mHavePointer) {
+        if (mRingPane != nullptr) {
+            setPaneTreeVisible(mRingPane, false);
+        }
+
+        return;
+    }
+
+    const f32 scale = compat::ui::uiScale(fbWidth, fbHeight);
+    const f32 wantX = (mPointerX - fbWidth * 0.5f) / scale;
+    const f32 wantY = (fbHeight * 0.5f - mPointerY) / scale;
+
+    // Exactly what the console does (LayoutActor::setTrans): the root pane's
+    // translate is REPLACED by the pointer's layout position — the brlyt is
+    // authored with the hot spot at the root's local origin, so no
+    // compensation.
+    mPointerRoot->mTranslate.x = wantX;
+    mPointerRoot->mTranslate.y = wantY;
+    mPointerRoot->mTranslate.z = 0.0f;
+
+    // The target ring over the pointed item (reference capture 2: the cyan
+    // circle around the pointed badge). Hidden while nothing is pointed and
+    // in the confirm state (capture 3 has no ring — the items are pushed away).
+    if (mRingPane == nullptr) {
+        return;
+    }
+
+    const bool ringUp = (mPhase == FileSelectPhase::Select) && (mPointedItem >= 0) && (mField != nullptr);
+
+    if (!ringUp) {
+        setPaneTreeVisible(mRingPane, false);
+        return;
+    }
+
+    f32 bx = 0.0f;
+    f32 by = 0.0f;
+    f32 bz = 0.0f;
+    compat::j3d::FileSelectField::calcBadgeWorldPos(mPointedItem, mField->zShift(), &bx, &by, &bz);
+
+    const compat::j3d::FileSelectItemScreen screen =
+        compat::j3d::FileSelectField::project(mCamera, bx, by, bz, fbWidth, fbHeight);
+
+    if (!screen.visible) {
+        setPaneTreeVisible(mRingPane, false);
+        return;
+    }
+
+    const f32 ringX = (screen.x - fbWidth * 0.5f) / scale;
+    const f32 ringY = (fbHeight * 0.5f - screen.y) / scale;
+
+    mRingPane->mTranslate.x = ringX - mRingRef.layoutX;
+    mRingPane->mTranslate.y = ringY - mRingRef.layoutY;
+    mRingPane->mTranslate.z = 0.0f;
+    setPaneTreeVisible(mRingPane, true);
+}
+
 void FileSelectHost::updateItems() {
     if (!mField) {
         return;
@@ -605,12 +749,15 @@ void FileSelectHost::updateCamera() {
         return;
     }
 
-    // FileSelectCameraController::exeMoveTo*Point: 60 frames, squared time.
-    const f32 t = static_cast< f32 >(mMoveStep) / 60.0f;
+    // The move runs over the 45 frames the items take to appear (0.75 s), with
+    // the console's squared-time easing: the far point (the reference view) is
+    // exactly in place when the Appear phase ends and the screen becomes
+    // selectable.
+    const f32 t = static_cast< f32 >(mMoveStep) / 45.0f;
     mCamera = compat::j3d::FileSelectField::blendCamera(mMoveFrom, mMoveTo, t);
     ++mMoveStep;
 
-    if (mMoveStep > 60) {
+    if (mMoveStep > 45) {
         mCamera = mMoveTo;
         mMoveStep = -1;
     }
@@ -969,82 +1116,6 @@ bool FileSelectHost::drawGuidance() const {
         gameTextOr("System_FileSelect008", L"Please choose a file."));
 }
 
-void FileSelectHost::drawPlayerIcon() const {
-    // The PLAYER 1 Wii remote icon: what the console attaches to the item the
-    // first player is pointing at (the blue disc with the "1" over the file's
-    // character in the reference captures). It replaces the M10 stand-in's
-    // anonymous orange disc, which read as "nothing to do with the Wiimote".
-    s32 item = (mPhase == FileSelectPhase::Confirm) ? mSelectedItem : mPointedItem;
-
-    if (item < 0) {
-        return;
-    }
-
-    f32 fbWidth = 0.0f;
-    f32 fbHeight = 0.0f;
-    compat::ui::framebufferSize(&fbWidth, &fbHeight);
-
-    if (fbWidth <= 0.0f || fbHeight <= 0.0f || mField == nullptr) {
-        return;
-    }
-
-    // Anchor it over the item's badge (where the reference shows the "1").
-    f32 bx = 0.0f;
-    f32 by = 0.0f;
-    f32 bz = 0.0f;
-    compat::j3d::FileSelectField::calcBadgeWorldPos(item, mField->zShift(), &bx, &by, &bz);
-
-    const compat::j3d::FileSelectItemScreen screen =
-        compat::j3d::FileSelectField::project(mCamera, bx, by, bz, fbWidth, fbHeight);
-
-    if (!screen.visible) {
-        return;
-    }
-
-    // Wii remote icon: a rounded white body with the blue player disc. Drawn in
-    // the 2D pass, so it is independent of the 3D state the layout set.
-    GXClearVtxDesc();
-    GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
-    GXSetVtxDesc(GX_VA_CLR0, GX_DIRECT);
-    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_F32, 0);
-    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
-
-    Mtx mtxImm;
-    PSMTXIdentity(mtxImm);
-    GXLoadPosMtxImm(mtxImm, GX_PNMTX0);
-    GXSetCurrentMtx(GX_PNMTX0);
-
-    Mtx44 projMtx;
-    C_MTXOrtho(projMtx, 0.0f, fbHeight, 0.0f, fbWidth, -1.0f, 1.0f);
-    GXSetProjection(projMtx, GX_ORTHOGRAPHIC);
-
-    GXSetNumChans(1);
-    GXSetChanCtrl(GX_COLOR0A0, GX_FALSE, GX_SRC_VTX, GX_SRC_VTX, GX_LIGHT_NULL, GX_DF_NONE, GX_AF_NONE);
-    GXSetNumTexGens(0);
-    GXSetNumTevStages(1);
-    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
-    GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
-    GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
-    GXSetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_SET);
-    GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
-    GXSetCullMode(GX_CULL_NONE);
-
-    const f32 unit = fbHeight * 0.0018f;
-    const f32 cx = screen.x;
-    const f32 cy = screen.y;
-
-    // The remote body (pointing up-left, like the icon of the player badge).
-    drawQuad(cx - 2.2f * unit, cy - 7.0f * unit, 4.4f * unit, 14.0f * unit, 246, 248, 252, 255);
-    drawQuad(cx - 1.6f * unit, cy + 4.4f * unit, 3.2f * unit, 2.6f * unit, 60, 66, 84, 255);  // IR window
-    drawQuad(cx - 1.8f * unit, cy - 2.2f * unit, 3.6f * unit, 1.6f * unit, 208, 214, 226, 255);  // speaker holes
-    drawQuad(cx - 1.8f * unit, cy - 5.6f * unit, 3.6f * unit, 1.2f * unit, 208, 214, 226, 255);  // 1 button
-
-    // The blue player disc with the "1".
-    drawDisc(cx, cy + 9.0f * unit, 3.0f * unit, 28, 92, 200, 255);
-    drawRing(cx, cy + 9.0f * unit, 3.0f * unit, 2.4f * unit, 180, 226, 255, 255);
-    drawDigitOne(cx, cy + 9.0f * unit, 3.0f * unit);
-}
-
 // -----------------------------------------------------------------------------
 // Pane helpers
 // -----------------------------------------------------------------------------
@@ -1174,17 +1245,23 @@ s32 FileSelectHost::itemUnderPointer(f32 px, f32 py) const {
         return -1;
     }
 
+    // The console's pointing volume (FileSelectItem::initStarPointerTarget):
+    // Target(this, 1000.0f, TVec3f(0, 900, 0)) — a cylinder of radius 1000
+    // world units centred 900 above the item's centre. project() hands out
+    // exactly that radius in screen pixels (radiusPx = 1000 * pxPerUnit), so
+    // the hit test is the cylinder's cross-section at the item's depth.
     s32 best = -1;
     f32 bestDepth = 1e30f;
 
     for (s32 i = 0; i < kSlotCount; ++i) {
-        f32 bx = 0.0f;
-        f32 by = 0.0f;
-        f32 bz = 0.0f;
-        compat::j3d::FileSelectField::calcBadgeWorldPos(i, mField->zShift(), &bx, &by, &bz);
+        f32 x = 0.0f;
+        f32 y = 0.0f;
+        f32 z = 0.0f;
+        compat::j3d::FileSelectField::calcItemWorldPos(i, mField->zShift(), &x, &y, &z);
+        y += 900.0f;
 
         const compat::j3d::FileSelectItemScreen screen =
-            compat::j3d::FileSelectField::project(mCamera, bx, by, bz, fbWidth, fbHeight);
+            compat::j3d::FileSelectField::project(mCamera, x, y, z, fbWidth, fbHeight);
 
         if (!screen.visible) {
             continue;
@@ -1192,7 +1269,7 @@ s32 FileSelectHost::itemUnderPointer(f32 px, f32 py) const {
 
         const f32 dx = px - screen.x;
         const f32 dy = py - screen.y;
-        const f32 radius = screen.radiusPx * 0.75f;  // the cylinder, a touch tighter than its bbox
+        const f32 radius = screen.radiusPx;
 
         if (dx * dx + dy * dy <= radius * radius && screen.depth < bestDepth) {
             best = i;

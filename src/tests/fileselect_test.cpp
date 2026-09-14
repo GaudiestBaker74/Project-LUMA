@@ -278,6 +278,24 @@ TEST_CASE(fileselect_pane_suffix_resolves_to_the_same_message) {
     compat::setLanguage("UsEnglish");
 }
 
+TEST_CASE(fileselect_2p_badge_reads_p2_in_every_language) {
+    // The yellow star badge next to "Play This File" shows the player NUMBER,
+    // which is not a translatable word: the reference captures (English and
+    // Japanese) both read "P2". Pin it for every disc language so a future
+    // table edit cannot turn it into "2J"/"2P"/... in some locales.
+    const char* const folders[] = {"JpJapanese", "UsEnglish", "UsSpanish", "UsFrench", "EuEnglish", "EuSpanish",
+                                   "EuFrench", "EuGerman", "EuItalian", "EuDutch", "CnSimpChinese", "KrKorean"};
+
+    for (const char* folder : folders) {
+        REQUIRE(compat::setLanguage(folder));
+        const wchar_t* p2 = compat::game::gameTextForMessageId("Layout_FileSelect2P");
+        REQUIRE(p2 != nullptr);
+        CHECK(std::wcscmp(p2, L"P2") == 0);
+    }
+
+    compat::setLanguage("UsEnglish");
+}
+
 // -----------------------------------------------------------------------------
 // 4. The 3D field and the camera
 // -----------------------------------------------------------------------------
@@ -396,12 +414,13 @@ TEST_CASE(fileselect_camera_states_are_the_controller_constants) {
     //   (-101.1, -4.1) / (100.6, -5.3)   <- items 1 and 2
     // and the table in FileSelectField.cpp was solved from exactly that, so the
     // projection has to come back to it (1 design unit = 2.37 px = ~2 px of
-    // slack here).
+    // slack here). The X offsets are measured from the HORIZONTAL centre (960)
+    // and the Y offsets from the VERTICAL one (540).
     const f32 designPerPixel = 456.0f / 1080.0f;
     CHECK(nearlyEqual((left.x - 960.0f) * designPerPixel, -101.1f, 3.0f));
-    CHECK(nearlyEqual((960.0f - left.y) * designPerPixel, -4.1f, 3.0f));
+    CHECK(nearlyEqual((540.0f - left.y) * designPerPixel, -4.1f, 3.0f));
     CHECK(nearlyEqual((right.x - 960.0f) * designPerPixel, 100.6f, 3.0f));
-    CHECK(nearlyEqual((960.0f - right.y) * designPerPixel, -5.3f, 3.0f));
+    CHECK(nearlyEqual((540.0f - right.y) * designPerPixel, -5.3f, 3.0f));
 
     // Item 5 (the pair furthest up the V) has to project ABOVE item 1.
     FileSelectField::calcBadgeWorldPos(4, 0.0f, &badgeX, &badgeY, &badgeZ);

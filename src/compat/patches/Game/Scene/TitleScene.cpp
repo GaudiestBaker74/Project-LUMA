@@ -411,12 +411,15 @@ void TitleScene::draw() const {
         MR::drawInitFor2DModel();
         CategoryList::execute(MR::DrawType_Layout);
         if (mFileHost != nullptr) {
-            // The guidance balloon ("Please choose a file."), the P1 Wii-remote
-            // badge over the pointed item and the pointer itself (the glove +
-            // star of StarPointer) — all in this 2D pass.
+            // The guidance balloon ("Please choose a file.") in this 2D pass.
+            // The pointer itself is the game's StarPointer layout (drawn in
+            // the layout pass, on top of everything); the immediate-mode glove
+            // only appears when that arc could not be mounted.
             mFileHost->drawGuidance();
-            mFileHost->drawPlayerIcon();
-            mFileHost->drawCursor();
+
+            if (!mFileHost->pointerLayoutActive()) {
+                mFileHost->drawCursor();
+            }
         }
     }
 }

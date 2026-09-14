@@ -42,6 +42,8 @@ cursor de disco naranja).
 | Planetas y cabezas | `ObjectData/FileSelectDataPlanet.arc` + `FileSelectData{Mario,Luigi,Yoshi,Kinopio,Peach}.arc` | `compat/j3d/FileSelectField` (parser BMD + renderer J3D del port), escala 30 |
 | Cielo | `CometNearOrbitSky` | el `FileSelectSky` real; ya lo dibujaba el title (`compat/j3d/TitleSky`) |
 | Barra "Please choose a file." | **no es un pane** | es la guía 1P del StarPointer: `StarPointerUtil.cpp:912` `request1PGuidance("System_FileSelect008")` → `compat/ui/GuidanceBanner` |
+| Cursor (puntero) | `DPDPointer.arc` → pane `StarPointer` | el propio StarPointer de consola: `StarPointerLayout::changeToStarPointer` muestra el árbol `StarPointer` (guante blanco con estrella azul, el puntero de P1) y oculta `HandPointer`; `setPosition` lo traslada al puntero cada frame. Es el último layout creado, así que el pase de layouts lo dibuja encima de todo. Si el arc no monta, queda un guante immediate-mode de respaldo (`drawCursor`) |
+| Anillo de objetivo | `DPDPointer.arc` → grupo `GroupRing` | el círculo cian que la consola pone sobre el ítem apuntado (`StarPointerUtil::addStarPointerTargetCircle`); `updatePointerLayout` lo posiciona en la proyección de la insignia del ítem |
 | Texto | `compat/game/GameTextTable` | los ids reales (`Layout_<layout><pane>` sin sufijo de idioma) |
 
 ## 3. La geometría, medida de la captura
@@ -77,7 +79,7 @@ localizada más larga la ensancha simétricamente, como la ventana de consola.
 
 | Fase | Nerve de consola | Contenido |
 |---|---|---|
-| `Appear` | `TitleEnd` | los ítems entran (75 frames) mientras la cámara vuela del punto *title* (fovy 60) al *far* (fovy 40) en 60 frames con tiempo al cuadrado; arranca `MBGM_FILE_SELECT` |
+| `Appear` | `TitleEnd` | los ítems entran (45 frames = 0.75 s) mientras la cámara vuela del punto *title* (fovy 60) al *far* (fovy 40) en esos mismos 45 frames con tiempo al cuadrado — la vista *far* de la captura queda exactamente a punto cuando la pantalla pasa a `Select`; arranca `MBGM_FILE_SELECT` |
 | `Select` | `FileSelect` | puntero sobre un ítem: escala a 1.2 (`ScaleController`), la cámara se va al punto *near* del ítem, la barra de archivo entra con sus datos y la guía sigue visible |
 | `Confirm` | `FileConfirm`/`CreateConfirm` | al decidir: `calcBasePos(-16000)` empuja el abanico, la cámara sigue al ítem elegido y aparecen los botones; Copy/Icon/Erase tienen efecto (Copy al primer hueco libre, Erase borra el slot), B/Back vuelve |
 | `Playing` | `DemoStartWait` | "Play This File": se crea/actualiza el slot, `SE_SY_FILE_SELECTED` + `stopStageBGM(90)` y el port avisa de que la GameScene aún no está (M10.2) |
@@ -93,9 +95,18 @@ veía el clic. Los botones de la fase `Confirm` se prueban contra el rectángulo
 de su pane en píxeles (`paneContains`), incluyendo sus hijos-texto, de modo que
 el clic vale sobre el icono o sobre la palabra.
 
-El cursor es el del StarPointer (guante + estrella azul) y sobre el ítem
-apuntado va el chivato de jugador **P1**: el mando con el disco azul y el "1",
-no el disco naranja del stand-in M10.
+El cursor es el **StarPointer del propio juego**: el port monta el layout
+`DPDPointer` (el mismo arc que usa el `StarPointerLayout` de consola) y muestra
+el pane `StarPointer` — el guante blanco con la estrella azul, que es el
+puntero del jugador 1. Se posiciona cada frame con la misma regla de
+`StarPointerLayout::setPosition` (el root pane se traduce a la posición del
+puntero en espacio de layout) y se dibuja en el pase de layouts, encima de
+todo. Sustituye al disco naranja del stand-in M10. Y al icono de mando
+dibujado a mano del M10.1 (que no era un asset del juego). Si el arc no
+monta (dump incompleto), un guante immediate-mode de respaldo mantiene la
+pantalla usable. Sobre el ítem apuntado aparece además el **anillo de
+objetivo** (el grupo `GroupRing` del mismo arc): el círculo cian de la
+captura 2.
 
 ## 6. Texto en un solo idioma
 
@@ -149,6 +160,10 @@ barra de guía. La cadena de la barra es `System_FileSelect008`.
 * `fileselect_strings_follow_the_selected_language`,
   `fileselect_pane_suffix_resolves_to_the_same_message` — un solo idioma en toda
   la pantalla y resolución del sufijo de idioma de los panes;
+* `fileselect_2p_badge_reads_p2_in_every_language` — la estrella de jugador se
+  lee "P2" en los 12 idiomas (es un número de jugador, no una palabra
+  traducible; la captura de referencia lo muestra idéntico en inglés y
+  japonés);
 * `fileselect_field_placement_is_symmetric_under_the_planet_heads`,
   `fileselect_camera_states_are_the_controller_constants` — el abanico de
   planetas, la insignia por encima del planeta, las tres cámaras del
