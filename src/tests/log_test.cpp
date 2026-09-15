@@ -3,8 +3,10 @@
 #include "platform/Filesystem/Filesystem.h"
 #include "platform/Log/Log.h"
 
+#include <chrono>
 #include <fstream>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -12,6 +14,21 @@ namespace {
 // and checks that the format/filtering behaved as expected.
 std::string logPath() {
     return Platform::Filesystem::executableDir() + "/log_test_output.log";
+}
+
+int countNeedle(const std::string& path, const std::string& needle) {
+    std::ifstream stream(path);
+    if (!stream.good()) {
+        return -1;
+    }
+    const std::string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    int n = 0;
+    size_t pos = 0;
+    while ((pos = content.find(needle, pos)) != std::string::npos) {
+        ++n;
+        pos += needle.size();
+    }
+    return n;
 }
 
 } // namespace
@@ -70,6 +87,46 @@ TEST_CASE(log_file_output_and_filtering) {
     std::ifstream stream2(path);
     std::string content2((std::istreambuf_iterator<char>(stream2)), std::istreambuf_iterator<char>());
     CHECK(content2.find("trace now visible") != std::string::npos);
+}
+
+TEST_CASE(log_error_flood_is_rate_limited) {
+    // A runaway per-frame error path (the fileselect UBO/pool exhaustion
+    // logged ~1,100 lines/s) must not be able to turn the log into a write
+    // storm: per category, at most kMaxBurst lines pass per second, the rest
+    // are reported as one summary when the window rolls over.
+    const std::string path = logPath();
+    std::remove(path.c_str());
+
+    Platform::Log::Config config;
+    config.minLevel = Platform::Log::Level::Info;
+    config.filePath = path;
+    config.color = false;
+    config.fatalAborts = false; // the test asserts on the FATAL line, not a death
+    Platform::Log::init(config);
+
+    for (int i = 0; i < 20; ++i) {
+        PL_LOG_ERROR("floodtest", "flood line %d", i);
+    }
+
+    // 20 rapid errors -> only the first 8 land in the file.
+    CHECK_EQ(countNeedle(path, "flood line"), 8);
+    CHECK(countNeedle(path, "suppressed in the last second") == 0);
+
+    // After the window rolls over, the next line of the category reports the
+    // suppressed count and itself passes through.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    PL_LOG_ERROR("floodtest", "flood line final");
+
+    CHECK(countNeedle(path, "12 more 'floodtest' line(s) suppressed in the last second") == 1);
+    CHECK_EQ(countNeedle(path, "flood line"), 9);
+
+    // FATAL is never suppressed, even inside a flood.
+    PL_LOG_FATAL("floodtest", "fatal always lands");
+    CHECK(countNeedle(path, "fatal always lands") == 1);
+
+    Platform::Log::Config clean;
+    clean.minLevel = Platform::Log::Level::Info;
+    Platform::Log::init(clean);
 }
 
 TEST_CASE(log_console_does_not_crash) {

@@ -1229,6 +1229,30 @@ TEST_CASE(j3d_title_sky_angles_and_base_mtx) {
     sky.draw();   // no-op
 }
 
+// PC_PORT (fileselect sky framing): while the fileselect host is active the
+// framing blends title -> starfield over 45 frames (the appear animation
+// duration) and back when it deactivates; update() advances it even without
+// the model loaded.
+TEST_CASE(j3d_title_sky_fileselect_framing_blend) {
+    TitleSky sky;
+    CHECK_NEAR(sky.fileSelectBlend(), 0.0f, 1e-9f);
+    sky.setFileSelectActive(true);
+    for (int i = 0; i < 45; ++i) {
+        sky.update();
+    }
+    CHECK_NEAR(sky.fileSelectBlend(), 1.0f, 1e-5f);
+    // Holding it active must not overshoot.
+    for (int i = 0; i < 30; ++i) {
+        sky.update();
+    }
+    CHECK_NEAR(sky.fileSelectBlend(), 1.0f, 1e-9f);
+    sky.setFileSelectActive(false);
+    for (int i = 0; i < 45; ++i) {
+        sky.update();
+    }
+    CHECK_NEAR(sky.fileSelectBlend(), 0.0f, 1e-5f);
+}
+
 TEST_CASE(j3d_title_sky_mounts_and_draws_synthetic_archive) {
     JKRHeap* heap = ensureHeap();
     REQUIRE(heap != nullptr);

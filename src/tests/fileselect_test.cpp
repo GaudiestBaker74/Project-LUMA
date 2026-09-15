@@ -348,7 +348,12 @@ TEST_CASE(fileselect_camera_states_are_the_controller_constants) {
     CHECK(nearlyEqual(far.pos[0], 0.0f));
     CHECK(nearlyEqual(far.pos[1], 0.0f));
     CHECK(nearlyEqual(far.pos[2], 15000.0f));
-    CHECK(nearlyEqual(far.target[1], 800.0f));
+    // PC_PORT: the console's cFarTarget.y is 800, but this stand-in reuses the
+    // title sky (sea horizon at eye level) as the background, so the target is
+    // lifted to 4000 to tilt the view up and show the star field (see
+    // kFarTarget in FileSelectField.cpp). kPlacements was re-solved against
+    // this camera, so every badge keeps its console screen position below.
+    CHECK(nearlyEqual(far.target[1], 4000.0f));
     CHECK(nearlyEqual(far.fovy, 40.0f));
 
     // Title state = the far state lifted 15000: the TARGET moves with
@@ -356,7 +361,7 @@ TEST_CASE(fileselect_camera_states_are_the_controller_constants) {
     const FileSelectCamera title = FileSelectField::cameraTitle();
     CHECK(nearlyEqual(title.pos[1], 15000.0f));
     CHECK(nearlyEqual(title.pos[2], 15000.0f));
-    CHECK(nearlyEqual(title.target[1], 15800.0f));
+    CHECK(nearlyEqual(title.target[1], 4000.0f + 15000.0f));
     CHECK(nearlyEqual(title.target[2], 0.0f));
     CHECK(nearlyEqual(title.fovy, 60.0f));
 
@@ -386,8 +391,10 @@ TEST_CASE(fileselect_camera_states_are_the_controller_constants) {
     CHECK(nearlyEqual(centre.x, 960.0f, 0.5f));
     CHECK(nearlyEqual(centre.y, 540.0f, 0.5f));
 
+    // The exact midpoint of the camera->target segment: viewZ is half of the
+    // target's, so its pointing cylinder spans double the pixels.
     const compat::j3d::FileSelectItemScreen halfDistance =
-        FileSelectField::project(far, 0.0f, 800.0f, 7500.0f, 1920.0f, 1080.0f);
+        FileSelectField::project(far, 0.0f, far.target[1] * 0.5f, 7500.0f, 1920.0f, 1080.0f);
     CHECK(halfDistance.visible);
     CHECK(halfDistance.radiusPx > centre.radiusPx * 1.9f);
 

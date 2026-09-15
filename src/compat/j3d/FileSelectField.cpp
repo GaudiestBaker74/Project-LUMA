@@ -46,7 +46,20 @@ constexpr f32 kHeadOffsetZ = 520.0f;
 constexpr f32 kItemSpread = 1.0f;
 
 // Camera constants (FileSelectCameraController.cpp).
-constexpr f32 kFarTarget[3] = {0.0f, 800.0f, 0.0f};
+//
+// PC_PORT: the console's cFarTarget is (0, 800, 0) — but the console's
+// fileselect background is a STARFIELD. This stand-in mounts the field over
+// the live TITLE sky (CometNearOrbitSky), whose sea horizon sits at eye
+// level, so with the console constants the bright horizon band lands mid-
+// screen and the stars stay crammed into the top sliver (the user's capture:
+// "tampoco es el fondo del juego el que esta, tienes que subir la camara
+// para que se vean las estrellas"). Lifting the far target to y = 4000 tilts
+// the 40°-fovy view 14.9° up: the horizon drops from 57% to 87% of the frame
+// and the star field fills the screen behind the fan. kPlacements below was
+// re-solved against THIS camera so every badge projects to the exact same
+// screen position the console constants gave (the reference-capture fan is
+// unchanged; see the derivation note under kPlacements).
+constexpr f32 kFarTarget[3] = {0.0f, 4000.0f, 0.0f};
 constexpr f32 kFarPoint[3] = {0.0f, 0.0f, 15000.0f};
 constexpr f32 kNearTargetOffset[3] = {0.0f, 1100.0f, 0.0f};
 constexpr f32 kNearPointOffset[3] = {0.0f, 0.0f, 4800.0f};
@@ -95,14 +108,20 @@ f32 layoutScale() {
 //      relation calcBadgeWorldPos implements (FileSelectNumber is placed from
 //      the item's 3D position).
 //
-// The result reproduces the reference badge positions to a couple of units.
+// PC_PORT: with kFarTarget lifted to (0,4000,0) (see above — the title sky's
+// sea horizon sits at eye level), the table was RE-SOLVED numerically: for
+// every item the (x, y) that makes the badge project back to the SAME screen
+// point the (0,800,0) camera produced (z unchanged, 2D bisection through
+// project()). The reference badge positions are therefore pixel-identical to
+// the console-derived solution, and the symmetry the test pins (mirrored
+// x, equal y/z per pair) holds by construction of the solve.
 const FileSelectItemPlacement kPlacements[FileSelectField::kItemNum] = {
-    {1, -2417.0f * kItemSpread, -333.0f * kItemSpread, 0.0f},
-    {2, 2417.0f * kItemSpread, -333.0f * kItemSpread, 0.0f},
-    {3, -5197.0f * kItemSpread, 1089.0f * kItemSpread, -600.0f},
-    {4, 5197.0f * kItemSpread, 1089.0f * kItemSpread, -600.0f},
-    {5, -2116.0f * kItemSpread, 1935.0f * kItemSpread, -1200.0f},
-    {6, 2116.0f * kItemSpread, 1935.0f * kItemSpread, -1200.0f},
+    {1, -2493.9f * kItemSpread, 2859.5f * kItemSpread, 0.0f},
+    {2, 2493.9f * kItemSpread, 2859.5f * kItemSpread, 0.0f},
+    {3, -5466.2f * kItemSpread, 4528.1f * kItemSpread, -600.0f},
+    {4, 5466.2f * kItemSpread, 4528.1f * kItemSpread, -600.0f},
+    {5, -2248.6f * kItemSpread, 5596.4f * kItemSpread, -1200.0f},
+    {6, 2248.6f * kItemSpread, 5596.4f * kItemSpread, -1200.0f},
 };
 
 // FileSelectItem.cpp sFellowModel — index = FileSelectCharacter.

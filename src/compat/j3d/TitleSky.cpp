@@ -62,6 +62,35 @@ constexpr f32 kTitleFovy = 60.0f;
 constexpr f32 kNearZ = 100.0f;
 constexpr f32 kFarZ = 800000.0f;
 
+// PC_PORT (fileselect sky framing): the console fileselect background is a
+// pure starfield — in the reference captures (far state and hover/near
+// state) the bright sea band is entirely below the bottom edge of the
+// frame, so the dome's painted sea never shows. Our title framing (the
+// look-at 3.04 deg up + the 5.1 deg fitted pitch, fovy 60) puts that band's
+// top line mid-screen (row 411/720 = 57% in the 2026-09-15 22:07 log run,
+// i.e. ~3.9 deg elevation from the camera). The fileselect framing keeps
+// the same camera but tilts it further up and tightens the fovy to the
+// fileselect far state's 40: at pitch 23 the frame spans 6.0..46.0 deg of
+// elevation and the band (3.9 deg) sits ~2.5% below the bottom edge — the
+// whole frame is stars, like the console. LUMA_SKY_FS_PITCH_DEG and
+// LUMA_SKY_FS_FOVY tune the exit while fitting; the framing blends over 45
+// frames (the FileSelectHost appear animation) so the band slides out of
+// the frame as the planets arrange themselves.
+static f32 fsPitchDeg() {
+    static const f32 s = [] {
+        const char* e = std::getenv("LUMA_SKY_FS_PITCH_DEG");
+        return (e != nullptr) ? static_cast<f32>(std::atof(e)) : 23.0f;
+    }();
+    return s;
+}
+static f32 fsFovy() {
+    static const f32 s = [] {
+        const char* e = std::getenv("LUMA_SKY_FS_FOVY");
+        return (e != nullptr) ? static_cast<f32>(std::atof(e)) : 40.0f;
+    }();
+    return s;
+}
+
 bool endsWith(const char* s, const char* suffix) {
     const size_t n = std::strlen(s);
     const size_t m = std::strlen(suffix);
@@ -303,7 +332,29 @@ bool TitleSky::init(const char* archivePath) {
     return true;
 }
 
+void TitleSky::setFileSelectActive(bool active) {
+    mFsTarget = active ? 1.0f : 0.0f;
+}
+
 void TitleSky::update() {
+    // PC_PORT (fileselect sky framing): move the framing blend toward its
+    // target at 1/45 per frame — the FileSelectHost appear animation runs
+    // 45 frames, so the sky reframing finishes with it. Advanced before the
+    // load check so the state stays consistent even without the model.
+    {
+        const f32 kRate = 1.0f / 45.0f;
+        if (mFsBlend < mFsTarget) {
+            mFsBlend += kRate;
+            if (mFsBlend > mFsTarget) {
+                mFsBlend = mFsTarget;
+            }
+        } else if (mFsBlend > mFsTarget) {
+            mFsBlend -= kRate;
+            if (mFsBlend < mFsTarget) {
+                mFsBlend = mFsTarget;
+            }
+        }
+    }
     if (!mLoaded || !mRenderer) {
         return;
     }
@@ -361,14 +412,17 @@ void TitleSky::draw() {
         const char* e = std::getenv("LUMA_SKY_CAM_PITCH_DEG");
         return (e != nullptr) ? static_cast<f32>(std::atof(e)) : 5.1f;
     }();
+    // PC_PORT (fileselect sky framing): blend the title pitch toward the
+    // fileselect starfield pitch (see fsPitchDeg() above).
+    const f32 effPitch = camPitchDeg + (fsPitchDeg() - camPitchDeg) * mFsBlend;
     Mtx view;
     const f32 ss = sceneScale();
     const f32 camPos[3] = {kCamPos[0] * ss, kCamPos[1] * ss, kCamPos[2] * ss};
     const f32 camTarget[3] = {kCamTarget[0] * ss, kCamTarget[1] * ss, kCamTarget[2] * ss};
     mtxLookAt(view, camPos, kCamUp, camTarget);
-    if (camPitchDeg != 0.0f) {
+    if (effPitch != 0.0f) {
         Mtx rot, pitched;
-        mtxRotAxisRad(rot, 1.0f, 0.0f, 0.0f, -camPitchDeg * (kPi / 180.0f));
+        mtxRotAxisRad(rot, 1.0f, 0.0f, 0.0f, -effPitch * (kPi / 180.0f));
         mtxConcat(rot, view, pitched);
         mtxCopy(pitched, view);
     }
@@ -384,8 +438,11 @@ void TitleSky::draw() {
         const char* e = std::getenv("LUMA_SKY_FOVY");
         return (e != nullptr) ? static_cast<f32>(std::atof(e)) : kTitleFovy;
     }();
+    // PC_PORT (fileselect sky framing): blend the title fovy toward the
+    // fileselect far state's fovy (see fsFovy() above).
+    const f32 effFovy = fovy + (fsFovy() - fovy) * mFsBlend;
     Mtx44 proj;
-    C_MTXPerspective(proj, fovy, aspect, kNearZ, kFarZ);
+    C_MTXPerspective(proj, effFovy, aspect, kNearZ, kFarZ);
     GXSetProjection(proj, GX_PERSPECTIVE);
 
     // PC_PORT diagnostic (draw #1 and every 600 draws): the framing the dome was
@@ -397,10 +454,10 @@ void TitleSky::draw() {
     ++sDrawCount;
     if (sDrawCount == 1 || sDrawCount % 600 == 0) {
         PL_LOG_INFO("j3d",
-                    "TitleSky draw #%u: fb=%.1fx%.1f fovy=%.1f aspect=%.4f angleX=%.4f "
-                    "angleY=%.4f step=%u",
-                    static_cast<unsigned>(sDrawCount), fbWidth, fbHeight, kTitleFovy, aspect,
-                    static_cast<double>(mAngleX), static_cast<double>(mAngleY),
+                    "TitleSky draw #%u: fb=%.1fx%.1f fovy=%.1f pitch=%.2f fsBlend=%.2f "
+                    "aspect=%.4f angleX=%.4f angleY=%.4f step=%u",
+                    static_cast<unsigned>(sDrawCount), fbWidth, fbHeight, effFovy, effPitch,
+                    mFsBlend, aspect, static_cast<double>(mAngleX), static_cast<double>(mAngleY),
                     static_cast<unsigned>(mStep));
     }
 

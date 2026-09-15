@@ -148,6 +148,11 @@ void TitleScene::calcAnim() {
     // not in the NameObj lists on the host, so the scene steps it). Kept
     // running while parked so the post-Decide sky stays alive.
     if (mSky) {
+        // PC_PORT (fileselect sky framing): once the fileselect screen is
+        // mounted, the console background is a pure starfield (the sea band
+        // sits below the frame), so the dome reframes over 45 frames — the
+        // same duration as the host's appear animation.
+        mSky->setFileSelectActive(mEnded && mFileHost != nullptr);
         mSky->update();
     }
 }

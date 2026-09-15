@@ -51,6 +51,19 @@ public:
     /// Draws the dome for the current frame (GX state fully set here).
     void draw();
 
+    /// PC_PORT (fileselect sky framing): while the fileselect screen is
+    /// mounted the dome is drawn with a higher framing. The console
+    /// fileselect background is a pure starfield — the bright sea band sits
+    /// below the bottom edge of the frame in both the far and the near
+    /// camera states — while the title framing puts that band mid-screen.
+    /// TitleScene toggles this from mEnded && mFileHost; the framing blends
+    /// at 1/45 per frame (the FileSelectHost appear animation duration) so
+    /// the band slides out of the frame as the planets arrange themselves.
+    void setFileSelectActive(bool active);
+    /// Diagnostics/tests: current framing blend, 0 = title framing,
+    /// 1 = fileselect (starfield) framing.
+    f32 fileSelectBlend() const { return mFsBlend; }
+
     /// Diagnostics/tests.
     f32 angleX() const { return mAngleX; }
     f32 angleY() const { return mAngleY; }
@@ -68,6 +81,10 @@ private:
     f32 mAngleY = 0.0f;
     Mtx mBaseMtx;
     std::string mModelName;
+    // PC_PORT (fileselect sky framing): blend between the title framing
+    // (0) and the fileselect starfield framing (1), advanced in update().
+    f32 mFsBlend = 0.0f;
+    f32 mFsTarget = 0.0f;
 };
 
 } // namespace compat::j3d
