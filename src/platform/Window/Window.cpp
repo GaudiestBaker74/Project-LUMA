@@ -48,6 +48,12 @@ Window::Window(const WindowConfig& config) {
         PL_LOG_FATAL("window", "SDL_CreateWindow failed: %s", SDL_GetError());
         return;
     }
+    // PC_PORT: the console has no OS mouse — the game draws its own pointer
+    // (the P1 StarPointer on fileselect, the cursor panes on the title). Hide
+    // the system cursor so it does not overlap the in-game one. SDL keeps
+    // reporting absolute MOUSE_MOTION coordinates while hidden, so pointing /
+    // hover / clicks are unaffected.
+    SDL_HideCursor();
     if (config.startFullscreen) {
         SDL_SetWindowFullscreen(mWindow, SDL_WINDOW_FULLSCREEN);
         mFullscreen = true;
