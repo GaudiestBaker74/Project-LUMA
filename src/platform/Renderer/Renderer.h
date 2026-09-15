@@ -42,6 +42,19 @@ struct RendererConfig {
     int swapchainHeight = 0;
 };
 
+// PC_PORT M9.5.11: frame-local dedup counters for one completed frame
+// (the texture-set pool and the TEV UBO arena see how much of their budget
+// the frame spent on FRESH allocations vs cache reuses — a frame with
+// hundreds of reuses and a handful of fresh entries is exactly what the
+// fileselect screen needs to stay inside the 1024-set pool / 2048-region
+// arena).
+struct FrameBudget {
+    uint32_t texSetFresh = 0;    // descriptor sets allocated from the frame pool
+    uint32_t texSetReused = 0;   // bindFragmentTextures/bindTexture cache hits
+    uint32_t uboFresh = 0;       // UBO arena regions written
+    uint32_t uboReused = 0;      // uploadFragmentUbo cache hits
+};
+
 // Clear color + depth/stencil for beginPass(). Colors are in [0,1].
 struct ClearValue {
     float r = 0.0f, g = 0.0f, b = 0.0f, a = 1.0f;
@@ -286,6 +299,10 @@ public:
     // budget (VK_EXT_memory_budget; 0 if unavailable).
     const FrameStats& lastFrameStats() const { return mLastFrameStats; }
 
+    // PC_PORT M9.5.11: dedup counters of the last completed frame (tests and
+    // the triage log in endFrame()). All zeros until endFrame() completes one.
+    FrameBudget lastFrameBudget() const { return mLastFrameBudget; }
+
     // --- pass ---------------------------------------------------------------
     // Begins rendering into the swapchain image (the M3 "EFB" for now).
     // Clears with `clear`. The no-arg form uses the color stored by
@@ -407,6 +424,16 @@ public:
     // and binds the current pipeline's set 1 (UBO, dynamic offset) so the
     // fragment shader reads this draw's constants. Call after bindPipeline.
     // Returns false when the arena is exhausted (draw dropped by the caller).
+    //
+    // PC_PORT M9.5.11: frame-local dedup. The TEV constants are material
+    // state, not per-draw state — a brlyt screen redraws the same material by
+    // the hundreds (fileselect: 6 file badges, buttons, text panes, the star
+    // pointer), and one 2048 B arena region per draw exhausted the 1 MiB
+    // arena at ~530 draws/frame. An upload whose payload bytes match a
+    // region already written this frame rebinds that region's dynamic offset
+    // instead of reserving a new one (verified by memcmp against the arena,
+    // so a 64-bit hash collision can only cost an extra region). Both the
+    // cache and the arena rewind in endFrame() after the frame fence.
     bool uploadFragmentUbo(const void* data, uint32_t size);
 
     // --- draw ---------------------------------------------------------------
@@ -471,8 +498,21 @@ private:
     bool mPipelineCacheGrowthWarned = false; // one-shot "cache growing" warning
     void* mFrameTexSetPool = nullptr;    // VkDescriptorPool (M9.5.3c: per-draw texture
                                          // sets; reset in endFrame after the frame fence)
+    // M9.5.11: frame-local dedup (cleared in endFrame with the pool reset /
+    // UBO cursor rewind — the frame fence makes both safe). The texture-set
+    // cache key mixes the bound pipeline entry with the (texture, sampler)
+    // pairs: a set allocated from one pipeline's layout cannot be bound under
+    // another. The UBO cache maps the payload's FNV hash to the arena offset;
+    // a hit is confirmed with memcmp against the arena before reuse.
+    std::unordered_map<uint64_t, void*> mFrameTexSetCache;
+    std::unordered_map<uint64_t, uint32_t> mFrameUboOffsetCache;
+    uint32_t mFrameTexSetFresh = 0, mFrameTexSetReused = 0;
+    uint32_t mFrameUboFresh = 0, mFrameUboReused = 0;
+    FrameBudget mLastFrameBudget;
+    uint32_t mFrameBudgetLogCounter = 0; // endFrame() count for the triage log
     // M5.4 (TEV): per-frame fragment-UBO arena (host-visible, one region per
-    // draw via dynamic offsets). Reset every endFrame() after the fence.
+    // DISTINCT payload via dynamic offsets — M9.5.11 dedup). Reset every
+    // endFrame() after the fence.
     void* mUboBuffer = nullptr;          // VkBuffer
     void* mUboMemory = nullptr;          // VkDeviceMemory (host visible + coherent)
     uint8_t* mUboMapped = nullptr;       // persistent map

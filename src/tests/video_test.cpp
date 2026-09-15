@@ -2402,3 +2402,195 @@ TEST_CASE(vulkan_offscreen_gx_chan_lighting) {
     vkFreeMemory(ctx.device, tex.memory, nullptr);
     teardown(ctx);
 }
+
+// =============================================================================
+// PC_PORT M9.5.11: the fileselect-screen regression.
+//
+// The brlyt fileselect frame issues 500+ textured TEV draws that mostly SHARE
+// materials (the six file badges, the buttons, the text panes, the star
+// pointer). Before the frame-local dedup, every draw reserved a fresh 2048 B
+// fragment-UBO arena region (1 MiB arena = 512/frame) AND a fresh descriptor
+// set from the 1024-set pool — the 52,000-error log (ubos exhausted from
+// draw ~513, texture-set pool exhausted from draw ~1025, until the run was
+// closed) is exactly this screen. After the fix, a frame that repeats the
+// same material N times reserves ONE arena region and ONE descriptor set;
+// the remaining draws rebind them. This test drives 1,200 identical TEV
+// draws through the real Renderer (more than both budgets) and asserts:
+//   * every uploadFragmentUbo succeeds (pre-fix: 512 of 1200),
+//   * the framebuffer holds the UBO-driven color (the rebinds are legal),
+//   * the frame budget is exactly 1 fresh + 1199 reused per resource.
+// =============================================================================
+
+TEST_CASE(renderer_frame_budget_dedup_fileselect_scale) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        SKIP("SDL_Init failed (no video subsystem)");
+        return;
+    }
+    SDL_Window* window =
+        SDL_CreateWindow("galaxy-pc-tests-budget", 128, 128, SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+    if (!window) {
+        SDL_Quit();
+        SKIP("SDL_CreateWindow (hidden, Vulkan) failed");
+        return;
+    }
+    Platform::RendererConfig cfg{};
+    cfg.appName = "galaxy-pc-tests";
+    cfg.enableValidation = false;
+    cfg.vsync = false;
+    if (!Platform::Renderer::init(window, cfg)) {
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        SKIP("Platform::Renderer init failed (no Vulkan surface/ICD)");
+        return;
+    }
+    Platform::Renderer& r = Platform::Renderer::instance();
+    REQUIRE(r.isInitialized());
+
+    // TEV state: stages 0-1 copy texmap0/1, stage 2 -> K0 (10,20,30,40) —
+    // the framebuffer must end at exactly K0 regardless of the texture.
+    GXInit(nullptr, 0);
+    GXSetTevOp(GX_TEVSTAGE0, GX_REPLACE);
+    GXSetTevOp(GX_TEVSTAGE1, GX_REPLACE);
+    GXSetTevColorIn(GX_TEVSTAGE2, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_KONST);
+    GXSetTevColorOp(GX_TEVSTAGE2, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetTevAlphaIn(GX_TEVSTAGE2, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_KONST);
+    GXSetTevAlphaOp(GX_TEVSTAGE2, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetTevKColorSel(GX_TEVSTAGE2, GX_TEV_KCSEL_K0);
+    GXSetTevKAlphaSel(GX_TEVSTAGE2, GX_TEV_KASEL_K0_A);
+    GXSetTevKColor(GX_KCOLOR0, GXColor{10, 20, 30, 40});
+    GXSetNumTevStages(3);
+    Platform::CompatGx::TevUboData ubo;
+    Platform::CompatGx::buildTevUbo(ubo);
+
+    // One solid texture + sampler, repeated across all 8 slots — exactly the
+    // shape of a brlyt pane's material.
+    const uint8_t rgba[4] = {255, 0, 0, 255};
+    Platform::TextureDesc td;
+    td.width = 1;
+    td.height = 1;
+    td.format = Platform::TextureFormat::R8G8B8A8_UNORM;
+    td.initialData = rgba;
+    td.debugName = "budget-dedup-tex";
+    Platform::TextureHandle tex = r.createTexture(td);
+    REQUIRE(tex != nullptr);
+    Platform::SamplerDesc sd;
+    sd.magFilter = Platform::SamplerFilter::Nearest;
+    sd.minFilter = Platform::SamplerFilter::Nearest;
+    Platform::SamplerHandle sam = r.getOrCreateSampler(sd);
+    REQUIRE(sam != nullptr);
+
+    // Offscreen target in the swapchain's color format (dynamic rendering
+    // matches the pipeline's declared attachment format).
+    const Platform::VertexFormat passFmt = r.passColorFormat();
+    Platform::RenderTargetDesc rd;
+    rd.width = 64;
+    rd.height = 64;
+    rd.hasDepth = false;
+    rd.colorFormat = (passFmt == Platform::VertexFormat::B8G8R8A8_UNORM)
+                         ? Platform::TextureFormat::B8G8R8A8_UNORM
+                         : Platform::TextureFormat::R8G8B8A8_UNORM;
+    rd.debugName = "budget-dedup-rt";
+    Platform::RenderTargetHandle rt = r.createRenderTarget(rd);
+    REQUIRE(rt != nullptr);
+
+    // The game's TEV pipeline (flushDraw's vertex layout: 35 floats, 11
+    // attributes, 8 texture slots, fragment UBO).
+    Platform::PipelineDesc desc;
+    desc.topology = Platform::PrimitiveTopology::TriangleList;
+    desc.vertexLayout.stride = 35 * sizeof(float);
+    desc.vertexLayout.attribs = {
+        {0, 0, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {1, 12, Platform::VertexFormat::R32G32B32A32_SFLOAT},
+        {2, 28, Platform::VertexFormat::R32G32B32A32_SFLOAT},
+        {3, 44, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {4, 56, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {5, 68, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {6, 80, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {7, 92, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {8, 104, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {9, 116, Platform::VertexFormat::R32G32B32_SFLOAT},
+        {10, 128, Platform::VertexFormat::R32G32B32_SFLOAT},
+    };
+    desc.textureCount = 8;
+    desc.fragmentUbo = true;
+    desc.colorFormat = passFmt;
+    desc.depthFormat = Platform::TextureFormat::Undefined;
+    desc.vertSpv = kGxTevVertSpv;
+    desc.vertSpvSize = sizeof(kGxTevVertSpv);
+    desc.fragSpv = kGxTevFragSpv;
+    desc.fragSpvSize = sizeof(kGxTevFragSpv);
+    Platform::PipelineHandle pipe = r.getOrCreatePipeline(desc);
+    REQUIRE(pipe != nullptr);
+
+    // One quad, full 35-float layout, non-projective texcoords (q = 1).
+    const float pos[6][3] = {
+        {-0.6f, -0.6f, 0.5f}, {0.6f, -0.6f, 0.5f}, {0.6f, 0.6f, 0.5f},
+        {-0.6f, -0.6f, 0.5f}, {0.6f, 0.6f, 0.5f}, {-0.6f, 0.6f, 0.5f},
+    };
+    float vertices[6 * 35];
+    for (int v = 0; v < 6; ++v) {
+        float* d = vertices + v * 35;
+        d[0] = pos[v][0];
+        d[1] = pos[v][1];
+        d[2] = pos[v][2];
+        for (int c = 0; c < 8; ++c) d[3 + c] = 1.0f;  // clr0 + clr1 white
+        for (int t = 0; t < 8; ++t) {
+            d[11 + 3 * t] = 0.5f;
+            d[12 + 3 * t] = 0.5f;
+            d[13 + 3 * t] = 1.0f;  // q
+        }
+    }
+    Platform::BufferHandle vb = r.createBuffer(Platform::BufferUsage::Vertex,
+                                               sizeof(vertices), vertices);
+    REQUIRE(vb != nullptr);
+
+    REQUIRE(r.beginFrame());
+    r.beginPass(rt);
+    r.bindPipeline(pipe);
+    r.bindVertexBuffer(vb, 0);
+    const float identity[16] = {1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1};
+    r.setUniforms(identity, sizeof(identity));
+
+    // 1200 identical draws: past BOTH budgets (arena = 512 regions, pool =
+    // 1024 sets). Only the dedup keeps every draw inside them.
+    constexpr int kDraws = 1200;
+    Platform::TextureHandle texArr[8];
+    Platform::SamplerHandle samArr[8];
+    for (int i = 0; i < 8; ++i) {
+        texArr[i] = tex;
+        samArr[i] = sam;
+    }
+    int uboUploads = 0;
+    for (int i = 0; i < kDraws; ++i) {
+        r.bindFragmentTextures(texArr, samArr, 8);
+        if (r.uploadFragmentUbo(&ubo, sizeof(ubo))) {
+            ++uboUploads;
+        }
+        r.draw(6, 0);
+    }
+    CHECK_EQ(uboUploads, kDraws);  // pre-fix: 512 (arena exhausted)
+
+    r.endPass();
+    REQUIRE(r.flushFrame());  // submit the 1200 draws, then read back
+    std::vector<uint8_t> px(64 * 64 * 4);
+    REQUIRE(r.readRenderTarget(rt, 0, 0, 64, 64, px.data()));
+    const uint8_t* c = px.data() + (32 * 64 + 32) * 4;  // quad center
+    CHECK(std::abs(int(c[0]) - 10) <= 1);
+    CHECK(std::abs(int(c[1]) - 20) <= 1);
+    CHECK(std::abs(int(c[2]) - 30) <= 1);
+    CHECK(std::abs(int(c[3]) - 40) <= 1);
+
+    r.endFrame();
+    const Platform::FrameBudget b = r.lastFrameBudget();
+    CHECK_EQ(b.uboFresh, 1u);
+    CHECK_EQ(b.uboReused, static_cast<uint32_t>(kDraws - 1));
+    CHECK_EQ(b.texSetFresh, 1u);
+    CHECK_EQ(b.texSetReused, static_cast<uint32_t>(kDraws - 1));
+
+    r.destroyBuffer(vb);
+    r.destroyTexture(tex);
+    r.destroyRenderTarget(rt);
+    Platform::Renderer::shutdown();
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}

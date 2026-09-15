@@ -59,8 +59,14 @@ constexpr uint32_t kPushConstantSize = 128;
 // M5.4/M5.5 (TEV): per-draw fragment-UBO region and the per-frame arena size.
 // The TEV UBO (compat/gx/GXTevInternal.h) is 1296 B; regions are rounded up
 // to the dynamic-offset alignment.
+//
+// PC_PORT M9.5.11: the arena holds one region per DISTINCT TEV payload per
+// frame (uploadFragmentUbo dedups within the frame). 4 MiB = 2048 regions:
+// a fileselect-class frame (500+ draws, a few dozen distinct materials) sits
+// far below it, and a galaxy's full material set still fits. The buffer is
+// host-visible+coherent RAM (never device-local), so the headroom is cheap.
 constexpr uint64_t kTevUboRegionBytes = 2048;
-constexpr uint64_t kTevUboArenaBytes = 1 << 20; // 1 MiB
+constexpr uint64_t kTevUboArenaBytes = 1 << 22; // 4 MiB = 2048 regions
 
 // --- fixed-function state -> Vulkan mappings (M5.5) --------------------------
 // The Platform enums are Vulkan-semantic; compat/gx maps the GX enums onto
@@ -597,6 +603,10 @@ bool Renderer::init(SDL_Window* window, const RendererConfig& config) {
     // UBO arena rewinds). Capacity: 1024 sets/frame — far above the draws a
     // SMG frame issues (lyt title: tens); allocDrawTexSet falls back to the
     // shared set (pre-fix behavior, logged) if the pool is ever exhausted.
+    // PC_PORT M9.5.11: the capacity is per DISTINCT (pipeline, texture set)
+    // combination, not per draw — bindFragmentTextures/bindTexture dedup
+    // within the frame, so a fileselect-class frame (500+ textured draws
+    // sharing a few dozen materials) allocates dozens of sets, not hundreds.
     // NOTE: keep this modest — with validation layers enabled, every pool
     // descriptor is tracked in layer bookkeeping allocated through the global
     // operator new (JKR arena): 8192x8 sets asked the arena for ~4 MiB and
@@ -620,7 +630,8 @@ bool Renderer::init(SDL_Window* window, const RendererConfig& config) {
     }
 
     // --- M5.4: per-frame fragment-UBO arena (host-visible, dynamic offsets) --
-    // One region per draw; endFrame() resets the cursor after the frame fence.
+    // One region per DISTINCT payload (PC_PORT M9.5.11 dedup in
+    // uploadFragmentUbo); endFrame() resets the cursor after the frame fence.
     {
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(VKPHYS, &props);
@@ -1222,6 +1233,28 @@ void Renderer::endFrame() {
         vkResetDescriptorPool(VKDEV, reinterpret_cast<VkDescriptorPool>(mFrameTexSetPool), 0);
     }
 
+    // M9.5.11: the dedup caches alias exactly the two resources reset above
+    // (arena regions / pool sets), so they rewind with them.
+    mFrameUboOffsetCache.clear();
+    mFrameTexSetCache.clear();
+    mLastFrameBudget = {mFrameTexSetFresh, mFrameTexSetReused, mFrameUboFresh,
+                        mFrameUboReused};
+    mFrameTexSetFresh = mFrameTexSetReused = 0;
+    mFrameUboFresh = mFrameUboReused = 0;
+    // Triage log (INFO, ~every 3 s at 60 fps): while the frame's fresh
+    // allocations stay far below the pool (1024 sets) and arena budgets,
+    // the reused counters show how much duplicate work the dedup absorbed.
+    if (++mFrameBudgetLogCounter % 180 == 0 &&
+        (mLastFrameBudget.texSetFresh || mLastFrameBudget.uboFresh)) {
+        const uint32_t uboRegions =
+            mUboStride > 0 ? static_cast<uint32_t>(mUboSize / mUboStride) : 0;
+        PL_LOG_INFO("renderer",
+                    "frame budget: texsets fresh=%u reuse=%u (pool 1024) | "
+                    "tev ubo regions=%u reuse=%u (arena %u)",
+                    mLastFrameBudget.texSetFresh, mLastFrameBudget.texSetReused,
+                    mLastFrameBudget.uboFresh, mLastFrameBudget.uboReused, uboRegions);
+    }
+
     // M5.2: destroy dynamic-buffer allocations retired during this frame (the
     // fence above guarantees no command buffer references them anymore).
     for (const RetiredBuffer& rb : mRetiredBuffers) {
@@ -1817,31 +1850,53 @@ void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandl
     }
     auto* tex = reinterpret_cast<GpuTexture*>(texture);
 
-    bool fresh = false;
-    VkDescriptorSet set = allocDrawTexSet(
-        VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
-        reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
+    // PC_PORT M9.5.11: same frame-local dedup as bindFragmentTextures (see
+    // there) — the single-binding form is used by non-TEV textured draws.
+    {
+        uint64_t h = 14695981039346656037ull;
+        fnvMix(h, &mBoundEntry, sizeof(mBoundEntry));
+        fnvMix(h, &binding, sizeof(binding));
+        fnvMix(h, &texture, sizeof(texture));
+        fnvMix(h, &sampler, sizeof(sampler));
+        const auto it = mFrameTexSetCache.find(h);
+        if (it != mFrameTexSetCache.end()) {
+            ++mFrameTexSetReused;
+            const VkDescriptorSet cached = reinterpret_cast<VkDescriptorSet>(it->second);
+            vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd),
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                                    0, 1, &cached, 0, nullptr);
+            return;
+        }
+        bool fresh = false;
+        VkDescriptorSet set = allocDrawTexSet(
+            VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
+            reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
 
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.sampler = reinterpret_cast<VkSampler>(sampler);
-    imageInfo.imageView = tex->view;
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.sampler = reinterpret_cast<VkSampler>(sampler);
+        imageInfo.imageView = tex->view;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = set;
-    write.dstBinding = 0;
-    write.dstArrayElement = binding;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.pImageInfo = &imageInfo;
-    if (fresh) {
-        vkUpdateDescriptorSets(VKDEV, 1, &write, 0, nullptr);
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = set;
+        write.dstBinding = 0;
+        write.dstArrayElement = binding;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &imageInfo;
+        if (fresh) {
+            vkUpdateDescriptorSets(VKDEV, 1, &write, 0, nullptr);
+            mFrameTexSetCache.emplace(h, reinterpret_cast<void*>(set));
+        }
+
+        vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd),
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                                0, 1, &set, 0, nullptr);
+        return;
     }
-
-    vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
-                            0, 1, &set, 0, nullptr);
 }
 
 void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandle* sam,
@@ -1855,33 +1910,61 @@ void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandl
                      count, mBoundEntry->desc.textureCount);
         return;
     }
-    bool fresh = false;
-    VkDescriptorSet set = allocDrawTexSet(
-        VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
-        reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
+    // PC_PORT M9.5.11: frame-local dedup. Descriptor sets allocated this
+    // frame are never written again before the pool reset in endFrame(), so
+    // rebinding an earlier set is always legal — and it is the only thing
+    // standing between a dense brlyt screen and the 1024-set pool. A frame
+    // that draws the same material 300 times (fileselect: shared badge /
+    // button / text panes) allocates ONE set instead of 300.
+    {
+        uint64_t h = 14695981039346656037ull;
+        fnvMix(h, &mBoundEntry, sizeof(mBoundEntry));
+        fnvMix(h, &count, sizeof(count));
+        for (uint32_t i = 0; i < count; ++i) {
+            fnvMix(h, &tex[i], sizeof(tex[i]));
+            fnvMix(h, &sam[i], sizeof(sam[i]));
+        }
+        const auto it = mFrameTexSetCache.find(h);
+        if (it != mFrameTexSetCache.end()) {
+            ++mFrameTexSetReused;
+            const VkDescriptorSet cached = reinterpret_cast<VkDescriptorSet>(it->second);
+            vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd),
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                                    0, 1, &cached, 0, nullptr);
+            return;
+        }
+        bool fresh = false;
+        VkDescriptorSet set = allocDrawTexSet(
+            VKDEV, mFrameTexSetPool, mBoundEntry->descriptorSetLayout,
+            reinterpret_cast<VkDescriptorSet>(mBoundEntry->descriptorSet), fresh);
 
-    VkWriteDescriptorSet writes[8]{};
-    VkDescriptorImageInfo images[8]{};
-    for (uint32_t i = 0; i < count; ++i) {
-        auto* t = reinterpret_cast<GpuTexture*>(tex[i]);
-        images[i].sampler = reinterpret_cast<VkSampler>(sam[i]);
-        images[i].imageView = t->view;
-        images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[i].dstSet = set;
-        writes[i].dstBinding = 0;
-        writes[i].dstArrayElement = i;
-        writes[i].descriptorCount = 1;
-        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writes[i].pImageInfo = &images[i];
-    }
-    if (fresh) {
-        vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
-    }
+        VkWriteDescriptorSet writes[8]{};
+        VkDescriptorImageInfo images[8]{};
+        for (uint32_t i = 0; i < count; ++i) {
+            auto* t = reinterpret_cast<GpuTexture*>(tex[i]);
+            images[i].sampler = reinterpret_cast<VkSampler>(sam[i]);
+            images[i].imageView = t->view;
+            images[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = set;
+            writes[i].dstBinding = 0;
+            writes[i].dstArrayElement = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[i].pImageInfo = &images[i];
+        }
+        if (fresh) {
+            vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
+            mFrameTexSetCache.emplace(h, reinterpret_cast<void*>(set));
+        }
 
-    vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
-                            0, 1, &set, 0, nullptr);
+        vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd),
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                                0, 1, &set, 0, nullptr);
+        return;
+    }
 }
 
 bool Renderer::uploadFragmentUbo(const void* data, uint32_t size) {
@@ -1898,6 +1981,27 @@ bool Renderer::uploadFragmentUbo(const void* data, uint32_t size) {
                      size, static_cast<unsigned long long>(mUboStride));
         return false;
     }
+    // PC_PORT M9.5.11: the TEV constants are material state — a brlyt screen
+    // redraws the same material by the hundreds, so a per-frame arena region
+    // per draw exhausted the 1 MiB arena (512 regions) on the fileselect
+    // screen. Payloads already written this frame are rebound, not rewritten
+    // (the hash below is confirmed by memcmp against the arena, so a 64-bit
+    // collision can only cost one extra region).
+    uint64_t h = 14695981039346656037ull;
+    fnvMix(h, &size, sizeof(size));
+    fnvMix(h, data, size);
+    const auto it = mFrameUboOffsetCache.find(h);
+    if (it != mFrameUboOffsetCache.end() &&
+        std::memcmp(mUboMapped + it->second, data, size) == 0) {
+        ++mFrameUboReused;
+        VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->uboSet);
+        const uint32_t dynamicOffset = it->second;
+        vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd),
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                reinterpret_cast<VkPipelineLayout>(mBoundEntry->layout),
+                                1, 1, &set, 1, &dynamicOffset);
+        return true;
+    }
     if (mUboCursor + mUboStride > mUboSize) {
         PL_LOG_ERROR("renderer", "uploadFragmentUbo: UBO arena exhausted (%llu B/frame) — "
                                  "draw dropped", static_cast<unsigned long long>(mUboSize));
@@ -1906,6 +2010,8 @@ bool Renderer::uploadFragmentUbo(const void* data, uint32_t size) {
     const uint32_t dynamicOffset = static_cast<uint32_t>(mUboCursor);
     std::memcpy(mUboMapped + mUboCursor, data, size);
     mUboCursor += mUboStride;
+    mFrameUboOffsetCache.emplace(h, dynamicOffset);
+    ++mFrameUboFresh;
 
     VkDescriptorSet set = reinterpret_cast<VkDescriptorSet>(mBoundEntry->uboSet);
     vkCmdBindDescriptorSets(reinterpret_cast<VkCommandBuffer>(mCmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
