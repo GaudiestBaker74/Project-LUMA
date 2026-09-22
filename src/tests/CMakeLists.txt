@@ -44,6 +44,7 @@ add_executable(galaxy-pc-tests
     audio_dsp_mixer_test.cpp
     audio_ai_test.cpp
     audio_oneshot_test.cpp
+    gx_vertex_bench.cpp
     jas_audio_driver_test.cpp
     # M9.1: OSThread/OSMessageQueue host layer + JKRThread.
     os_thread_test.cpp

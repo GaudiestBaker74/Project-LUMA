@@ -1,0 +1,32 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "x64-release",
+            "displayName": "x64 Release (optimizado — recomendado)",
+            "description": "RelWithDebInfo: juego a velocidad completa. El modo por defecto de Visual Studio (x64-Debug) hace el juego 5-10x mas lento.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-release",
+            "architecture": { "value": "x64", "strategy": "external" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        },
+        {
+            "name": "x64-debug",
+            "displayName": "x64 Debug (lento — solo para depurar)",
+            "description": "Sin optimizar: solo para debuggear con el depurador. NO usar para jugar/medir rendimiento.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-debug",
+            "architecture": { "value": "x64", "strategy": "external" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "x64-release", "configurePreset": "x64-release" },
+        { "name": "x64-debug", "configurePreset": "x64-debug" }
+    ]
+}

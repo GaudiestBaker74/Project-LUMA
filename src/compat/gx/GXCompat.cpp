@@ -160,9 +160,25 @@ struct VcdSlot {
     int attr;        // GX_VA_*
     int comps;       // resolved component count (from the VAT)
     GXAttrType source; // GX_DIRECT / GX_INDEX8 / GX_INDEX16
+    // M9.10 perf: the VAT fields the per-write path needs, cached here at
+    // rebuild time — the vertex hot path used to re-resolve them (switch over
+    // the VAT table) on every FIFO word.
+    GXCompType type; // VAT component type (array reads / fixed-point scale)
+    u8 frac;         // VAT fraction (fixed-point scale = 1 << frac)
 };
 std::vector<VcdSlot> sVcdOrder;
 int sVcdTotalWrites = 0; // FIFO words per vertex (DIRECT: comps, indexed: 1)
+
+// M9.10 perf: the FIFO stream decode table. rebuildVcd expands the VCD layout
+// into one entry per FIFO word (a direct slot contributes one entry per
+// component; an indexed slot contributes one), so captureWrite is a single
+// indexed lookup instead of a linear scan of sVcdOrder per word (the scan ran
+// ~450k times/frame on the fileselect planets).
+struct WriteStep {
+    std::int16_t slot; // index into sVcdOrder
+    std::int16_t comp; // component within the slot (direct writes)
+};
+std::vector<WriteStep> sWriteSteps;
 
 // Attribute arrays for INDEX8/INDEX16 (M5.2, GXSetArray) plus the matrix
 // arrays GX_POS_MTX_ARRAY..GX_LIGHT_ARRAY (attrs 21..24, CPArray 12..15 /
@@ -313,7 +329,8 @@ void rebuildVcd() {
         if (sVtxDescSet[attr] && sVtxDesc[attr] != GX_NONE) {
             const int comps = attrComponentCount(sVtxFmt, attr);
             if (comps > 0) {
-                sVcdOrder.push_back({attr, comps, sVtxDesc[attr]});
+                const AttrFmt& fmt = sAttrFmt[sVtxFmt][attr];
+                sVcdOrder.push_back({attr, comps, sVtxDesc[attr], fmt.type, fmt.frac});
             }
         }
     }
@@ -321,22 +338,34 @@ void rebuildVcd() {
     for (const auto& slot : sVcdOrder) {
         sVcdTotalWrites += (slot.source == GX_DIRECT) ? slot.comps : 1;
     }
+    // M9.10 perf: precompute the FIFO write-index decode table (see
+    // WriteStep). One entry per FIFO word of the vertex, in stream order.
+    sWriteSteps.clear();
+    sWriteSteps.reserve(static_cast<size_t>(sVcdTotalWrites));
+    for (int si = 0; si < static_cast<int>(sVcdOrder.size()); ++si) {
+        const VcdSlot& slot = sVcdOrder[static_cast<size_t>(si)];
+        const int writes = (slot.source == GX_DIRECT) ? slot.comps : 1;
+        for (int w = 0; w < writes; ++w) {
+            sWriteSteps.push_back({static_cast<std::int16_t>(si),
+                                   static_cast<std::int16_t>(w)});
+        }
+    }
 }
 
 // Converts a raw GX component value to float according to the attribute's
 // comp type (GX_VAT). Colors (u8/rgba) are normalized to 0..1; numeric
-// formats scale by the fraction (value / 2^frac).
-float convertComponent(int attr, float value, bool isColorByte) {
-    if (attr == GX_VA_CLR0 || attr == GX_VA_CLR1) {
+// formats scale by the fraction (value / 2^frac). M9.10 perf: reads the VAT
+// fields cached in the VCD slot instead of re-resolving them per FIFO word.
+float convertComponent(const VcdSlot& slot, float value, bool isColorByte) {
+    if (slot.attr == GX_VA_CLR0 || slot.attr == GX_VA_CLR1) {
         return isColorByte ? value / 255.0f : value;
     }
-    const AttrFmt& fmt = sAttrFmt[sVtxFmt][attr];
-    switch (fmt.type) {
+    switch (slot.type) {
         case GX_U8:
         case GX_S8:
         case GX_U16:
         case GX_S16:
-            return value / static_cast<float>(1 << fmt.frac);
+            return value / static_cast<float>(1 << slot.frac);
         case GX_F32:
         default:
             return value;
@@ -391,8 +420,11 @@ float readArrayComp(const u8* p, GXCompType type, u8 frac) {
 }
 
 // Resolves the attribute data for `index` from the GXSetArray array and fills
-// sCurAttr[attr][0..comps). Colors RGBA8 normalize to 0..1.
-void fetchArrayAttr(int attr, u32 index) {
+// sCurAttr[attr][0..comps). Colors RGBA8 normalize to 0..1. M9.10 perf: the
+// component count and VAT fields come from the VCD slot (resolved once per
+// VCD/VAT change), not re-derived per indexed fetch.
+void fetchArrayAttr(const VcdSlot& slot, u32 index) {
+    const int attr = slot.attr;
     const ArraySlot& arr = sArrays[attr];
     if (!arr.set || !arr.base) {
         PL_LOG_WARN("gx", "indexed attribute %d used without GXSetArray — zeros",
@@ -403,8 +435,7 @@ void fetchArrayAttr(int attr, u32 index) {
         return;
     }
     const u8* p = arr.base + static_cast<size_t>(index) * arr.stride;
-    const AttrFmt& fmt = sAttrFmt[sVtxFmt][attr];
-    const int comps = attrComponentCount(sVtxFmt, attr);
+    const int comps = slot.comps;
     if (attr == GX_VA_CLR0 || attr == GX_VA_CLR1) {
         // M5.2 handles RGBA8 arrays; other color encodings (RGB565, ...)
         // arrive with the color pipeline (M5.5).
@@ -413,9 +444,9 @@ void fetchArrayAttr(int attr, u32 index) {
         }
         return;
     }
-    const int elemSize = compByteSize(fmt.type);
+    const int elemSize = compByteSize(slot.type);
     for (int c = 0; c < comps; ++c) {
-        sCurAttr[attr][c] = readArrayComp(p + c * elemSize, fmt.type, fmt.frac);
+        sCurAttr[attr][c] = readArrayComp(p + c * elemSize, slot.type, slot.frac);
     }
 }
 
@@ -451,8 +482,12 @@ void finishVertex() {
         }
         ++sTcSpanNverts;
     }
-    float snapshot[GX_VA_MAX_ATTR][4];
-    std::memcpy(snapshot, sCurAttr, sizeof(snapshot));
+    // M9.10 perf: the snapshot exists so generators read the INCOMING
+    // attributes — and resolveTexGen only ever reads the POS and TEX0..7
+    // rows (any other source passes through). Copy just those rows (144
+    // bytes) instead of the full 25-row bank (400 bytes), and skip the copy
+    // entirely when no generator is active.
+    static_assert(GX_VA_TEX7 == GX_VA_TEX0 + 7, "TEX0..7 attribute rows must be contiguous");
     // M9.9 perf: the hardware only RUNS the texgen units below numTexGens
     // (GEN_MODE); coordinates at or above it are undefined at the TEV, so
     // evaluating every configured generator for all eight units per vertex was
@@ -461,6 +496,13 @@ void finishVertex() {
     // Inactive units keep the incoming attribute (passthrough, q = 1), the
     // same as an unset generator.
     const int activeGens = Platform::CompatGx::tevTexGenCount();
+    float snapshot[GX_VA_MAX_ATTR][4];
+    if (activeGens > 0) {
+        std::memcpy(snapshot[GX_VA_POS], sCurAttr[GX_VA_POS],
+                    sizeof(snapshot[GX_VA_POS]));
+        std::memcpy(snapshot[GX_VA_TEX0], sCurAttr[GX_VA_TEX0],
+                    8 * sizeof(snapshot[GX_VA_TEX0]));
+    }
     for (int coord = 0; coord < 8; ++coord) {
         if (coord < activeGens) {
             Platform::CompatGx::resolveTexGen(coord, sCurAttr, snapshot);
@@ -510,28 +552,14 @@ void finishVertex() {
 
 // --- capture from the write-gather pipe --------------------------------------
 
-// Maps the global write index to the VCD slot and the component within it.
-// Direct slots consume `comps` writes, indexed slots consume 1 (the index).
-// Returns nullptr on overflow (write past the end of the vertex layout).
-const VcdSlot* mapWriteIndex(int* outComp) {
-    const int wi = sVtxWriteIndex;
-    int base = 0;
-    for (const auto& slot : sVcdOrder) {
-        const int writes = (slot.source == GX_DIRECT) ? slot.comps : 1;
-        if (wi < base + writes) {
-            *outComp = wi - base;
-            return &slot;
-        }
-        base += writes;
-    }
-    return nullptr;
-}
-
 // writeSize = bytes this 32-bit FIFO word contributes to the stream (u8/s8 ->
 // 1, u16/s16 -> 2, f32 -> 4). The stream is consumed positionally in VCD
 // order, exactly like the PPC vertex loader: each write fills the next
 // component(s) of the current vertex. For an indexed slot the FIFO word is
 // the array index and the attribute data is fetched via fetchArrayAttr.
+// M9.10 perf: the (slot, component) decode is a single lookup in the
+// precomputed sWriteSteps table (rebuildVcd) — this runs once per FIFO word,
+// ~450k times/frame on the fileselect planets.
 void captureWrite(float value, int writeSize) {
     if (!sInBegin) {
         // Writes outside GXBegin are illegal on the console too; the game
@@ -539,21 +567,21 @@ void captureWrite(float value, int writeSize) {
         PL_LOG_WARN("gx", "vertex write outside GXBegin ignored");
         return;
     }
-    int comp = -1;
-    const VcdSlot* slot = mapWriteIndex(&comp);
-    if (!slot) {
+    if (static_cast<size_t>(sVtxWriteIndex) >= sWriteSteps.size()) {
         PL_LOG_WARN("gx", "vertex write overflow (VCD writes %d)", sVcdTotalWrites);
         return;
     }
-    if (slot->source != GX_DIRECT) {
+    const WriteStep step = sWriteSteps[static_cast<size_t>(sVtxWriteIndex)];
+    const VcdSlot& slot = sVcdOrder[static_cast<size_t>(step.slot)];
+    if (slot.source != GX_DIRECT) {
         // Indexed attribute: one FIFO word = the array index (u8/u16 values
         // are exact in float). Resolve the data from the GXSetArray array.
-        fetchArrayAttr(slot->attr, static_cast<u32>(value));
+        fetchArrayAttr(slot, static_cast<u32>(value));
     } else {
-        const bool isColor = (slot->attr == GX_VA_CLR0 || slot->attr == GX_VA_CLR1);
+        const bool isColor = (slot.attr == GX_VA_CLR0 || slot.attr == GX_VA_CLR1);
         // One FIFO word = one component of the vertex.
-        sCurAttr[slot->attr][comp] =
-            convertComponent(slot->attr, value, writeSize == 1 && isColor);
+        sCurAttr[slot.attr][step.comp] =
+            convertComponent(slot, value, writeSize == 1 && isColor);
     }
     sVtxWriteIndex += 1;
     if (sVtxWriteIndex >= sVcdTotalWrites) {
@@ -570,20 +598,20 @@ void capturePackedU32(std::uint32_t packed) {
         PL_LOG_WARN("gx", "vertex write outside GXBegin ignored");
         return;
     }
-    int comp = -1;
-    const VcdSlot* slot = mapWriteIndex(&comp);
-    if (!slot) {
+    if (static_cast<size_t>(sVtxWriteIndex) >= sWriteSteps.size()) {
         PL_LOG_WARN("gx", "vertex write overflow (VCD writes %d)", sVcdTotalWrites);
         return;
     }
-    if (slot->source != GX_DIRECT ||
-        (slot->attr != GX_VA_CLR0 && slot->attr != GX_VA_CLR1)) {
+    const WriteStep step = sWriteSteps[static_cast<size_t>(sVtxWriteIndex)];
+    const VcdSlot& slot = sVcdOrder[static_cast<size_t>(step.slot)];
+    if (slot.source != GX_DIRECT ||
+        (slot.attr != GX_VA_CLR0 && slot.attr != GX_VA_CLR1)) {
         PL_LOG_WARN("gx", "u32 write into a non-direct-color attribute — dropped");
         return;
     }
     for (int c = 0; c < 4; ++c) {
         const u8 byte = static_cast<u8>((packed >> (24 - 8 * c)) & 0xFF);
-        sCurAttr[slot->attr][comp + c] = byte / 255.0f;
+        sCurAttr[slot.attr][step.comp + c] = byte / 255.0f;
     }
     sVtxWriteIndex += 4;
     if (sVtxWriteIndex >= sVcdTotalWrites) {
@@ -903,33 +931,38 @@ void flushDraw() {
     // vertex count is even and 3 when it is odd — the first real triangle of
     // the appended strip always lands on an EVEN index and keeps its winding
     // (back-face culling unchanged). QUADS/TRIANGLES/FANS remain lists.
+    // M9.10 perf: buildVertex writes DIRECTLY into the (exactly sized)
+    // drawData buffer. The old code built each vertex in a local and
+    // insert()ed it — the iterator-range insert machinery cost ~170
+    // instructions per vertex on the planets. The resize() zero-fill is
+    // fully overwritten below and costs one linear pass.
     bool triList = false;   // flat TriangleList, coalescible with lists
     bool triStrip = false;  // native TriangleStrip, coalescible with strips
     if (sPrimitive == GX_QUADS && (nverts % 4) == 0) {
-        drawData.reserve(static_cast<size_t>(nverts / 4 * 6 * kFixedStride));
+        drawData.resize(static_cast<size_t>(nverts / 4 * 6) * kFixedStride);
+        float* dst = drawData.data();
         for (int q = 0; q < nverts; q += 4) {
             for (int idx : {0, 1, 2, 0, 2, 3}) {
-                float v[kFixedStride];
-                buildVertex(q + idx, v);
-                drawData.insert(drawData.end(), v, v + kFixedStride);
+                buildVertex(q + idx, dst);
+                dst += kFixedStride;
             }
         }
         triList = true;
     } else if (sPrimitive == GX_TRIANGLESTRIP && nverts >= 3) {
-        drawData.reserve(static_cast<size_t>(nverts) * kFixedStride);
+        drawData.resize(static_cast<size_t>(nverts) * kFixedStride);
+        float* dst = drawData.data();
         for (int i = 0; i < nverts; ++i) {
-            float v[kFixedStride];
-            buildVertex(i, v);
-            drawData.insert(drawData.end(), v, v + kFixedStride);
+            buildVertex(i, dst);
+            dst += kFixedStride;
         }
         triStrip = true;
     } else if (sPrimitive == GX_TRIANGLEFAN && nverts >= 3) {
-        drawData.reserve(static_cast<size_t>((nverts - 2) * 3 * kFixedStride));
+        drawData.resize(static_cast<size_t>((nverts - 2) * 3) * kFixedStride);
+        float* dst = drawData.data();
         for (int i = 1; i + 1 < nverts; ++i) {
             for (int idx : {0, i, i + 1}) {
-                float v[kFixedStride];
-                buildVertex(idx, v);
-                drawData.insert(drawData.end(), v, v + kFixedStride);
+                buildVertex(idx, dst);
+                dst += kFixedStride;
             }
         }
         triList = true;
@@ -1815,6 +1848,16 @@ void GXBegin(GXPrimitive prim, GXVtxFmt vtxfmt, u16 nverts) {
     sVertexTexQ.clear();
     sVtxWriteIndex = 0;
     rebuildVcd();
+    // M9.10 perf: size the capture vectors for the whole primitive up front —
+    // the per-vertex push_backs then never reallocate (and their capacity
+    // checks stay predictable). Vertex stride = sum of the VCD components.
+    int strideTotal = 0;
+    for (const auto& slot : sVcdOrder) {
+        strideTotal += slot.comps;
+    }
+    sVertexData.reserve(static_cast<size_t>(nverts) * static_cast<size_t>(strideTotal));
+    sVertexTexCoords.reserve(static_cast<size_t>(nverts) * 16);
+    sVertexTexQ.reserve(static_cast<size_t>(nverts) * 8);
     sInBegin = (nverts > 0);
 }
 

@@ -314,7 +314,26 @@ int main(int argc, char** argv) {
 
     // M9.5.3c-diag: version + build stamp FIRST in every log (demo and boot),
     // so "the log says X but my exe predates X" is visible immediately.
-    PL_LOG_INFO("main", "galaxy-pc %s — built %s", kVersion, kBuildStamp);
+    // M9.10 diag: the build CONFIGURATION decides everything about speed — an
+    // MSVC Debug build runs the vertex pipeline 5-10x slower with the GPU
+    // idle, which from the log looks exactly like "the port is slow" (the
+    // planets sat at 10 FPS with cpu-render 110 ms and gpu 2.6 ms). Visual
+    // Studio's folder-open default is x64-Debug, so print which binary is
+    // actually running — and shout when it is the unoptimized one.
+#if defined(NDEBUG)
+    constexpr const char* kBuildConfig = "optimized build";
+#else
+    constexpr const char* kBuildConfig = "DEBUG build — UNOPTIMIZED, 5-10x slower";
+#endif
+    PL_LOG_INFO("main", "galaxy-pc %s — built %s [%s]", kVersion, kBuildStamp,
+                kBuildConfig);
+#if !defined(NDEBUG)
+    PL_LOG_WARN("main", "DEBUG build detected — the game will run several times slower "
+                        "(planets/FileSelect especially). Rebuild optimized: in Visual "
+                        "Studio switch the configuration dropdown to x64-Release (or "
+                        "x64-RelWithDebInfo), or from a terminal: cmake --build build "
+                        "--config RelWithDebInfo");
+#endif
     compat::ui::setFpsOverlayEnabled(opts.showFps);
 
     // --- M9: the real game boot (gameMain) -----------------------------------

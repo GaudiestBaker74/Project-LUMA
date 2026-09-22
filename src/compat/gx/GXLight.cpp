@@ -67,9 +67,17 @@ int sCurNrmMtx = 0;
 
 // --- helpers --------------------------------------------------------------
 
+// M9.10 perf: std::round is a libm call (~30 instructions + call overhead per
+// component — the profiler put roundf alone at ~265 instructions/vertex on the
+// fileselect planets). This inline form is bit-identical for the value range
+// the hardware produces (|x| < 2^22, always true here: color components and
+// light*color products): adding ±0.5 then truncating toward zero IS round-half-
+// -away-from-zero, the C semantics of std::round and of Dolphin's int(round()).
+int fastRound(float x) { return static_cast<int>(x + (x >= 0.0f ? 0.5f : -0.5f)); }
+
 int round255(float v) {
     // Dolphin: int(round(x * 255.0)) — half away from zero.
-    return static_cast<int>(std::round(v * 255.0f));
+    return fastRound(v * 255.0f);
 }
 
 // (mat * (lacc + (lacc >> 7))) >> 8 — the hardware fixed-point multiply that
@@ -86,6 +94,23 @@ void computeChannelLighting(const ChanLightState chan[4], const std::uint8_t amb
                             const float clr0[4], const float clr1[4], float out0[4],
                             float out1[4]) {
     float* outPair[2] = {out0, out1};
+
+    // M9.10 perf: the per-light geometry (direction, attenuation, ndl) does
+    // not depend on the channel slot — only on the light and the attenuation
+    // function (a per-channel setting). The old loop recomputed it inside
+    // every slot, so a 4-slot lit vertex paid 4x the sqrt/divide cost. Cache
+    // it per (attnFn, light) for the vertex: same operands, same expression
+    // order, so the results stay bit-identical to Dolphin's per-channel
+    // evaluation — only the redundancy is gone. The fileselect planets spend
+    // ~1600 of their ~3300 instructions/vertex in this function.
+    struct LightGeom {
+        float ldir[3];
+        float attn;
+        float ndl;
+        bool valid;
+    };
+    LightGeom geom[3][kMaxLights] = {};
+
     // The output alpha of pair p comes from the ALPHA slot (2 + p); the RGB
     // from the COLOR slot (0 + p). Process each slot and store its components.
     for (int j = 0; j < 4; ++j) {
@@ -127,79 +152,88 @@ void computeChannelLighting(const ChanLightState chan[4], const std::uint8_t amb
                 const LightParams& L = lights[li];
 
                 // Per-light geometry: direction toward the light and the
-                // attenuation (Dolphin AttenuationFunc cases).
-                float ldir[3];
-                float attn;
-                switch (c.attnFn) {
-                case 0 /* GX_AF_SPEC */: {
-                    float d[3] = {L.pos[0] - posView[0], L.pos[1] - posView[1],
-                                  L.pos[2] - posView[2]};
-                    const float lenSq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                    if (lenSq == 0.0f) {
-                        std::memcpy(ldir, nrmView, sizeof(ldir));
-                    } else {
-                        const float inv = 1.0f / std::sqrt(lenSq);
-                        ldir[0] = d[0] * inv;
-                        ldir[1] = d[1] * inv;
-                        ldir[2] = d[2] * inv;
+                // attenuation (Dolphin AttenuationFunc cases). Cached per
+                // (attnFn, light) — see LightGeom above. fn 0 = SPEC,
+                // 1 = SPOT, 2 = NONE (the switch's default bucket).
+                const int fn = (c.attnFn == 0 || c.attnFn == 1) ? c.attnFn : 2;
+                LightGeom& g = geom[fn][li];
+                if (!g.valid) {
+                    g.valid = true;
+                    const float d0 = L.pos[0] - posView[0];
+                    const float d1 = L.pos[1] - posView[1];
+                    const float d2 = L.pos[2] - posView[2];
+                    switch (fn) {
+                    case 0 /* GX_AF_SPEC */: {
+                        const float lenSq = d0 * d0 + d1 * d1 + d2 * d2;
+                        if (lenSq == 0.0f) {
+                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
+                        } else {
+                            const float inv = 1.0f / std::sqrt(lenSq);
+                            g.ldir[0] = d0 * inv;
+                            g.ldir[1] = d1 * inv;
+                            g.ldir[2] = d2 * inv;
+                        }
+                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
+                                nrmView[2] * g.ldir[2];
+                        // Gated by the normal facing the light, then the spec
+                        // falloff uses the light direction.
+                        const float attn0 =
+                            (g.ndl >= 0.0f)
+                                ? std::max(0.0f, nrmView[0] * L.dir[0] +
+                                                     nrmView[1] * L.dir[1] +
+                                                     nrmView[2] * L.dir[2])
+                                : 0.0f;
+                        const float cosAttn = std::max(
+                            0.0f, L.a[0] + L.a[1] * attn0 + L.a[2] * attn0 * attn0);
+                        const float distAttn =
+                            L.k[0] + L.k[1] * attn0 + L.k[2] * attn0 * attn0;
+                        g.attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
+                        break;
                     }
-                    const float ndl = nrmView[0] * ldir[0] + nrmView[1] * ldir[1] +
-                                      nrmView[2] * ldir[2];
-                    // Gated by the normal facing the light, then the spec
-                    // falloff uses the light direction.
-                    const float attn0 = (ndl >= 0.0f)
-                                            ? std::max(0.0f, nrmView[0] * L.dir[0] +
-                                                                  nrmView[1] * L.dir[1] +
-                                                                  nrmView[2] * L.dir[2])
-                                            : 0.0f;
-                    const float cosAttn = std::max(
-                        0.0f, L.a[0] + L.a[1] * attn0 + L.a[2] * attn0 * attn0);
-                    const float distAttn = L.k[0] + L.k[1] * attn0 + L.k[2] * attn0 * attn0;
-                    attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
-                    break;
-                }
-                case 1 /* GX_AF_SPOT */: {
-                    float d[3] = {L.pos[0] - posView[0], L.pos[1] - posView[1],
-                                  L.pos[2] - posView[2]};
-                    const float dist2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                    const float dist = std::sqrt(dist2);
-                    if (dist != 0.0f) {
-                        ldir[0] = d[0] / dist;
-                        ldir[1] = d[1] / dist;
-                        ldir[2] = d[2] / dist;
-                    } else {
-                        std::memcpy(ldir, nrmView, sizeof(ldir));
+                    case 1 /* GX_AF_SPOT */: {
+                        const float dist2 = d0 * d0 + d1 * d1 + d2 * d2;
+                        const float dist = std::sqrt(dist2);
+                        if (dist != 0.0f) {
+                            g.ldir[0] = d0 / dist;
+                            g.ldir[1] = d1 / dist;
+                            g.ldir[2] = d2 / dist;
+                        } else {
+                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
+                        }
+                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
+                                nrmView[2] * g.ldir[2];
+                        const float cosA =
+                            std::max(0.0f, g.ldir[0] * L.dir[0] +
+                                               g.ldir[1] * L.dir[1] +
+                                               g.ldir[2] * L.dir[2]);
+                        const float cosAttn = std::max(
+                            0.0f, L.a[0] + L.a[1] * cosA + L.a[2] * cosA * cosA);
+                        const float distAttn = L.k[0] + L.k[1] * dist + L.k[2] * dist2;
+                        g.attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
+                        break;
                     }
-                    const float cosA =
-                        std::max(0.0f, ldir[0] * L.dir[0] + ldir[1] * L.dir[1] +
-                                           ldir[2] * L.dir[2]);
-                    const float cosAttn = std::max(
-                        0.0f, L.a[0] + L.a[1] * cosA + L.a[2] * cosA * cosA);
-                    const float distAttn = L.k[0] + L.k[1] * dist + L.k[2] * dist2;
-                    attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
-                    break;
-                }
-                default /* GX_AF_NONE */: {
-                    float d[3] = {L.pos[0] - posView[0], L.pos[1] - posView[1],
-                                  L.pos[2] - posView[2]};
-                    const float lenSq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                    if (lenSq == 0.0f) {
-                        std::memcpy(ldir, nrmView, sizeof(ldir));
-                    } else {
-                        const float inv = 1.0f / std::sqrt(lenSq);
-                        ldir[0] = d[0] * inv;
-                        ldir[1] = d[1] * inv;
-                        ldir[2] = d[2] * inv;
+                    default /* GX_AF_NONE */: {
+                        const float lenSq = d0 * d0 + d1 * d1 + d2 * d2;
+                        if (lenSq == 0.0f) {
+                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
+                        } else {
+                            const float inv = 1.0f / std::sqrt(lenSq);
+                            g.ldir[0] = d0 * inv;
+                            g.ldir[1] = d1 * inv;
+                            g.ldir[2] = d2 * inv;
+                        }
+                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
+                                nrmView[2] * g.ldir[2];
+                        g.attn = 1.0f;
+                        break;
                     }
-                    attn = 1.0f;
-                    break;
-                }
+                    }
                 }
 
                 // Diffuse term: NONE multiplies by attn only; SIGN/CLAMP by
                 // attn * dot(ldir, normal) (CLAMP floors at 0).
-                const float ndl = nrmView[0] * ldir[0] + nrmView[1] * ldir[1] +
-                                  nrmView[2] * ldir[2];
+                const float ndl = g.ndl;
+                const float attn = g.attn;
                 float diffuse;
                 switch (c.diffFn) {
                 case 1 /* GX_DF_SIGN */:
@@ -217,12 +251,10 @@ void computeChannelLighting(const ChanLightState chan[4], const std::uint8_t amb
                 // slots, alpha for alpha slots (per Dolphin's swizzle).
                 if (isColor) {
                     for (int comp = 0; comp < 3; ++comp) {
-                        lacc[comp] += static_cast<int>(
-                            std::round(diffuse * static_cast<float>(L.color[comp])));
+                        lacc[comp] += fastRound(diffuse * static_cast<float>(L.color[comp]));
                     }
                 } else {
-                    lacc[3] += static_cast<int>(
-                        std::round(diffuse * static_cast<float>(L.color[3])));
+                    lacc[3] += fastRound(diffuse * static_cast<float>(L.color[3]));
                 }
             }
         } else {
