@@ -9,12 +9,12 @@
 // -----------------------------------------------------------------------------
 // On the console every UI string comes from /MessageData/Message.arc (a BMG
 // binary + the MessageId.tbl BCSV that maps "Layout_FileSelectTxtStart" to a
-// message index). The port does not have the message system yet — MessageHolder
-// / JMapInfo / the BMG reader are all still open (docs/porting.md §gaps) — so
-// the layout text boxes kept whatever text the brlyt ships with: the FileSelect
-// screen therefore showed "Copy / Icon / Erase / Play This File" (the arc's
-// authored English) even with the game set to UsSpanish — the mix of languages
-// reported in M10.1.
+// message index). The port reads that same data from the user's disc assets
+// (compat/game/GameMessageData — the host BMG/BCSV reader), so with assets
+// mounted the strings below are NEVER used: they are only the no-assets
+// fallback (headless test runs, a missing dump) that keeps the screens from
+// showing the brlyt's authored language — the mix of languages reported in
+// M10.1 ("Copy / Icon / Erase" next to a Spanish button).
 //
 // The layout naming rule the console uses (LayoutCoreUtil::initTextBoxPane) is
 //     message id = "Layout_" + layoutName + paneNameWithoutLanguageSuffix
@@ -34,8 +34,13 @@
 
 namespace compat::game {
 
-/// Strings the ported screens ask for by id (see the .cpp table).
+/// Strings the ported screens ask for by id: the game's message data first
+/// (GameMessageData, assets), the embedded table when the assets are absent.
 const wchar_t* gameTextForMessageId(const char* pMessageId);
+
+/// The embedded no-assets table alone (diagnostics: tells the layout log
+/// whether a string came from the disc or from the fallback).
+const wchar_t* gameTextFromEmbeddedTable(const char* pMessageId);
 
 /// Convenience wrapper for the one-off literals a host screen draws itself
 /// (e.g. the debug overlay's labels). Returns `pFallback` when unknown.

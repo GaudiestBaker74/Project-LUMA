@@ -118,14 +118,19 @@ El arc de `FileSelect.arc` trae, para el mismo rótulo, un pane por idioma
 * los textos de los panes sin variante quedaban con el texto *de diseño* del
   brlyt (inglés), y
 * el sistema de mensajes (`/MessageData/Message.arc`, BMG + `MessageId.tbl`) no
-  está portado, así que nadie sustituía nada.
+  estaba portado, así que nadie sustituía nada.
 
-La solución del port es `compat/game/GameTextTable`: la tabla de mensajes de la
-pantalla (los ids `Layout_FileSelect*`, `Layout_BackButton*`,
-`System_FileSelect*`, `System_Date000`/`System_Time002`) en los 12 idiomas del
-disco, que `LayoutManagerCompat::initTextBoxRecursive` consulta antes que
-cualquier fallback. En cuanto entre el lector BMG real, sólo cambia la
-consulta, no los sitios de llamada.
+La fuente de verdad hoy es el propio juego: `compat/game/GameMessageData`
+monta `/MessageData/Message.arc` (primero la variante del idioma,
+`/<Language>/MessageData/Message.arc`, como el `makeFileNameConsideringLanguage`
+de consola) y lee `Message.bmg` (bloques INF1/DAT1, UTF-16BE) +
+`MessageId.tbl` (BCSV big-endian, columnas por hash JGadget) — el mismo flujo
+de `MessageHolder.cpp` en el código vendored. `gameTextForMessageId` consulta
+esos datos ANTES que nada: con el dump montado, cada rótulo es la cadena que
+envía el disco. `compat/game/GameTextTable` (los ids `Layout_FileSelect*`,
+`Layout_BackButton*`, `System_FileSelect*`, `System_Date000`/`System_Time002`
+en los 12 idiomas) queda sólo como respaldo para ejecuciones sin assets
+(tests headless), y el texto de diseño del brlyt como último recurso.
 
 Ojo con un matiz que costó un bug: el pane `TxtStart` es el **botón** (su texto
 es "Play This File" / "Jouer avec ces données" / "このデータで遊ぶ"), no la

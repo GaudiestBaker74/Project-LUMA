@@ -16,6 +16,9 @@ struct FrameStats {
     double gpuMs = 0.0;        // GPU time for the frame (0 if timestamps unsupported)
     uint64_t memoryUsed = 0;   // device-local memory in use (0 if budget unsupported)
     uint64_t memoryBudget = 0; // device-local memory budget (0 if budget unsupported)
+    uint32_t drawCalls = 0;    // vkCmdDraw/vkCmdDrawIndexed recorded this frame (M9.7 perf)
+    uint64_t verticesDrawn = 0; // vertices across those draws (M9.9: separates
+                               // per-draw CPU overhead from per-vertex cost)
 };
 
 // Converts a GPU timestamp delta (ticks) to milliseconds using the device's

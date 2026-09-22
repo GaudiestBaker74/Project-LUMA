@@ -59,6 +59,17 @@ float masterGain();
 // Headless/test sink: drains ring samples (as the SDL callback would).
 int pull(int16_t* dst, int maxSamples);
 
+// --- one-shot voices (M8.5 prep: sound effects) ------------------------------
+// A one-shot is a decoded PCM clip (interleaved s16 stereo at inputFreq) that
+// plays once, MIXED on top of whatever the ring carries (the music stream is
+// the ring's only producer today; SEs must not interrupt it). Voices are
+// finite, so no stop call is needed — they retire themselves when done.
+// Safe to call from any thread; mixing happens on the device thread (or in
+// pull() when headless). Returns false when uninitialized or the voice pool
+// is full (the caller may retry later; SEs are fire-and-forget).
+bool playOneShot(const int16_t* interleaved, int frames, float gain = 1.0f);
+int activeVoices();  // one-shots still playing (tests/diagnostics)
+
 // Device-thread tick (called by the SDL callback with the amount requested,
 // in output frames). Used by compat/ai for latency accounting. Optional.
 using DeviceTick = void (*)(void* user, int framesRequested);

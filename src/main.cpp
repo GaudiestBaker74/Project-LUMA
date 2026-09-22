@@ -12,7 +12,7 @@
 //   galaxy-pc [--help] [--version] [--log-level LVL] [--log-file PATH]
 //             [--assets-dir DIR] [--gpu-debug] [--width N] [--height N]
 //             [--no-vsync] [--fullscreen] [--frames N] [--boot]
-//             [--screenshot PATH] [--no-audio]
+//             [--screenshot PATH] [--no-audio] [--show-fps]
 //
 //   Frame capture: --screenshot PATH writes the EFB as a PPM/P6. In the native
 //   loop it captures the last of --frames N presents; with --boot it captures
@@ -28,6 +28,7 @@
 #include "compat/gx/GXCompat.h"
 #include "compat/kpad/KPADCompat.h"
 #include "compat/os/OSCompat.h"
+#include "compat/ui/FpsOverlay.h"
 #include "platform/Audio/Audio.h"
 #include "platform/Input/Input.h"
 #include "platform/Renderer/Renderer.h"
@@ -77,6 +78,7 @@ struct Options {
     bool boot = false; // M9: run the real game boot (gameMain) instead of the demo
     bool audio = true; // M9.5.4 v7: open the audio device for the boot (music)
     float musicVolume = 1.0f; // 0..1
+    bool showFps = false; // PC_PORT: draw the FPS counter at the top right
 };
 
 void printHelp() {
@@ -112,7 +114,9 @@ void printHelp() {
         "                     Logo scene) instead of the M5 demo\n"
         "  --no-audio         do not open the audio device (env GALAXY_NO_AUDIO=1);\n"
         "                     the boot plays the streamed music (AudioRes/Stream)\n"
-        "  --music-volume V   music volume 0..1 (default 1, env GALAXY_MUSIC_VOLUME)\n\n"
+        "  --music-volume V   music volume 0..1 (default 1, env GALAXY_MUSIC_VOLUME)\n"
+        "  --show-fps         draw a live FPS counter at the top-right of the screen\n"
+        "                     (both the M5 demo and the --boot game path)\n\n"
         "M5 demo: SDL3 window + Vulkan (Platform::Renderer) + fixed 60 Hz loop\n"
         "with a rotating GX quad (immediate vertices). Esc/close quits; F11 toggles\n"
         "fullscreen.\n"
@@ -173,6 +177,8 @@ bool parseArgs(int argc, char** argv, Options& out) {
             out.boot = true;
         } else if (arg == "--no-audio") {
             out.audio = false;
+        } else if (arg == "--show-fps") {
+            out.showFps = true;
         } else if (arg == "--music-volume") {
             const char* v = next("--music-volume");
             if (!v) return false;
@@ -309,6 +315,7 @@ int main(int argc, char** argv) {
     // M9.5.3c-diag: version + build stamp FIRST in every log (demo and boot),
     // so "the log says X but my exe predates X" is visible immediately.
     PL_LOG_INFO("main", "galaxy-pc %s — built %s", kVersion, kBuildStamp);
+    compat::ui::setFpsOverlayEnabled(opts.showFps);
 
     // --- M9: the real game boot (gameMain) -----------------------------------
     // The vendored boot prologue (DVDInit/VIInit/heaps/GameSystem::init) and
@@ -556,6 +563,9 @@ int main(int argc, char** argv) {
             GXTexCoord2f32(uv[i][0], uv[i][1]);
         }
         GXEnd();
+
+        // PC_PORT (--show-fps): last draw of the EFB pass, on top of the quad.
+        compat::ui::drawFpsOverlayIfEnabled();
 
         renderer.endPass();
         GXCopyDisp(nullptr, GX_TRUE); // blit EFB -> swapchain (present)

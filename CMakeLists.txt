@@ -44,7 +44,7 @@ enable_testing()
 
 # --- SDL3 (window/input/audio for the port) -----------------------------------
 # Prefer the system package (Linux); fall back to building from source
-# (Windows/MSVC and CI: FetchContent clones the release tag).
+# (Windows/MSVC and CI: FetchContent downloads the official release tarball).
 find_package(SDL3 QUIET)
 if(NOT SDL3_FOUND)
     message(STATUS "SDL3 not found on the system — fetching from source (FetchContent)")
@@ -56,11 +56,19 @@ if(NOT SDL3_FOUND)
     set(SDL_STATIC ON CACHE BOOL "" FORCE)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    # Download the verified release tarball instead of `git clone`. The git
+    # path is fragile on Windows: it leaves read-only .git objects and its
+    # "remove sdl3-src before re-cloning" step fails whenever OneDrive (the
+    # project is often under Downloads), antivirus, or a stray git.exe holds a
+    # file lock — the exact "Failed to remove directory ... sdl3-src" error.
+    # A single hash-verified .tar.gz avoids all of that and is faster.
+    # FetchContent flattens the archive's single top-level directory, so
+    # SDL3's CMakeLists.txt lands at the source root (no SOURCE_SUBDIR needed).
     FetchContent_Declare(
         sdl3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.2.10
-        GIT_SHALLOW TRUE
+        URL https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz
+        URL_HASH SHA256=f87be7b4dec66db4098e9c167b2aa34e2ca10aeb5443bdde95ae03185ed513e0
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(sdl3)
 endif()

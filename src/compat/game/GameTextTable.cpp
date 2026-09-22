@@ -4,6 +4,7 @@
 
 #include "compat/game/GameTextTable.h"
 
+#include "compat/game/GameMessageData.h"
 #include "compat/game/LanguageCompat.h"
 #include "platform/Log/Log.h"
 
@@ -26,7 +27,13 @@ struct TextEntry {
 };
 
 // ---------------------------------------------------------------------------
-// The table.
+// The no-assets fallback table.
+//
+// gameTextForMessageId() asks the game's own message data FIRST
+// (compat/game/GameMessageData reads Message.bmg + MessageId.tbl from the
+// mounted disc assets) and only reaches this table when the assets are not
+// there (headless test runs). That keeps every string on the screen sourced
+// from the game itself whenever the game itself is available.
 //
 // Filled in for the languages whose official wording is verifiable from the
 // game's own captures (the French and Japanese columns come straight from a
@@ -180,6 +187,20 @@ char* buildLayoutMessageId(char* pOut, size_t outSize, const char* pLayoutName, 
 }
 
 const wchar_t* gameTextForMessageId(const char* pMessageId) {
+    if (pMessageId == nullptr || *pMessageId == '\0') {
+        return nullptr;
+    }
+
+    // The game's own message data wins: with assets mounted the screen shows
+    // exactly what the disc ships for the selected language.
+    if (const wchar_t* pFromAssets = gameMessageFromAssets(pMessageId)) {
+        return pFromAssets;
+    }
+
+    return gameTextFromEmbeddedTable(pMessageId);
+}
+
+const wchar_t* gameTextFromEmbeddedTable(const char* pMessageId) {
     if (pMessageId == nullptr || *pMessageId == '\0') {
         return nullptr;
     }

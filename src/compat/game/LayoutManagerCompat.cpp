@@ -56,6 +56,7 @@
 #include <nw4r/lyt/textBox.h>
 #include <nw4r/ut/Font.h>
 
+#include "compat/game/GameMessageData.h"
 #include "compat/game/GameTextTable.h"
 #include "compat/game/LanguageCompat.h"
 #include "compat/nw4r/LytHost.h"
@@ -387,11 +388,11 @@ namespace {
     // Console flow (LayoutCoreUtil.cpp initTextBoxPane): the id is
     // "Layout_<layoutName><paneName>" (e.g. Layout_PressStartTxtStart, minus
     // the language suffix) and the UTF-16 text comes from
-    // /MessageData/Message.arc (bmg + MessageId.tbl BCSV). The host does not
-    // have the message system yet (MessageHolder/JMapInfo/bmg — all
-    // big-endian binary tables, tracked as an open gap in docs), so the known
-    // ids get an embedded English fallback and everything else keeps the text
-    // baked in the brlyt (txt1 payload) or a visible placeholder.
+    // /MessageData/Message.arc (bmg + MessageId.tbl BCSV). The host reads
+    // that same data from the mounted assets (compat/game/GameMessageData);
+    // only ids the disc does not answer keep the embedded English fallbacks
+    // below (and without any dump, everything degrades to them / to the text
+    // baked in the brlyt).
     //
     // "Press both [A] and [B]." — the real message renders the A/B icons via
     // PictureFont tags (0x1A tag, group 3); without a tag processor and the
@@ -489,7 +490,15 @@ void LayoutManager::initTextBoxRecursive(nw4r::lyt::Pane* pRoot, nw4r::lyt::Pane
             }
         }
 
-        const wchar_t* pFallback = findLayoutMessageFallback(pLayoutName, pPane->mName);
+        // The console asks the message system for "Layout_<layout><pane>";
+        // with the disc assets mounted the host does the same
+        // (GameMessageData), and only a missing dump degrades to the embedded
+        // table / the brlyt's design text.
+        char messageId[128];
+        compat::game::buildLayoutMessageId(messageId, sizeof(messageId), pLayoutName, pPane->mName);
+        const wchar_t* pGameMessage = compat::game::gameMessageFromAssets(messageId);
+        const wchar_t* pFallback =
+            pGameMessage != nullptr ? pGameMessage : findLayoutMessageFallback(pLayoutName, pPane->mName);
 
         if (pFallback != nullptr) {
             pTextBox->SetString(pFallback, 0);
@@ -502,7 +511,9 @@ void LayoutManager::initTextBoxRecursive(nw4r::lyt::Pane* pRoot, nw4r::lyt::Pane
         PL_LOG_INFO("compat.layout", "LayoutManager '%s': text box '%s' font=%p len=%u%s",
                     pLayoutName != nullptr ? pLayoutName : "?", pPane->mName,
                     static_cast< const void* >(pTextBox->mpFont), static_cast< unsigned >(pTextBox->mTextLen),
-                    pFallback != nullptr ? " (embedded fallback message)" : "");
+                    pGameMessage != nullptr ? " (game message data)"
+                    : pFallback != nullptr  ? " (embedded fallback message)"
+                                            : "");
     }
 
     for (auto it = pPane->mChildList.GetBeginIter(); it != pPane->mChildList.GetEndIter(); ++it) {

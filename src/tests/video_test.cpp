@@ -1304,6 +1304,146 @@ TEST_CASE(renderer_dynamic_buffer) {
 }
 
 // =============================================================================
+// M9.7: GX draw batching. flushDraw coalesces consecutive primitives whose
+// ENTIRE render state matches bit-for-bit into a single vkCmdDraw — the
+// fileselect screen draws ~5000 text/pane quads per frame that share state, and
+// without coalescing each is a full bind+draw (~9 vkCmd calls), which is what
+// pegs that screen at single-digit FPS. This drives the real compat/gx path
+// with a live Renderer and asserts the recorded draw-call count: identical-state
+// quads collapse to ONE draw, and a pipeline change between quads breaks the run.
+// =============================================================================
+TEST_CASE(gx_draw_batching_coalesces_identical_state) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        SKIP("SDL_Init failed (no video subsystem)");
+        return;
+    }
+    SDL_Window* window = SDL_CreateWindow("galaxy-pc-test-batch", 128, 128,
+                                          SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
+    if (!window) {
+        SDL_Quit();
+        SKIP("SDL_CreateWindow (hidden, Vulkan) failed");
+        return;
+    }
+    Platform::RendererConfig cfg{};
+    cfg.appName = "galaxy-pc-tests";
+    cfg.enableValidation = false;
+    cfg.vsync = false;
+    if (!Platform::Renderer::init(window, cfg)) {
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        SKIP("Platform::Renderer init failed (no Vulkan surface/ICD)");
+        return;
+    }
+    Platform::Renderer& r = Platform::Renderer::instance();
+    REQUIRE(r.isInitialized());
+
+    GXInit(nullptr, 0);  // reset the GX state mirror to console defaults
+
+    // Minimal untextured POS-only immediate state (no projection -> identity
+    // MVP; white-fallback texture; default TEV). Enough for flushDraw to record
+    // a draw; we count draw calls, we don't read back pixels.
+    const auto setupState = [] {
+        GXClearVtxDesc();
+        GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+        GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_F32, 0);
+        GXSetNumTexGens(0);
+        GXSetNumTevStages(1);
+        GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+        GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+        GXSetCullMode(GX_CULL_NONE);
+    };
+    const auto quad = [](float x, float y) {
+        GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+        GXPosition2f32(x, y);
+        GXPosition2f32(x + 8.0f, y);
+        GXPosition2f32(x + 8.0f, y + 8.0f);
+        GXPosition2f32(x, y + 8.0f);
+        GXEnd();
+    };
+
+    // Frame 1: three identical-state quads -> ONE coalesced draw.
+    REQUIRE(r.beginFrame());
+    r.beginPass();
+    setupState();
+    quad(0.0f, 0.0f);
+    quad(20.0f, 0.0f);
+    quad(40.0f, 0.0f);
+    r.endPass();   // endPass hook flushes the pending batch
+    r.endFrame();  // publishes lastFrameStats
+    CHECK(r.lastFrameStats().drawCalls == 1u);
+    GXCompatEndFrame();
+
+    // Frame 2: a cull-mode change between quads mints a different pipeline, so
+    // the run cannot coalesce -> two draws.
+    REQUIRE(r.beginFrame());
+    r.beginPass();
+    setupState();
+    quad(0.0f, 0.0f);
+    GXSetCullMode(GX_CULL_FRONT);
+    quad(20.0f, 0.0f);
+    r.endPass();
+    r.endFrame();
+    CHECK(r.lastFrameStats().drawCalls == 2u);
+    GXCompatEndFrame();
+
+    // Frame 3 (M9.9): triangle STRIPS coalesce into ONE draw while staying
+    // native strips — a degenerate junction ([runLast, newFirst] when the
+    // running vertex count is EVEN, [runLast, runLast, newFirst] when ODD)
+    // stitches them with zero-area seam triangles and keeps the winding
+    // parity. This is what was leaving the strip-based fileselect planets at
+    // ~5000 draws / 6 FPS (M9.7) and then at 3x the vertex cost / 10 FPS
+    // (M9.8's list expansion). Three 4-vertex strips: 4 -> +2 junction +4 = 10
+    // (even) -> +2 +4 = 16 vertices in one draw.
+    const auto strip4 = [](float x, float y) {
+        GXBegin(GX_TRIANGLESTRIP, GX_VTXFMT0, 4);
+        GXPosition2f32(x, y);
+        GXPosition2f32(x + 8.0f, y);
+        GXPosition2f32(x, y + 8.0f);
+        GXPosition2f32(x + 8.0f, y + 8.0f);
+        GXEnd();
+    };
+    REQUIRE(r.beginFrame());
+    r.beginPass();
+    setupState();          // resets cull mode to NONE
+    strip4(0.0f, 0.0f);
+    strip4(20.0f, 0.0f);
+    strip4(40.0f, 0.0f);
+    r.endPass();
+    r.endFrame();
+    CHECK(r.lastFrameStats().drawCalls == 1u);  // 3 strips -> 1 coalesced draw
+    CHECK(r.lastFrameStats().verticesDrawn == 16u);  // even-count junctions
+    GXCompatEndFrame();
+
+    // Frame 4 (M9.9): ODD running-count parity — 3-vertex strips need the
+    // 3-vertex junction ([last, last, first]) so the appended strip's first
+    // real triangle lands on an even index (correct winding under culling).
+    // 3 -> +3 +3 = 9 (odd) -> +3 +3 = 15 vertices in one draw.
+    const auto strip3 = [](float x, float y) {
+        GXBegin(GX_TRIANGLESTRIP, GX_VTXFMT0, 3);
+        GXPosition2f32(x, y);
+        GXPosition2f32(x + 8.0f, y);
+        GXPosition2f32(x, y + 8.0f);
+        GXEnd();
+    };
+    REQUIRE(r.beginFrame());
+    r.beginPass();
+    setupState();
+    strip3(0.0f, 0.0f);
+    strip3(20.0f, 0.0f);
+    strip3(40.0f, 0.0f);
+    r.endPass();
+    r.endFrame();
+    CHECK(r.lastFrameStats().drawCalls == 1u);
+    CHECK(r.lastFrameStats().verticesDrawn == 15u);  // odd-count junctions
+    GXCompatEndFrame();
+
+    GXCompatShutdown();  // release sDynVb/white-fallback BEFORE the device goes
+    Platform::Renderer::shutdown();
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+// =============================================================================
 // M5.3: GX textured quad offscreen with the GX tex shaders (kGxTex*Spv).
 //
 // Mirrors what compat/gx::flushDraw submits for a textured draw: vertex data

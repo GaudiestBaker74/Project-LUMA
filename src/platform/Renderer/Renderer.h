@@ -21,6 +21,7 @@
 #include "platform/Renderer/FrameStats.h"
 
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -311,6 +312,13 @@ public:
     void beginPass(const ClearValue& clear);
     void endPass();
 
+    // PC_PORT M9.7: draw-batching hook. The GX immediate path coalesces
+    // consecutive same-state primitives into one vkCmdDraw, deferring the
+    // actual bind+draw until the state changes or the pass closes. This hook
+    // is invoked at the top of endPass() so any pending batch is emitted while
+    // the pass is still recording. Registered once by compat/gx.
+    void setEndPassHook(std::function<void()> hook) { mEndPassHook = std::move(hook); }
+
     // GX hook (compat/gx, M3 heritage): stores the clear color used by the
     // no-arg beginPass(). Replaced by the GX state mirror in M5.
     void setClearColor(float r, float g, float b, float a);
@@ -561,6 +569,9 @@ private:
     bool mHasMemoryBudget = false;     // VK_EXT_memory_budget available + enabled
     double mCpuPhaseStart = 0.0;       // Timing::nowSeconds() at render-phase start
     FrameStats mLastFrameStats;
+    uint32_t mFrameDrawCalls = 0;      // vkCmdDraw/Indexed recorded this frame (M9.7)
+    uint64_t mFrameVertices = 0;       // vertices across those draws (M9.9)
+    std::function<void()> mEndPassHook; // flushes the GX draw batch at endPass() (M9.7)
 
     bool mValidation = false;
     bool mVsync = true;

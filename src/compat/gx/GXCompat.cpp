@@ -211,11 +211,22 @@ void resetTcSpan() {
     sTcSpanNverts = 0;
 }
 
-void logTcSpan() {
+// M9.9 perf: the tc-span diagnostics are opt-in (LUMA_GX_UV_LOG=1). finishVertex
+// used to pay the per-vertex position min/max and eight projective divides even
+// when nobody read the numbers — on the fileselect field (~200k vertices/frame)
+// that was a measurable slice of the frame.
+bool tcSpanLogEnabled() {
     static const bool enabled = (std::getenv("LUMA_GX_UV_LOG") != nullptr);
+    return enabled;
+}
+
+void logTcSpan() {
+    if (!tcSpanLogEnabled()) {
+        return;
+    }
     static const auto t0 = std::chrono::steady_clock::now();
     static int emitted = 0;
-    if (!enabled || emitted >= 24) {
+    if (emitted >= 24) {
         return;
     }
     const double elapsed =
@@ -425,44 +436,59 @@ void finishVertex() {
     // crescent (EarthFarK, the teal of the sea) and the clouds at a stale
     // texcoord. The generators also all read the *incoming* attributes, so the
     // snapshot keeps a generator that writes TEX0 from feeding the next one.
-    if (sTcSpanNverts == 0) {
-        for (int c = 0; c < 3; ++c) {
-            sPosMin[c] = sPosMax[c] = sCurAttr[GX_VA_POS][c];
+    const bool tcSpanLog = tcSpanLogEnabled();
+    if (tcSpanLog) {
+        if (sTcSpanNverts == 0) {
+            for (int c = 0; c < 3; ++c) {
+                sPosMin[c] = sPosMax[c] = sCurAttr[GX_VA_POS][c];
+            }
+        } else {
+            for (int c = 0; c < 3; ++c) {
+                const float p = sCurAttr[GX_VA_POS][c];
+                sPosMin[c] = p < sPosMin[c] ? p : sPosMin[c];
+                sPosMax[c] = p > sPosMax[c] ? p : sPosMax[c];
+            }
         }
-    } else {
-        for (int c = 0; c < 3; ++c) {
-            const float p = sCurAttr[GX_VA_POS][c];
-            sPosMin[c] = p < sPosMin[c] ? p : sPosMin[c];
-            sPosMax[c] = p > sPosMax[c] ? p : sPosMax[c];
-        }
+        ++sTcSpanNverts;
     }
-    ++sTcSpanNverts;
     float snapshot[GX_VA_MAX_ATTR][4];
     std::memcpy(snapshot, sCurAttr, sizeof(snapshot));
+    // M9.9 perf: the hardware only RUNS the texgen units below numTexGens
+    // (GEN_MODE); coordinates at or above it are undefined at the TEV, so
+    // evaluating every configured generator for all eight units per vertex was
+    // wasted work — J3D materials always set GXSetNumTexGens to the number of
+    // generators they configure (and the TEV can only sample below it).
+    // Inactive units keep the incoming attribute (passthrough, q = 1), the
+    // same as an unset generator.
+    const int activeGens = Platform::CompatGx::tevTexGenCount();
     for (int coord = 0; coord < 8; ++coord) {
-        Platform::CompatGx::resolveTexGen(coord, sCurAttr, snapshot);
+        if (coord < activeGens) {
+            Platform::CompatGx::resolveTexGen(coord, sCurAttr, snapshot);
+        }
     }
     for (int coord = 0; coord < 8; ++coord) {
         const int attr = GX_VA_TEX0 + coord;
         const float u = sCurAttr[attr][0];
         const float v = sCurAttr[attr][1];
-        const float q = Platform::CompatGx::texGenW(coord);
-        // The sampler sees u/q: a projective texgen's numerator alone says
-        // nothing about how much texture the geometry shows.
-        const float su = (q != 0.0f) ? u / q : u;
-        const float sv = (q != 0.0f) ? v / q : v;
-        if (!sTcSeen[coord]) {
-            sTcSeen[coord] = true;
-            sTcMin[coord][0] = sTcMax[coord][0] = su;
-            sTcMin[coord][1] = sTcMax[coord][1] = sv;
-            sQMin[coord] = sQMax[coord] = q;
-        } else {
-            sTcMin[coord][0] = su < sTcMin[coord][0] ? su : sTcMin[coord][0];
-            sTcMax[coord][0] = su > sTcMax[coord][0] ? su : sTcMax[coord][0];
-            sTcMin[coord][1] = sv < sTcMin[coord][1] ? sv : sTcMin[coord][1];
-            sTcMax[coord][1] = sv > sTcMax[coord][1] ? sv : sTcMax[coord][1];
-            sQMin[coord] = q < sQMin[coord] ? q : sQMin[coord];
-            sQMax[coord] = q > sQMax[coord] ? q : sQMax[coord];
+        const float q = (coord < activeGens) ? Platform::CompatGx::texGenW(coord) : 1.0f;
+        if (tcSpanLog) {
+            // The sampler sees u/q: a projective texgen's numerator alone says
+            // nothing about how much texture the geometry shows.
+            const float su = (q != 0.0f) ? u / q : u;
+            const float sv = (q != 0.0f) ? v / q : v;
+            if (!sTcSeen[coord]) {
+                sTcSeen[coord] = true;
+                sTcMin[coord][0] = sTcMax[coord][0] = su;
+                sTcMin[coord][1] = sTcMax[coord][1] = sv;
+                sQMin[coord] = sQMax[coord] = q;
+            } else {
+                sTcMin[coord][0] = su < sTcMin[coord][0] ? su : sTcMin[coord][0];
+                sTcMax[coord][0] = su > sTcMax[coord][0] ? su : sTcMax[coord][0];
+                sTcMin[coord][1] = sv < sTcMin[coord][1] ? sv : sTcMin[coord][1];
+                sTcMax[coord][1] = sv > sTcMax[coord][1] ? sv : sTcMax[coord][1];
+                sQMin[coord] = q < sQMin[coord] ? q : sQMin[coord];
+                sQMax[coord] = q > sQMax[coord] ? q : sQMax[coord];
+            }
         }
         sVertexTexCoords.push_back(u);
         sVertexTexCoords.push_back(v);
@@ -613,6 +639,91 @@ void destroyWhiteFallback() {
     }
     sWhiteTex = nullptr;
     sWhiteSam = nullptr;
+}
+
+// --- draw batching (M9.7 perf) ----------------------------------------------
+// The GX immediate path emits one vkCmdDraw per GXBegin/GXEnd primitive. A
+// dense brlyt screen (fileselect) draws several thousand text/pane quads per
+// frame that share the exact same font texture, TEV state and MVP, so they
+// differ ONLY in vertex data. Recording thousands of separate draws is pure
+// CPU overhead (~9 vkCmd calls each) and is what pegs the fileselect screen at
+// single-digit FPS (frame-budget log: ~5000 draws/frame there vs ~300 on the
+// title). flushDraw now coalesces a run of consecutive primitives whose ENTIRE
+// render state matches bit-for-bit into a single draw: the vertices are laid
+// out contiguously in the shared dynamic buffer, so the run collapses to one
+// (firstVertex, vertexCount) pair, and the bind+draw is deferred until the
+// state changes or the pass closes (endPass -> flushPendingBatch via the hook).
+// Triangle lists (QUADS/TRIANGLES/FAN) coalesce by concatenation; triangle
+// STRIPS coalesce too (M9.9) via a degenerate-vertex junction that keeps the
+// winding parity; line/point runs cannot be concatenated and flush alone.
+struct PendingBatch {
+    Platform::PipelineHandle pipe = nullptr;
+    Platform::TextureHandle tex[8] = {};
+    Platform::SamplerHandle sam[8] = {};
+    Platform::CompatGx::TevUboData ubo;
+    float mvp[16] = {};
+    float vp[4] = {};          // mirrored GX viewport x,y,w,h
+    uint32_t scissor[4] = {};  // x,y,w,h
+    bool scissorSet = false;
+    uint8_t blendAlpha = 255;  // GXSetDstAlpha constant (0..255)
+    uint32_t firstVertex = 0;  // offset of the run's first vertex (fixed stride)
+    uint32_t vertexCount = 0;  // accumulated vertex count across the run
+    // M9.9: the run's topology. Triangle lists concatenate as-is; triangle
+    // strips concatenate through a degenerate junction (flushDraw). A list
+    // primitive and a strip primitive never share a run even with identical
+    // state, so the topology is part of the match.
+    Platform::PrimitiveTopology topo = Platform::PrimitiveTopology::TriangleList;
+    bool valid = false;
+};
+
+PendingBatch sBatch;
+bool sEndPassHookSet = false;
+// M9.9: last vertex (kFixedStride floats) written into the dynamic buffer —
+// the degenerate strip junction repeats it to bridge two strips.
+constexpr int kBatchFixedStride = 35;  // must match flushDraw's kFixedStride
+float sLastVertOut[kBatchFixedStride] = {};
+
+// True if candidate `b` can be appended to pending run `a` (identical state).
+inline bool batchMatches(const PendingBatch& a, const PendingBatch& b) {
+    return a.pipe == b.pipe && a.blendAlpha == b.blendAlpha &&
+           a.topo == b.topo &&
+           a.scissorSet == b.scissorSet && a.vp[0] == b.vp[0] && a.vp[1] == b.vp[1] &&
+           a.vp[2] == b.vp[2] && a.vp[3] == b.vp[3] &&
+           std::memcmp(a.tex, b.tex, sizeof(a.tex)) == 0 &&
+           std::memcmp(a.sam, b.sam, sizeof(a.sam)) == 0 &&
+           std::memcmp(a.mvp, b.mvp, sizeof(a.mvp)) == 0 &&
+           std::memcmp(&a.ubo, &b.ubo, sizeof(a.ubo)) == 0 &&
+           std::memcmp(a.scissor, b.scissor, sizeof(a.scissor)) == 0;
+}
+
+// Emits the pending batch as one draw and clears it. No-op when nothing is
+// pending. Called from flushDraw (state change / non-list primitive) and from
+// the renderer's endPass hook (pass close).
+void flushPendingBatch() {
+    if (!sBatch.valid) {
+        return;
+    }
+    Platform::Renderer& r = Platform::Renderer::instance();
+    if (r.isInitialized() && r.inPass()) {
+        r.bindPipeline(sBatch.pipe);
+        r.setBlendConstantAlpha(sBatch.blendAlpha / 255.0f);
+        if (sWhiteTex) {
+            r.bindFragmentTextures(sBatch.tex, sBatch.sam, 8);
+        }
+        if (r.uploadFragmentUbo(&sBatch.ubo, sizeof(sBatch.ubo))) {
+            r.bindVertexBuffer(sDynVb, 0);
+            if (sBatch.vp[2] > 0.0f && sBatch.vp[3] > 0.0f) {
+                r.setViewport(sBatch.vp[0], sBatch.vp[1], sBatch.vp[2], sBatch.vp[3]);
+            }
+            if (sBatch.scissorSet) {
+                r.setScissor(sBatch.scissor[0], sBatch.scissor[1], sBatch.scissor[2],
+                             sBatch.scissor[3]);
+            }
+            r.setUniforms(sBatch.mvp, sizeof(sBatch.mvp));
+            r.draw(sBatch.vertexCount, sBatch.firstVertex);
+        }
+    }
+    sBatch.valid = false;
 }
 
 void flushDraw() {
@@ -775,6 +886,25 @@ void flushDraw() {
         }
     };
     std::vector<float> drawData;
+    // M9.8 expanded STRIP/FAN into flat triangle lists so the M9.7 batcher
+    // could coalesce them (the fileselect field — planets + character heads —
+    // is strip-based; ~5000 loose draws/frame had pegged it at 6 FPS). That
+    // fixed the draw count but TRIPLED the vertex throughput: an N-vertex
+    // strip emits 3(N-2) list vertices, each paying the full buildVertex
+    // transform + lighting + 140-byte write. The user's log confirmed it:
+    // draws dropped 5009 -> 92 but cpu-render only 160 -> 105 ms (10 FPS) —
+    // the cost had moved to per-vertex work.
+    // M9.9: strips stay NATIVE strips again (buildVertex once per source
+    // vertex) and coalesce anyway through degenerate-vertex stitching:
+    // appending [lastRunVert (x1 or x2), firstNewVert] between two strips
+    // emits only zero-area triangles at the seam while the run stays one
+    // TriangleStrip draw. Parity: the hardware flips the winding of odd-indexed
+    // strip triangles, so the junction inserts 2 vertices when the running
+    // vertex count is even and 3 when it is odd — the first real triangle of
+    // the appended strip always lands on an EVEN index and keeps its winding
+    // (back-face culling unchanged). QUADS/TRIANGLES/FANS remain lists.
+    bool triList = false;   // flat TriangleList, coalescible with lists
+    bool triStrip = false;  // native TriangleStrip, coalescible with strips
     if (sPrimitive == GX_QUADS && (nverts % 4) == 0) {
         drawData.reserve(static_cast<size_t>(nverts / 4 * 6 * kFixedStride));
         for (int q = 0; q < nverts; q += 4) {
@@ -784,32 +914,53 @@ void flushDraw() {
                 drawData.insert(drawData.end(), v, v + kFixedStride);
             }
         }
+        triList = true;
+    } else if (sPrimitive == GX_TRIANGLESTRIP && nverts >= 3) {
+        drawData.reserve(static_cast<size_t>(nverts) * kFixedStride);
+        for (int i = 0; i < nverts; ++i) {
+            float v[kFixedStride];
+            buildVertex(i, v);
+            drawData.insert(drawData.end(), v, v + kFixedStride);
+        }
+        triStrip = true;
+    } else if (sPrimitive == GX_TRIANGLEFAN && nverts >= 3) {
+        drawData.reserve(static_cast<size_t>((nverts - 2) * 3 * kFixedStride));
+        for (int i = 1; i + 1 < nverts; ++i) {
+            for (int idx : {0, i, i + 1}) {
+                float v[kFixedStride];
+                buildVertex(idx, v);
+                drawData.insert(drawData.end(), v, v + kFixedStride);
+            }
+        }
+        triList = true;
     } else {
         drawData.resize(static_cast<size_t>(nverts) * kFixedStride);
         for (int i = 0; i < nverts; ++i) {
             buildVertex(i, drawData.data() + static_cast<size_t>(i) * kFixedStride);
         }
+        // A plain GX_TRIANGLES primitive is already a list (coalescible);
+        // LINES / LINESTRIP / POINTS keep their own topology and don't merge.
+        triList = (sPrimitive == GX_TRIANGLES);
     }
     sVertexData.clear();
     sVertexTexCoords.clear();
     sVertexTexQ.clear();
-    const int drawVerts = static_cast<int>(drawData.size()) / kFixedStride;
 
     // --- pipeline: universal TEV variant ------------------------------------
     Platform::PipelineDesc desc;
-    desc.topology = (sPrimitive == GX_TRIANGLES)
-                        ? Platform::PrimitiveTopology::TriangleList
-                        : (sPrimitive == GX_TRIANGLESTRIP)
-                              ? Platform::PrimitiveTopology::TriangleStrip
-                              : (sPrimitive == GX_TRIANGLEFAN)
-                                    ? Platform::PrimitiveTopology::TriangleFan
-                                    : (sPrimitive == GX_LINES)
-                                          ? Platform::PrimitiveTopology::LineList
-                                          : (sPrimitive == GX_LINESTRIP)
-                                                ? Platform::PrimitiveTopology::LineStrip
-                                                : (sPrimitive == GX_POINTS)
-                                                      ? Platform::PrimitiveTopology::PointList
-                                                      : Platform::PrimitiveTopology::TriangleList; // QUADS expanded above
+    // M9.9: QUADS/TRIANGLES/FAN arrive as flat triangle lists; STRIP stays a
+    // native strip (degenerate-stitched into the batch, see above). Only the
+    // line/point primitives keep their own topology.
+    desc.topology = triStrip
+                        ? Platform::PrimitiveTopology::TriangleStrip
+                        : (sPrimitive == GX_LINES)
+                              ? Platform::PrimitiveTopology::LineList
+                              : (sPrimitive == GX_LINESTRIP)
+                                    ? Platform::PrimitiveTopology::LineStrip
+                                    : (sPrimitive == GX_POINTS)
+                                          ? Platform::PrimitiveTopology::PointList
+                                          : Platform::PrimitiveTopology::TriangleList;
+    const Platform::PrimitiveTopology primTopo = desc.topology;
     desc.vertexLayout.stride = kFixedStride * sizeof(float);
     desc.vertexLayout.attribs = {
         {0, 0, Platform::VertexFormat::R32G32B32_SFLOAT},
@@ -854,32 +1005,6 @@ void flushDraw() {
         return;
     }
 
-    // M5.2: append to the shared dynamic vertex buffer instead of allocating a
-    // per-primitive buffer. Grows on demand (old allocations are retired and
-    // destroyed at the next endFrame, after the frame fence).
-    const uint64_t bytes = drawData.size() * sizeof(float);
-    if (!sDynVb) {
-        sDynVb = r.createDynamicBuffer(bytes);
-        if (!sDynVb) {
-            PL_LOG_WARN("gx", "createDynamicBuffer failed — primitive dropped");
-            return;
-        }
-    }
-    if (!r.ensureBufferCapacity(sDynVb, sDynUsedBytes + bytes)) {
-        PL_LOG_WARN("gx", "ensureBufferCapacity failed — primitive dropped");
-        return;
-    }
-    if (!r.updateDynamicBuffer(sDynVb, sDynUsedBytes, bytes, drawData.data())) {
-        PL_LOG_WARN("gx", "updateDynamicBuffer failed — primitive dropped");
-        return;
-    }
-
-    r.bindPipeline(pipe);
-    // PC_PORT M9.5.4: GXSetDstAlpha's constant is a dynamic blend constant, not
-    // part of the pipeline key (clearEfb passes the clear color's alpha every
-    // frame; as pipeline state it would mint a pipeline per distinct value).
-    r.setBlendConstantAlpha(sDstAlphaValue / 255.0f);
-
     // --- textures: TEXMAP0..7 or the white fallback --------------------------
     void* texRaw[8] = {};
     void* samRaw[8] = {};
@@ -895,11 +1020,8 @@ void flushDraw() {
             sam[i] = sWhiteSam;
         }
     }
-    if (sWhiteTex) {
-        r.bindFragmentTextures(tex, sam, 8);
-    }
 
-    // --- TEV constants (UBO, one region per draw) ----------------------------
+    // --- TEV constants (fragment UBO) ----------------------------------------
     Platform::CompatGx::TevUboData ubo;
     Platform::CompatGx::buildTevUbo(ubo);
     // M5.7b: the indirect warp normalizes its offset by the direct map's texel
@@ -913,14 +1035,8 @@ void flushDraw() {
             ubo.texDims[t][1] = dims[t][1];
         }
     }
-    if (!r.uploadFragmentUbo(&ubo, sizeof(ubo))) {
-        // Arena exhausted: drop the draw (the vertex bytes stay reserved;
-        // next frame's cursor reset makes them reusable).
-        sDynUsedBytes += bytes;
-        return;
-    }
 
-    r.bindVertexBuffer(sDynVb, 0);
+    // --- MVP (push constant) --------------------------------------------------
     float mvp[16];
     if (sHasProjection) {
         // M5.7a: clip = posView * proj = pos * (posMtx * proj); the shader
@@ -967,20 +1083,109 @@ void flushDraw() {
         }
     }
 
-    // Re-apply the mirrored viewport/scissor: GXSetViewport/GXSetScissor often
-    // arrive before the host command buffer is recording (game-boot order sets
-    // them during scene init, before beginRender). Renderer drops those early
-    // calls, and dynamic state must be recorded inside the pass — here it is.
-    if (sViewportW > 0.0f && sViewportH > 0.0f) {
-        r.setViewport(sViewportX, sViewportY, sViewportW, sViewportH);
-    }
+    // M9.7: capture this primitive's full render state as a batch candidate and
+    // coalesce it into the pending run when the state is bit-identical (see the
+    // batching notes above flushPendingBatch). The actual bind+draw is deferred
+    // to flushPendingBatch (state change here, or endPass via the hook).
+    PendingBatch cand;
+    cand.pipe = pipe;
+    std::memcpy(cand.tex, tex, sizeof(tex));
+    std::memcpy(cand.sam, sam, sizeof(sam));
+    cand.ubo = ubo;
+    std::memcpy(cand.mvp, mvp, sizeof(mvp));
+    cand.vp[0] = sViewportX;
+    cand.vp[1] = sViewportY;
+    cand.vp[2] = sViewportW;
+    cand.vp[3] = sViewportH;
+    cand.scissorSet = sScissorSet;
     if (sScissorSet) {
-        r.setScissor(sScissor[0], sScissor[1], sScissor[2], sScissor[3]);
+        cand.scissor[0] = sScissor[0];
+        cand.scissor[1] = sScissor[1];
+        cand.scissor[2] = sScissor[2];
+        cand.scissor[3] = sScissor[3];
     }
-    r.setUniforms(mvp, sizeof(mvp));
-    r.draw(static_cast<uint32_t>(drawVerts),
-           static_cast<uint32_t>(sDynUsedBytes / (static_cast<uint64_t>(kFixedStride) * sizeof(float))));
+    cand.blendAlpha = sDstAlphaValue;
+    cand.topo = primTopo;
+
+    // M9.9: triangle lists AND triangle strips coalesce (strips via the
+    // degenerate junction below); line/point primitives draw alone.
+    const bool mergeable = triList || triStrip;
+    const bool canMerge = mergeable && sBatch.valid && batchMatches(sBatch, cand);
+
+    // M9.9: seam between two coalesced strips — repeat the run's last vertex
+    // (twice when the running vertex count is odd, so the appended strip's
+    // first real triangle keeps an EVEN index and its winding) plus the new
+    // strip's first vertex. Every triangle touching a junction vertex is
+    // zero-area, so nothing rasterizes at the seam. See the expansion notes.
+    if (canMerge && triStrip) {
+        static_assert(kBatchFixedStride == 35, "junction stride must match kFixedStride");
+        float junction[3 * kBatchFixedStride];
+        int jn = 0;
+        std::memcpy(junction + jn * kBatchFixedStride, sLastVertOut,
+                    kBatchFixedStride * sizeof(float));
+        ++jn;
+        if ((sBatch.vertexCount & 1u) != 0u) {
+            std::memcpy(junction + jn * kBatchFixedStride, sLastVertOut,
+                        kBatchFixedStride * sizeof(float));
+            ++jn;
+        }
+        std::memcpy(junction + jn * kBatchFixedStride, drawData.data(),
+                    kBatchFixedStride * sizeof(float));
+        ++jn;
+        drawData.insert(drawData.begin(), junction, junction + jn * kBatchFixedStride);
+    }
+
+    // M5.2: append to the shared dynamic vertex buffer instead of allocating a
+    // per-primitive buffer. Grows on demand (old allocations are retired and
+    // destroyed at the next endFrame, after the frame fence). Written AFTER
+    // the merge decision so a strip junction lands contiguously in the run.
+    const uint64_t bytes = drawData.size() * sizeof(float);
+    if (!sDynVb) {
+        sDynVb = r.createDynamicBuffer(bytes);
+        if (!sDynVb) {
+            PL_LOG_WARN("gx", "createDynamicBuffer failed — primitive dropped");
+            return;
+        }
+    }
+    if (!r.ensureBufferCapacity(sDynVb, sDynUsedBytes + bytes)) {
+        PL_LOG_WARN("gx", "ensureBufferCapacity failed — primitive dropped");
+        return;
+    }
+    if (!r.updateDynamicBuffer(sDynVb, sDynUsedBytes, bytes, drawData.data())) {
+        PL_LOG_WARN("gx", "updateDynamicBuffer failed — primitive dropped");
+        return;
+    }
+
+    // M9.7: advance the vertex cursor now and remember where this primitive's
+    // vertices begin, so a coalesced run draws the whole contiguous span.
+    const uint32_t firstVertex =
+        static_cast<uint32_t>(sDynUsedBytes / (static_cast<uint64_t>(kFixedStride) * sizeof(float)));
     sDynUsedBytes += bytes;
+
+    // M9.9: remember this primitive's last vertex for the next strip junction.
+    std::memcpy(sLastVertOut, drawData.data() + drawData.size() - kBatchFixedStride,
+                kBatchFixedStride * sizeof(float));
+
+    cand.firstVertex = firstVertex;
+    cand.vertexCount = static_cast<uint32_t>(drawData.size() / kFixedStride);
+
+    if (canMerge) {
+        sBatch.vertexCount += cand.vertexCount;  // extend the pending run
+    } else {
+        flushPendingBatch();  // emit the previous run (if any)
+        sBatch = cand;
+        sBatch.valid = true;
+        if (!mergeable) {
+            flushPendingBatch();
+        }
+    }
+
+    // Register the end-pass flush hook once so the frame's final run is emitted
+    // before the pass closes (covers the game loop, the demo and the tests).
+    if (!sEndPassHookSet) {
+        r.setEndPassHook([] { flushPendingBatch(); });
+        sEndPassHookSet = true;
+    }
 }
 
 // =============================================================================
@@ -1526,6 +1731,7 @@ GXFifoObj* GXInit(void* fifoPtr, u32 fifoSize) {
     sDebugData.clear();
     sDebugStride = 0;
     sDynUsedBytes = 0;
+    sBatch.valid = false;  // M9.7: drop any pending draw batch on full reset
     for (auto& a : sArrays) {
         a = ArraySlot();
     }
@@ -1787,6 +1993,13 @@ void GXCompatEndFrame() {
     // is reused: endFrame() waited the frame fence, so no command buffer
     // references the previous contents anymore and rewriting is safe.
     sDynUsedBytes = 0;
+    // M9.7: the endPass hook already emitted any pending batch (the pass is
+    // closed by now), so just drop the stale candidate for a clean next frame.
+    sBatch.valid = false;
+    // Re-register the endPass hook on the next frame's first draw: the Renderer
+    // may have been torn down and re-created (tests, device loss), which drops
+    // the std::function while this static would otherwise stay true.
+    sEndPassHookSet = false;
 }
 
 void GXCompatShutdown() {

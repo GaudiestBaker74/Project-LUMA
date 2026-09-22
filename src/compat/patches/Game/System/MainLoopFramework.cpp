@@ -11,9 +11,11 @@
 #include <revolution/gx/GXRegs.h>
 #include <runtime.h>
 #include "compat/gx/GXCompat.h"
+#include "compat/ui/FpsOverlay.h"
 #include "compat/vi/VICompat.h"
 #include "platform/Log/Log.h"
 #include "platform/Renderer/Renderer.h"
+#include "platform/Timing/Timing.h"
 
 MainLoopFramework* MainLoopFramework::sManager;
 
@@ -317,6 +319,9 @@ void MainLoopFramework::endRender() {
     // GXCopyDisp blits the EFB into the swapchain image and needs the pass
     // ended (the blit records its own commands on the frame buffer).
     if (sHostFrameActive) {
+        // PC_PORT (--show-fps): last draw of the frame, still inside the EFB
+        // pass, so the counter lands on top of everything the game rendered.
+        compat::ui::drawFpsOverlayIfEnabled();
         Platform::Renderer::instance().endPass();
     }
     if (mDoRenderFrame) {
@@ -367,7 +372,47 @@ void MainLoopFramework::endFrame() {
     // the game's own frame loop. waitForRetrace afterwards paces the loop on
     // the VI field clock.
     if (sHostFrameActive) {
-        Platform::Renderer::instance().endFrame();
+        Platform::Renderer& renderer = Platform::Renderer::instance();
+        renderer.endFrame();
+
+        // PC_PORT (M9.7): periodic perf heartbeat for the game path (the demo
+        // loop logs its own). Every ~3 s of wall time report fps + cpu-render
+        // ms + gpu ms + draw calls, so a capture log pinpoints whether a slow
+        // screen is CPU-bound (recording/vertex/driver), GPU-bound, or stalling
+        // on sync — the game path previously logged none of this.
+        {
+            const Platform::FrameStats& fs = renderer.lastFrameStats();
+            static double sHbLast = 0.0;
+            static int sHbFrames = 0;
+            static double sHbCpu = 0.0;
+            static double sHbGpu = 0.0;
+            static uint64_t sHbDraws = 0;
+            static uint64_t sHbVerts = 0;
+            const double now = Platform::Timing::nowSeconds();
+            if (sHbLast == 0.0) {
+                sHbLast = now;
+            }
+            ++sHbFrames;
+            sHbCpu += fs.cpuRenderMs;
+            sHbGpu += fs.gpuMs;
+            sHbDraws += fs.drawCalls;
+            sHbVerts += fs.verticesDrawn;  // M9.9: vertex throughput per frame
+            const double elapsed = now - sHbLast;
+            if (elapsed >= 3.0 && sHbFrames > 0) {
+                PL_LOG_INFO("perf",
+                            "fps: %.1f | cpu-render %.2f ms | gpu %.2f ms | draws/frame %llu | verts/frame %llu",
+                            sHbFrames / elapsed, sHbCpu / sHbFrames, sHbGpu / sHbFrames,
+                            static_cast<unsigned long long>(sHbDraws / sHbFrames),
+                            static_cast<unsigned long long>(sHbVerts / sHbFrames));
+                sHbLast = now;
+                sHbFrames = 0;
+                sHbCpu = 0.0;
+                sHbGpu = 0.0;
+                sHbDraws = 0;
+                sHbVerts = 0;
+            }
+        }
+
         GXCompatEndFrame();
         sHostFrameActive = false;
     }

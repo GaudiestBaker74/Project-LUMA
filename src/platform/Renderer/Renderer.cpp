@@ -954,6 +954,8 @@ bool Renderer::beginFrame() {
 
     // Frame stats: CPU phase starts after acquire; GPU frame timestamps.
     mCpuPhaseStart = Platform::Timing::nowSeconds();
+    mFrameDrawCalls = 0;
+    mFrameVertices = 0;
     if (mHasTimestamps && mQueryPool) {
         VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
         vkCmdResetQueryPool(cmd, reinterpret_cast<VkQueryPool>(mQueryPool), 0, 2);
@@ -1104,6 +1106,11 @@ void Renderer::endPass() {
     if (!mInPass) {
         return;
     }
+    // PC_PORT M9.7: emit any pending GX draw batch before closing the pass so
+    // the coalesced geometry is recorded inside it (see setEndPassHook).
+    if (mEndPassHook) {
+        mEndPassHook();
+    }
     VkCommandBuffer cmd = reinterpret_cast<VkCommandBuffer>(mCmd);
     vkCmdEndRendering(cmd);
 
@@ -1250,9 +1257,10 @@ void Renderer::endFrame() {
             mUboStride > 0 ? static_cast<uint32_t>(mUboSize / mUboStride) : 0;
         PL_LOG_INFO("renderer",
                     "frame budget: texsets fresh=%u reuse=%u (pool 1024) | "
-                    "tev ubo regions=%u reuse=%u (arena %u)",
+                    "tev ubo regions=%u reuse=%u (arena %u) | draws=%u",
                     mLastFrameBudget.texSetFresh, mLastFrameBudget.texSetReused,
-                    mLastFrameBudget.uboFresh, mLastFrameBudget.uboReused, uboRegions);
+                    mLastFrameBudget.uboFresh, mLastFrameBudget.uboReused, uboRegions,
+                    mLastFrameStats.drawCalls);
     }
 
     // M5.2: destroy dynamic-buffer allocations retired during this frame (the
@@ -1286,6 +1294,8 @@ void Renderer::endFrame() {
         mLastFrameStats.cpuRenderMs = (Platform::Timing::nowSeconds() - mCpuPhaseStart) * 1000.0;
         mCpuPhaseStart = 0.0;
     }
+    mLastFrameStats.drawCalls = mFrameDrawCalls;
+    mLastFrameStats.verticesDrawn = mFrameVertices;
     if (mHasTimestamps && mQueryPool) {
         uint64_t ticks[2] = {0, 0};
         if (vkGetQueryPoolResults(VKDEV, reinterpret_cast<VkQueryPool>(mQueryPool), 0, 2,
@@ -1887,6 +1897,7 @@ void Renderer::bindTexture(uint32_t binding, TextureHandle texture, SamplerHandl
         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         write.pImageInfo = &imageInfo;
         if (fresh) {
+            ++mFrameTexSetFresh;
             vkUpdateDescriptorSets(VKDEV, 1, &write, 0, nullptr);
             mFrameTexSetCache.emplace(h, reinterpret_cast<void*>(set));
         }
@@ -1955,6 +1966,7 @@ void Renderer::bindFragmentTextures(const TextureHandle* tex, const SamplerHandl
             writes[i].pImageInfo = &images[i];
         }
         if (fresh) {
+            ++mFrameTexSetFresh;
             vkUpdateDescriptorSets(VKDEV, count, writes, 0, nullptr);
             mFrameTexSetCache.emplace(h, reinterpret_cast<void*>(set));
         }
@@ -2815,10 +2827,14 @@ void Renderer::setUniforms(const void* data, uint32_t size) {
 // --- draw -------------------------------------------------------------------
 
 void Renderer::draw(uint32_t vertexCount, uint32_t firstVertex) {
+    ++mFrameDrawCalls;
+    mFrameVertices += vertexCount;
     vkCmdDraw(reinterpret_cast<VkCommandBuffer>(mCmd), vertexCount, 1, firstVertex, 0);
 }
 
 void Renderer::drawIndexed(uint32_t indexCount, uint32_t firstIndex, int32_t vertexOffset) {
+    ++mFrameDrawCalls;
+    mFrameVertices += indexCount;
     vkCmdDrawIndexed(reinterpret_cast<VkCommandBuffer>(mCmd), indexCount, 1, firstIndex,
                      vertexOffset, 0);
 }

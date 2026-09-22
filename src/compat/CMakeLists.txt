@@ -294,7 +294,15 @@ add_library(pc_compat STATIC
     # boot (Language.cpp's language), so the FileSelect text cannot mix the
     # arc's authored Japanese with another language's button strings.
     ${CMAKE_CURRENT_SOURCE_DIR}/game/GameTextTable.cpp
+    # PC_PORT: the real message system — Message.bmg + MessageId.tbl read from
+    # the mounted disc assets (/MessageData/Message.arc, language-first like
+    # the game's makeFileNameConsideringLanguage). With assets present this is
+    # the source of every UI string; GameTextTable is the no-assets fallback.
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/GameMessageData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/ButtonPrompt.cpp
+    # PC_PORT (--show-fps): the top-right FPS counter, drawn with the game's
+    # message font inside the EFB pass (demo loop + MainLoopFramework).
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui/FpsOverlay.cpp
     # PC_PORT (M10.1): the StarPointer 1P guidance balloon ("Please choose a
     # file.") — the string of System_FileSelect008 with the geometry measured
     # off the reference captures (it is not a pane of FileSelect.arc).

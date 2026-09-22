@@ -17,6 +17,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace Platform::Audio {
 
@@ -47,9 +48,53 @@ struct State {
     DeviceTick tick = nullptr;
     void* tickUser = nullptr;
     std::atomic<int> lastRequestFrames{0};
+
+    // One-shot voices (M8.5 prep): decoded PCM clips mixed on top of the ring
+    // (music) output. Guarded by their own mutex — the device callback mixes
+    // them without touching the state mutex (no deadlock with init/shutdown).
+    struct OneShotVoice {
+        std::vector<int16_t> pcm; // interleaved stereo
+        size_t pos = 0;           // consumed SAMPLES (2 per frame)
+        float gain = 1.0f;
+    };
+    std::mutex voicesMutex;
+    std::vector<OneShotVoice> voices;
 };
 
 State g;
+
+// Mixes the active one-shot voices into `buf` (frames stereo samples, already
+// containing the ring output) with saturation, advancing/retiring them.
+// Returns true if any voice contributed samples. Caller holds no locks.
+bool mixOneShots(int16_t* buf, size_t frames) {
+    std::lock_guard<std::mutex> lock(g.voicesMutex);
+    if (g.voices.empty() || frames == 0) {
+        return false;
+    }
+    bool any = false;
+    for (size_t v = 0; v < g.voices.size();) {
+        State::OneShotVoice& voice = g.voices[v];
+        const size_t want = frames * 2;
+        const size_t left = voice.pcm.size() - voice.pos;
+        const size_t n = left < want ? left : want;
+        for (size_t i = 0; i < n; ++i) {
+            const int32_t mixed = static_cast<int32_t>(buf[i]) +
+                                  static_cast<int32_t>(voice.pcm[voice.pos + i] * voice.gain);
+            buf[i] = static_cast<int16_t>(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
+        }
+        voice.pos += n;
+        if (n > 0) {
+            any = true;
+        }
+        if (voice.pos >= voice.pcm.size()) {
+            g.voices[v] = std::move(g.voices.back()); // retire (swap-pop)
+            g.voices.pop_back();
+        } else {
+            ++v;
+        }
+    }
+    return any;
+}
 
 void deviceGetCallback(void* userdata, SDL_AudioStream* stream, int additionalAmount,
                         int totalAmount) {
@@ -68,6 +113,20 @@ void deviceGetCallback(void* userdata, SDL_AudioStream* stream, int additionalAm
     int got = 0;
     if (!g.isPaused.load(std::memory_order_relaxed)) {
         got = static_cast<int>(g.ring->read(scratch, static_cast<size_t>(wantSamples)));
+    }
+    // One-shot voices (SEs) mix on top of the ring output. When the ring ran
+    // dry but a voice is still playing, the missing frames are silence — fill
+    // them so the voice keeps flowing (framesConsumed only counts ring data).
+    if (!g.isPaused.load(std::memory_order_relaxed) && wantSamples > 0) {
+        const int have = got;
+        if (have < wantSamples) {
+            std::memset(scratch + have, 0, static_cast<size_t>(wantSamples - have) * sizeof(int16_t));
+        }
+        if (mixOneShots(scratch, static_cast<size_t>(wantSamples) / 2)) {
+            got = wantSamples;
+        } else if (have < wantSamples) {
+            got = have; // nothing mixed; keep the short read as before
+        }
     }
     // Master gain (applied on the device thread; cheap enough).
     const float gain = g.gain.load(std::memory_order_relaxed);
@@ -172,6 +231,10 @@ void shutdown() {
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
     delete g.ring;
     g.ring = nullptr;
+    {
+        std::lock_guard<std::mutex> vlock(g.voicesMutex);
+        g.voices.clear();
+    }
     g.initialized = false;
     g.enabled = false;
     g.virtualMode = false;
@@ -220,12 +283,48 @@ int pull(int16_t* dst, int maxSamples) {
     if (!g.initialized || dst == nullptr || maxSamples <= 0) {
         return 0;
     }
-    return static_cast<int>(g.ring->read(dst, static_cast<size_t>(maxSamples)));
+    int got = static_cast<int>(g.ring->read(dst, static_cast<size_t>(maxSamples)));
+    // One-shots mix here too (virtual mode / tests use pull as the sink).
+    if (!g.isPaused.load(std::memory_order_relaxed)) {
+        const int have = got;
+        if (have < maxSamples) {
+            std::memset(dst + have, 0, static_cast<size_t>(maxSamples - have) * sizeof(int16_t));
+        }
+        if (mixOneShots(dst, static_cast<size_t>(maxSamples) / 2)) {
+            got = maxSamples;
+        } else if (have < maxSamples) {
+            got = have;
+        }
+    }
+    return got;
 }
 
 void setDeviceTick(DeviceTick tick, void* user) {
     g.tick = tick;
     g.tickUser = user;
+}
+
+bool playOneShot(const int16_t* interleaved, int frames, float gain) {
+    if (!g.initialized || interleaved == nullptr || frames <= 0) {
+        return false;
+    }
+    if (gain < 0.0f) gain = 0.0f;
+    if (gain > 1.0f) gain = 1.0f;
+    std::lock_guard<std::mutex> lock(g.voicesMutex);
+    constexpr size_t kMaxVoices = 16;
+    if (g.voices.size() >= kMaxVoices) {
+        return false; // pool full — drop (SEs are fire-and-forget)
+    }
+    State::OneShotVoice voice;
+    voice.pcm.assign(interleaved, interleaved + static_cast<size_t>(frames) * 2);
+    voice.gain = gain;
+    g.voices.push_back(std::move(voice));
+    return true;
+}
+
+int activeVoices() {
+    std::lock_guard<std::mutex> lock(g.voicesMutex);
+    return static_cast<int>(g.voices.size());
 }
 
 } // namespace Platform::Audio

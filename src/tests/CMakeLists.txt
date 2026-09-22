@@ -43,6 +43,7 @@ add_executable(galaxy-pc-tests
     audio_ring_test.cpp
     audio_dsp_mixer_test.cpp
     audio_ai_test.cpp
+    audio_oneshot_test.cpp
     jas_audio_driver_test.cpp
     # M9.1: OSThread/OSMessageQueue host layer + JKRThread.
     os_thread_test.cpp
@@ -72,6 +73,10 @@ add_executable(galaxy-pc-tests
     # against the reference capture, the one-language text table, the planet
     # layout/camera solved from that capture and the screen's phase machine.
     fileselect_test.cpp
+    # PC_PORT: the host reader of the game's message data (MessageId.tbl BCSV
+    # + Message.bmg INF1/DAT1, big-endian disc format) and its precedence over
+    # the embedded fallback table.
+    game_message_data_test.cpp
 )
 target_link_libraries(galaxy-pc-tests PRIVATE pc_platform pc_compat)
 pc_enable_warnings(galaxy-pc-tests)
