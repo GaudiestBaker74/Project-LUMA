@@ -53,6 +53,7 @@
 #include "Game/Util/SceneUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 #include "compat/audio/AstStream.h"     // v7: streamed BGM
+#include "compat/audio/SystemSe.h"      // title A+B: SE_SY_GAME_START
 #include "compat/game/LanguageCompat.h"
 #include "compat/game/UiAnchoring.h"
 #include "compat/kpad/KPADCompat.h"
@@ -1538,6 +1539,14 @@ bool isPreparedStageBgm() {
 }
 
 JAISoundHandle* startSystemSE(const char* pName, s32, s32) {
+    // Title A+B calls this once (both buttons down, then the nerve changes),
+    // so the original decide sound plays once and is not retriggered while held.
+    if (pName != nullptr && std::strcmp(pName, "SE_SY_GAME_START") == 0) {
+        if (!compat::audio::playNamedSystemSe(pName)) {
+            PL_LOG_WARN("game.audio", "startSystemSE('%s') — original wave not played", pName);
+        }
+        return nullptr;
+    }
     PL_LOG_INFO("game.audio", "startSystemSE('%s') — sound effects not ported yet (sequenced JAudio2 driver)", pName);
     return nullptr;
 }
@@ -1616,4 +1625,3 @@ JKRMemArchive* mountArchive(const char* pFilePath, JKRHeap* pHeap) {
 }
 
 } // namespace MR
-

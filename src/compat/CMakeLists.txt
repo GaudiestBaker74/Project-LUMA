@@ -139,6 +139,8 @@ add_library(pc_compat STATIC
     audio/AudioCommon.cpp
     # M9.5.4 v7: streamed BGM player (AST → Platform::Audio; MR::startStageBGM).
     audio/AstStream.cpp
+    # Title A+B decide sound: SE_SY_GAME_START from B21kawa_0.aw.
+    audio/SystemSe.cpp
     dsp/Adpcm.cpp
     dsp/DSP.cpp
     dsp/Mixer.cpp
@@ -315,6 +317,22 @@ set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/gx/GXLight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/patches/RVL_SDK/mtx/mtx44.c
     PROPERTIES LANGUAGE CXX)
+
+# File Select submits ~44k lit vertices a frame. That work is the Wii XF unit
+# (lighting + texgen), which this port evaluates on the CPU. A Debug (-O0)
+# build of these TUs turns that into ~100 ms and the screen falls to ~10 FPS
+# even though the GPU is idle and VSync is still on. -O3 does not change the
+# formula (no fast-math) — it only makes the same math cheap enough to finish
+# inside one retrace. Appended after the config flags so it wins over -O0/-O2.
+# MSVC is not given -O3//O2 here: cl rejects -O3, and Debug's /RTC1 rejects
+# /O2 (D8016). GXCompat.cpp uses `#pragma optimize` for that compiler.
+if(NOT MSVC)
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/gx/GXCompat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/gx/GXLight.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/gx/GXTexture.cpp
+        PROPERTIES COMPILE_OPTIONS "-O3")
+endif()
 
 target_include_directories(pc_compat PUBLIC
     # Patched overrides FIRST (win over the vendored headers below).

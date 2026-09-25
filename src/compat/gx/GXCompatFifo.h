@@ -39,10 +39,37 @@ void fifoWriteF32(float v);
 
 }}} // namespace Platform::CompatGx::Detail
 
+// Armed only for an all-indexed triangle strip (see GXCompat.cpp). Declared
+// before GXFifoWord so the index writers can store without a cross-TU call.
+struct GxIndexCapture {
+    bool active = false;
+    std::uint32_t* data = nullptr;
+    int count = 0;
+    int expected = 0;
+};
+extern GxIndexCapture gGxIndexCapture;
+void gxFlushFastIndex();
+
+inline void gxFastPushIndex(std::uint32_t v) {
+    if (gGxIndexCapture.count < gGxIndexCapture.expected && gGxIndexCapture.data != nullptr) {
+        gGxIndexCapture.data[gGxIndexCapture.count++] = v;
+    }
+    if (gGxIndexCapture.active && gGxIndexCapture.count == gGxIndexCapture.expected) {
+        gxFlushFastIndex();
+    }
+}
+
 // A single word of the write-gather pipe: assigning to it captures the value
 // with its exact type into the GX state machine.
 struct GXFifoWord {
     GXFifoWord& operator=(std::uint8_t v) {
+        // Indexed-strip fast path: the vertex processor is fed one index per
+        // attribute and expands the whole primitive in one loop (File Select
+        // planets). A store here replaces the cross-TU capture call.
+        if (gGxIndexCapture.active) {
+            gxFastPushIndex(v);
+            return *this;
+        }
         Platform::CompatGx::Detail::fifoWriteU8(v);
         return *this;
     }
@@ -51,6 +78,10 @@ struct GXFifoWord {
         return *this;
     }
     GXFifoWord& operator=(std::uint16_t v) {
+        if (gGxIndexCapture.active) {
+            gxFastPushIndex(v);
+            return *this;
+        }
         Platform::CompatGx::Detail::fifoWriteU16(v);
         return *this;
     }

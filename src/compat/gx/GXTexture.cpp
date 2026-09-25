@@ -542,6 +542,47 @@ void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4],
     attrs[outAttr][1] = v;
 }
 
+void captureTexGenUnits(TexGenUnit out[8]) {
+    const int active = tevTexGenCount();
+    for (int i = 0; i < 8; ++i) {
+        TexGenUnit& u = out[i];
+        u = TexGenUnit{};
+        if (i >= active) {
+            continue;
+        }
+        const TexGen& g = sTexGen[i];
+        if (!g.set) {
+            continue;  // passthrough, q = 1
+        }
+        int srcAttr = -1;
+        if (g.src >= GX_TG_TEX0 && g.src <= GX_TG_TEX7) {
+            srcAttr = GX_VA_TEX0 + (g.src - GX_TG_TEX0);
+        } else if (g.src == GX_TG_POS) {
+            srcAttr = GX_VA_POS;
+        } else {
+            continue;  // unsupported source: resolveTexGen returns without writing
+        }
+        if (g.mtxId == GX_IDENTITY) {
+            u.srcAttr = static_cast<std::int16_t>(srcAttr);
+            u.write = 1;
+            u.useMtx = 0;
+            u.proj3 = 0;
+        } else if (g.mtxId >= GX_TEXMTX0 && g.mtxId <= GX_TEXMTX9) {
+            const int mtx = static_cast<int>((g.mtxId - GX_TEXMTX0) / 3);
+            u.srcAttr = static_cast<std::int16_t>(srcAttr);
+            u.write = 1;
+            u.useMtx = 1;
+            u.proj3 = (g.type == GX_TG_MTX3x4) ? 1 : 0;
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 4; ++c) {
+                    u.m[r * 4 + c] = sTexMtx[mtx][r][c];
+                }
+            }
+        }
+        // unknown matrix id: resolveTexGen passes through (write stays 0)
+    }
+}
+
 // Reverse of GDSetTexCoordGen's XF_TEX()/XF_DUALTEX() packing (GDGeometry.h):
 // decodes the XF_TEXn register (bits: proj 1, form 2-3, tgType 4-6, row 7-11,
 // emboss 12-14, light 15-18) and XF_DUALTEXn (dualmtx 0-7, normalize 8) back

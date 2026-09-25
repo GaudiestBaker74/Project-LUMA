@@ -143,4 +143,18 @@ struct GxChanDebugState {
 };
 void getChanDebugState(GxChanDebugState& out);
 
+// Pointers into the lighting mirror, valid until the next GXSet*/DL write.
+// Fetched once per draw so the vertex loop does not call back into this TU.
+struct LightingInputs {
+    const ChanLightState* chan;
+    const std::uint8_t (*amb)[4];
+    const std::uint8_t (*mat)[4];
+    const LightParams* lights;
+};
+LightingInputs lightingInputs();
+
 }  // namespace Platform::CompatGx
+
+// Inline evaluator (needs the types above). Included here so the vertex loop
+// in GXCompat.cpp can inline it; applyChannelLighting forwards to it too.
+#include "compat/gx/GXLightEval.h"

@@ -28,6 +28,7 @@
 
 #include <revolution/types.h>
 #include <cstddef>
+#include <cstdint>
 #include <revolution/gx/GXEnum.h>
 // Vendored SDK types we reuse verbatim: GXStruct.h defines GXColor/GXColorS10/
 // GXTexObj/..., GXFifo.h defines GXFifoObj (needed by GXInit.h).
@@ -161,6 +162,20 @@ void resolveTexGen(int coordId, float attrs[GX_VA_MAX_ATTR][4],
 // Projective component (q) of the texcoord the last resolveTexGen produced for
 // `coordId` — the console's texture unit divides s and t by it per pixel.
 f32 texGenW(int coordId);
+
+// One texgen unit, resolved once per primitive so the per-vertex loop does not
+// call back into GXTexture.cpp. `write == 0` means passthrough (the current
+// attribute is left alone, q = 1), matching resolveTexGen's early returns.
+struct TexGenUnit {
+    std::int16_t srcAttr = -1;  // GX_VA_* row, valid when write != 0
+    std::int16_t proj3 = 0;     // 1 = GX_TG_MTX3x4 (publish q)
+    std::int16_t useMtx = 0;    // 0 = identity, 1 = apply m
+    std::int16_t write = 0;
+    float m[12] = {};
+};
+// Fills 8 units from the live texgen mirror. Units at or above GXSetNumTexGens
+// are inactive (write = 0).
+void captureTexGenUnits(TexGenUnit out[8]);
 // M9.5.8: length in bytes of the image blob behind a GX texture object, so the
 // host can upload the mip levels that follow the base level. Textures that are
 // never told stay base-only.

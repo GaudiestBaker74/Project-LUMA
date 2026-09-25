@@ -65,25 +65,6 @@ float sNrmMtx[kMaxMtx][9];
 int sCurPosMtx = 0;
 int sCurNrmMtx = 0;
 
-// --- helpers --------------------------------------------------------------
-
-// M9.10 perf: std::round is a libm call (~30 instructions + call overhead per
-// component — the profiler put roundf alone at ~265 instructions/vertex on the
-// fileselect planets). This inline form is bit-identical for the value range
-// the hardware produces (|x| < 2^22, always true here: color components and
-// light*color products): adding ±0.5 then truncating toward zero IS round-half-
-// -away-from-zero, the C semantics of std::round and of Dolphin's int(round()).
-int fastRound(float x) { return static_cast<int>(x + (x >= 0.0f ? 0.5f : -0.5f)); }
-
-int round255(float v) {
-    // Dolphin: int(round(x * 255.0)) — half away from zero.
-    return fastRound(v * 255.0f);
-}
-
-// (mat * (lacc + (lacc >> 7))) >> 8 — the hardware fixed-point multiply that
-// maps two 8-bit values to their product/255 with rounding.
-int mul255(int mat, int lacc) { return (mat * (lacc + (lacc >> 7))) >> 8; }
-
 }  // namespace
 
 // --- pure evaluator (Dolphin-exact) ------------------------------------------
@@ -93,189 +74,8 @@ void computeChannelLighting(const ChanLightState chan[4], const std::uint8_t amb
                             const float posView[3], const float nrmView[3],
                             const float clr0[4], const float clr1[4], float out0[4],
                             float out1[4]) {
-    float* outPair[2] = {out0, out1};
-
-    // M9.10 perf: the per-light geometry (direction, attenuation, ndl) does
-    // not depend on the channel slot — only on the light and the attenuation
-    // function (a per-channel setting). The old loop recomputed it inside
-    // every slot, so a 4-slot lit vertex paid 4x the sqrt/divide cost. Cache
-    // it per (attnFn, light) for the vertex: same operands, same expression
-    // order, so the results stay bit-identical to Dolphin's per-channel
-    // evaluation — only the redundancy is gone. The fileselect planets spend
-    // ~1600 of their ~3300 instructions/vertex in this function.
-    struct LightGeom {
-        float ldir[3];
-        float attn;
-        float ndl;
-        bool valid;
-    };
-    LightGeom geom[3][kMaxLights] = {};
-
-    // The output alpha of pair p comes from the ALPHA slot (2 + p); the RGB
-    // from the COLOR slot (0 + p). Process each slot and store its components.
-    for (int j = 0; j < 4; ++j) {
-        const bool isColor = (j == kSlotColor0 || j == kSlotColor1);
-        const int pair = j & 1;
-        const float* base = (pair == 0) ? clr0 : clr1;
-        const ChanLightState& c = chan[j];
-
-        // Material color: 8-bit int4 (vertex color or register).
-        int matV[4];
-        if (c.matSrc == 1 /* GX_SRC_VTX */) {
-            for (int i = 0; i < 4; ++i) {
-                matV[i] = round255(base[i]);
-            }
-        } else {
-            for (int i = 0; i < 4; ++i) {
-                matV[i] = mat[pair][i];
-            }
-        }
-
-        // Accumulator: ambient color or the vertex color; 255 when the
-        // channel is disabled (output = material color).
-        int lacc[4];
-        if (c.enable != 0) {
-            if (c.ambSrc == 1 /* GX_SRC_VTX */) {
-                for (int i = 0; i < 4; ++i) {
-                    lacc[i] = round255(base[i]);
-                }
-            } else {
-                for (int i = 0; i < 4; ++i) {
-                    lacc[i] = amb[pair][i];
-                }
-            }
-
-            for (int li = 0; li < kMaxLights; ++li) {
-                if ((c.lightMask & (1u << li)) == 0) {
-                    continue;
-                }
-                const LightParams& L = lights[li];
-
-                // Per-light geometry: direction toward the light and the
-                // attenuation (Dolphin AttenuationFunc cases). Cached per
-                // (attnFn, light) — see LightGeom above. fn 0 = SPEC,
-                // 1 = SPOT, 2 = NONE (the switch's default bucket).
-                const int fn = (c.attnFn == 0 || c.attnFn == 1) ? c.attnFn : 2;
-                LightGeom& g = geom[fn][li];
-                if (!g.valid) {
-                    g.valid = true;
-                    const float d0 = L.pos[0] - posView[0];
-                    const float d1 = L.pos[1] - posView[1];
-                    const float d2 = L.pos[2] - posView[2];
-                    switch (fn) {
-                    case 0 /* GX_AF_SPEC */: {
-                        const float lenSq = d0 * d0 + d1 * d1 + d2 * d2;
-                        if (lenSq == 0.0f) {
-                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
-                        } else {
-                            const float inv = 1.0f / std::sqrt(lenSq);
-                            g.ldir[0] = d0 * inv;
-                            g.ldir[1] = d1 * inv;
-                            g.ldir[2] = d2 * inv;
-                        }
-                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
-                                nrmView[2] * g.ldir[2];
-                        // Gated by the normal facing the light, then the spec
-                        // falloff uses the light direction.
-                        const float attn0 =
-                            (g.ndl >= 0.0f)
-                                ? std::max(0.0f, nrmView[0] * L.dir[0] +
-                                                     nrmView[1] * L.dir[1] +
-                                                     nrmView[2] * L.dir[2])
-                                : 0.0f;
-                        const float cosAttn = std::max(
-                            0.0f, L.a[0] + L.a[1] * attn0 + L.a[2] * attn0 * attn0);
-                        const float distAttn =
-                            L.k[0] + L.k[1] * attn0 + L.k[2] * attn0 * attn0;
-                        g.attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
-                        break;
-                    }
-                    case 1 /* GX_AF_SPOT */: {
-                        const float dist2 = d0 * d0 + d1 * d1 + d2 * d2;
-                        const float dist = std::sqrt(dist2);
-                        if (dist != 0.0f) {
-                            g.ldir[0] = d0 / dist;
-                            g.ldir[1] = d1 / dist;
-                            g.ldir[2] = d2 / dist;
-                        } else {
-                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
-                        }
-                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
-                                nrmView[2] * g.ldir[2];
-                        const float cosA =
-                            std::max(0.0f, g.ldir[0] * L.dir[0] +
-                                               g.ldir[1] * L.dir[1] +
-                                               g.ldir[2] * L.dir[2]);
-                        const float cosAttn = std::max(
-                            0.0f, L.a[0] + L.a[1] * cosA + L.a[2] * cosA * cosA);
-                        const float distAttn = L.k[0] + L.k[1] * dist + L.k[2] * dist2;
-                        g.attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
-                        break;
-                    }
-                    default /* GX_AF_NONE */: {
-                        const float lenSq = d0 * d0 + d1 * d1 + d2 * d2;
-                        if (lenSq == 0.0f) {
-                            std::memcpy(g.ldir, nrmView, sizeof(g.ldir));
-                        } else {
-                            const float inv = 1.0f / std::sqrt(lenSq);
-                            g.ldir[0] = d0 * inv;
-                            g.ldir[1] = d1 * inv;
-                            g.ldir[2] = d2 * inv;
-                        }
-                        g.ndl = nrmView[0] * g.ldir[0] + nrmView[1] * g.ldir[1] +
-                                nrmView[2] * g.ldir[2];
-                        g.attn = 1.0f;
-                        break;
-                    }
-                    }
-                }
-
-                // Diffuse term: NONE multiplies by attn only; SIGN/CLAMP by
-                // attn * dot(ldir, normal) (CLAMP floors at 0).
-                const float ndl = g.ndl;
-                const float attn = g.attn;
-                float diffuse;
-                switch (c.diffFn) {
-                case 1 /* GX_DF_SIGN */:
-                    diffuse = attn * ndl;
-                    break;
-                case 2 /* GX_DF_CLAMP */:
-                    diffuse = attn * std::max(0.0f, ndl);
-                    break;
-                default /* GX_DF_NONE */:
-                    diffuse = attn;
-                    break;
-                }
-
-                // Accumulate the components this slot owns: RGB for color
-                // slots, alpha for alpha slots (per Dolphin's swizzle).
-                if (isColor) {
-                    for (int comp = 0; comp < 3; ++comp) {
-                        lacc[comp] += fastRound(diffuse * static_cast<float>(L.color[comp]));
-                    }
-                } else {
-                    lacc[3] += fastRound(diffuse * static_cast<float>(L.color[3]));
-                }
-            }
-        } else {
-            lacc[0] = lacc[1] = lacc[2] = lacc[3] = 255;
-        }
-
-        // Clamp the accumulator to 0..255, then the fixed-point multiply.
-        for (int i = 0; i < 4; ++i) {
-            lacc[i] = std::clamp(lacc[i], 0, 255);
-            lacc[i] = mul255(matV[i], lacc[i]);
-        }
-
-        // Store the components this slot owns.
-        if (isColor) {
-            outPair[pair][0] = lacc[0] / 255.0f;
-            outPair[pair][1] = lacc[1] / 255.0f;
-            outPair[pair][2] = lacc[2] / 255.0f;
-        } else {
-            outPair[pair][3] = lacc[3] / 255.0f;
-        }
-    }
+    // One implementation, shared with the vertex hot path (GXLightEval.h).
+    evaluateChannelLighting(chan, amb, mat, lights, posView, nrmView, clr0, clr1, out0, out1);
 }
 
 // --- mirror ----------------------------------------------------------------
@@ -447,11 +247,16 @@ void dlSetNumChans(std::uint32_t v) {
     PL_LOG_TRACE("gx", "XF SETNUMCHAN -> %d", sNumChans);
 }
 
+LightingInputs lightingInputs() {
+    return LightingInputs{sChan, sAmbColor, sMatColor, sLights};
+}
+
 void applyChannelLighting(const float posView[3], const float nrmView[3],
                           const float clr0[4], const float clr1[4], float out0[4],
                           float out1[4]) {
-    computeChannelLighting(sChan, sAmbColor, sMatColor, sLights, posView, nrmView, clr0,
-                           clr1, out0, out1);
+    const LightingInputs in = lightingInputs();
+    evaluateChannelLighting(in.chan, in.amb, in.mat, in.lights, posView, nrmView, clr0, clr1,
+                            out0, out1);
 }
 
 void buildMvp(const float posMtx3x4[12], const float proj[16], float outMvp[16]) {

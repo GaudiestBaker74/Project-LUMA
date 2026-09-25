@@ -23,6 +23,25 @@
 
 #include <chrono>
 
+// File Select is bound by this TU (indexed planet strips, ~44k verts/frame).
+// Force this math optimized even under a Debug build: same XF formula, no
+// fast-math, just fast enough to finish inside one retrace. Clang uses the
+// CMake COMPILE_OPTIONS. MSVC must not get /O2 on the command line — Debug's
+// /RTC1 rejects it (D8016) — so the optimize pragma is used instead.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize("O3")
+#elif defined(_MSC_VER)
+#pragma optimize("gt", on)
+#endif
+
+#if defined(_MSC_VER)
+#define LUMA_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__)
+#define LUMA_NOINLINE __attribute__((noinline))
+#else
+#define LUMA_NOINLINE
+#endif
+
 #include <cstdio>
 #include "compat/gx/GXCompatFifo.h"
 
@@ -560,7 +579,12 @@ void finishVertex() {
 // M9.10 perf: the (slot, component) decode is a single lookup in the
 // precomputed sWriteSteps table (rebuildVcd) — this runs once per FIFO word,
 // ~450k times/frame on the fileselect planets.
+bool noteFastColorByte(std::uint8_t b);
+
 void captureWrite(float value, int writeSize) {
+    if (noteFastColorByte(static_cast<std::uint8_t>(value))) {
+        return;
+    }
     if (!sInBegin) {
         // Writes outside GXBegin are illegal on the console too; the game
         // never does this.
@@ -609,6 +633,17 @@ void capturePackedU32(std::uint32_t packed) {
         PL_LOG_WARN("gx", "u32 write into a non-direct-color attribute — dropped");
         return;
     }
+    if (sInBegin) {
+        // Fast indexed-strip path consumes a packed RGBA8 as four color bytes.
+        bool ate = false;
+        for (int c = 0; c < 4; ++c) {
+            const u8 byte = static_cast<u8>((packed >> (24 - 8 * c)) & 0xFF);
+            ate = noteFastColorByte(byte) || ate;
+        }
+        if (ate) {
+            return;
+        }
+    }
     for (int c = 0; c < 4; ++c) {
         const u8 byte = static_cast<u8>((packed >> (24 - 8 * c)) & 0xFF);
         sCurAttr[slot.attr][step.comp + c] = byte / 255.0f;
@@ -620,6 +655,8 @@ void capturePackedU32(std::uint32_t packed) {
 }
 
 } // namespace
+
+GxIndexCapture gGxIndexCapture;
 
 namespace Platform::CompatGx::Detail {
 
@@ -754,10 +791,848 @@ void flushPendingBatch() {
     sBatch.valid = false;
 }
 
+
+// Cached texgen units for the indexed-strip expander. Filled once per primitive.
+Platform::CompatGx::TexGenUnit sTexGenUnits[8];
+
+bool applyTexGenUnit(const Platform::CompatGx::TexGenUnit& g, const float* s,
+                     float& u, float& v, float& q) {
+    q = 1.0f;
+    if (g.write == 0 || g.srcAttr < 0 || s == nullptr) {
+        return false;
+    }
+    if (g.useMtx == 0) {
+        u = s[0];
+        v = s[1];
+        return true;
+    }
+    u = g.m[0] * s[0] + g.m[1] * s[1] + g.m[2] * s[2] + g.m[3];
+    v = g.m[4] * s[0] + g.m[5] * s[1] + g.m[6] * s[2] + g.m[7];
+    if (g.proj3 != 0) {
+        const float w = g.m[8] * s[0] + g.m[9] * s[1] + g.m[10] * s[2] + g.m[11];
+        if (w != 0.0f) {
+            q = w;
+        }
+    }
+    return true;
+}
+
+// All-indexed triangle strips (File Select planets: 64 strips x ~700 verts).
+// The immediate writers and the display-list reader only record indices; one
+// loop fetches, lights and emits the TEV vertex. Quads, fans and mixed VCDs
+// stay on the general path so their captured streams are unchanged.
+struct FastSlot {
+    int attr = 0;
+    int comps = 0;
+    int indexBytes = 2;
+    const std::uint8_t* base = nullptr;
+    int stride = 0;
+    int type = 0;
+    int frac = 0;
+    int elemSize = 4;
+    bool isColor = false;
+};
+FastSlot sFastSlot[16];
+int sFastSlots = 0;
+int sFastCount = 0;
+bool sFastIndex = false;
+std::vector<std::uint32_t> sFastIndices;
+std::vector<float> sFastDrawOut;
+bool sFastDrawReady = false;
+bool sFastHasColor = false;
+int sFastColorAttr = -1;
+int sFastColorComps = 0;
+int sFastColorCount = 0;
+std::vector<std::uint8_t> sFastColorBytes;
+
+void fetchFastAttr(const FastSlot& sl, std::uint32_t index, float dst[4]) {
+    const std::uint8_t* p = sl.base + static_cast<size_t>(index) * static_cast<size_t>(sl.stride);
+    if (sl.isColor) {
+        for (int c = 0; c < sl.comps && c < 4; ++c) {
+            dst[c] = p[c] / 255.0f;
+        }
+        for (int c = sl.comps; c < 4; ++c) {
+            dst[c] = 1.0f;  // missing color components default to 1, like buildVertex
+        }
+        return;
+    }
+    const float scale = static_cast<float>(1 << sl.frac);
+    for (int c = 0; c < sl.comps && c < 4; ++c) {
+        const std::uint8_t* q = p + c * sl.elemSize;
+        switch (sl.type) {
+        case GX_U8: {
+            std::uint8_t v;
+            std::memcpy(&v, q, 1);
+            dst[c] = static_cast<float>(v) / scale;
+            break;
+        }
+        case GX_S8: {
+            std::int8_t v;
+            std::memcpy(&v, q, 1);
+            dst[c] = static_cast<float>(v) / scale;
+            break;
+        }
+        case GX_U16: {
+            std::uint16_t v;
+            std::memcpy(&v, q, 2);
+            dst[c] = static_cast<float>(v) / scale;
+            break;
+        }
+        case GX_S16: {
+            std::int16_t v;
+            std::memcpy(&v, q, 2);
+            dst[c] = static_cast<float>(v) / scale;
+            break;
+        }
+        default: {
+            float v;
+            std::memcpy(&v, q, 4);
+            dst[c] = v;
+            break;
+        }
+        }
+    }
+    for (int c = sl.comps; c < 4; ++c) {
+        dst[c] = 0.0f;
+    }
+}
+
+// True when this primitive is an all-indexed triangle strip whose texgens only
+// read attributes the vertex itself carries. `usePipe` arms the immediate-mode
+// index store; display lists fill sFastIndices themselves.
+bool tryArmFastIndex(int nverts, bool usePipe) {
+    gGxIndexCapture.active = false;
+    gGxIndexCapture.count = 0;
+    sFastIndex = false;
+    sFastDrawReady = false;
+    sFastCount = 0;
+    sFastSlots = 0;
+    if (nverts < 3 || sPrimitive != GX_TRIANGLESTRIP || sVcdOrder.empty() ||
+        sVcdOrder.size() > 16) {
+        return false;
+    }
+    bool hasPos = false;
+    sFastHasColor = false;
+    sFastColorAttr = -1;
+    sFastColorComps = 0;
+    sFastColorCount = 0;
+    int indexed = 0;
+    for (const auto& slot : sVcdOrder) {
+        if (slot.source == GX_DIRECT) {
+            // Planets carry one direct RGBA8 color among indexed pos/nrm/tex.
+            if (sFastHasColor || slot.comps != 4 ||
+                (slot.attr != GX_VA_CLR0 && slot.attr != GX_VA_CLR1)) {
+                return false;
+            }
+            sFastHasColor = true;
+            sFastColorAttr = slot.attr;
+            sFastColorComps = slot.comps;
+            continue;
+        }
+        if (slot.source != GX_INDEX8 && slot.source != GX_INDEX16) {
+            return false;
+        }
+        const ArraySlot& arr = sArrays[slot.attr];
+        if (!arr.set || arr.base == nullptr) {
+            return false;
+        }
+        if (slot.attr == GX_VA_POS) {
+            hasPos = true;
+        }
+        ++indexed;
+    }
+    if (!hasPos || indexed == 0) {
+        return false;
+    }
+    Platform::CompatGx::captureTexGenUnits(sTexGenUnits);
+    for (int i = 0; i < 8; ++i) {
+        if (sTexGenUnits[i].write == 0) {
+            continue;
+        }
+        bool found = false;
+        for (const auto& slot : sVcdOrder) {
+            if (slot.attr == sTexGenUnits[i].srcAttr) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    sFastSlots = indexed;
+    int fi = 0;
+    for (const auto& slot : sVcdOrder) {
+        if (slot.source == GX_DIRECT) {
+            continue;
+        }
+        FastSlot& f = sFastSlot[fi++];
+        f.attr = slot.attr;
+        f.comps = slot.comps;
+        f.indexBytes = (slot.source == GX_INDEX16) ? 2 : 1;
+        f.base = sArrays[slot.attr].base;
+        f.stride = sArrays[slot.attr].stride;
+        f.type = static_cast<int>(slot.type);
+        f.frac = slot.frac;
+        f.elemSize = compByteSize(slot.type);
+        f.isColor = (slot.attr == GX_VA_CLR0 || slot.attr == GX_VA_CLR1);
+    }
+    const int expected = nverts * sFastSlots;
+    sFastIndices.assign(static_cast<size_t>(expected), 0);
+    if (sFastHasColor) {
+        sFastColorBytes.assign(static_cast<size_t>(nverts) * static_cast<size_t>(sFastColorComps), 0);
+    } else {
+        sFastColorBytes.clear();
+    }
+    sFastIndex = true;
+    if (usePipe) {
+        gGxIndexCapture.data = sFastIndices.data();
+        gGxIndexCapture.count = 0;
+        gGxIndexCapture.expected = expected;
+        gGxIndexCapture.active = true;
+    }
+    return true;
+}
+
+struct CapOp {
+    int kind;  // 0 pos, 1 nrm, 2 clr0, 3 clr1, 4+t tex, -1 zero
+    int comps;
+};
+
+struct TgOp {
+    int src;  // -1 pos, 0..7 tex, -2 zero
+    int dst;
+    int proj3;
+    int useMtx;
+    float m[12];
+};
+
+inline void loadFastSlot(const FastSlot& sl, std::uint32_t index, float dst[4]) {
+    const std::uint8_t* p = sl.base + static_cast<size_t>(index) * static_cast<size_t>(sl.stride);
+    if (sl.isColor) {
+        const int n = sl.comps < 4 ? sl.comps : 4;
+        for (int c = 0; c < n; ++c) {
+            dst[c] = p[c] * (1.0f / 255.0f);
+        }
+        for (int c = n; c < 4; ++c) {
+            dst[c] = 1.0f;
+        }
+        return;
+    }
+    if (sl.type == GX_F32 && sl.frac == 0 && sl.elemSize == 4) {
+        const float* f = reinterpret_cast<const float*>(p);
+        dst[0] = sl.comps > 0 ? f[0] : 0.0f;
+        dst[1] = sl.comps > 1 ? f[1] : 0.0f;
+        dst[2] = sl.comps > 2 ? f[2] : 0.0f;
+        dst[3] = sl.comps > 3 ? f[3] : 0.0f;
+        return;
+    }
+    fetchFastAttr(sl, index, dst);
+}
+
+// Attn/Diff are per-primitive. Instantiating them here lets the spot/spec
+// evaluator inline into the vertex loop instead of switching 44k times.
+template <int Attn, int Diff, bool Uniform>
+void expandHotBody(int nverts, bool render, float* draw, float* cap, int capStride,
+                   const std::uint32_t* indices, int slots, int posSlot, int nrmSlot,
+                   int clr0Slot, int clr1Slot, const int texSlot[8], const CapOp* caps, int ncap,
+                   const TgOp* tgs, int ntg, const float* posMtx, const float* nrmMtx,
+                   const Platform::CompatGx::LightingInputs& lin, unsigned uniMask,
+                   int posComps, int nrmComps) {
+    constexpr int kStride = 35;
+    const std::uint8_t* colorBytes = sFastHasColor ? sFastColorBytes.data() : nullptr;
+    const int colorComps = sFastColorComps;
+    const int colorAttr = sFastColorAttr;
+    for (int v = 0; v < nverts; ++v) {
+        const std::uint32_t* vi = indices + static_cast<size_t>(v) * static_cast<size_t>(slots);
+        float pos[3] = {0, 0, 0};
+        float nrm[3] = {0, 0, 1};
+        float clr0[4] = {1, 1, 1, 1};
+        float clr1[4] = {1, 1, 1, 1};
+        float tu[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        float tv[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        float tz[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        if (posSlot >= 0) {
+            float row[4];
+            loadFastSlot(sFastSlot[posSlot], vi[posSlot], row);
+            pos[0] = row[0];
+            pos[1] = row[1];
+            pos[2] = row[2];
+        }
+        if (nrmSlot >= 0) {
+            float row[4];
+            loadFastSlot(sFastSlot[nrmSlot], vi[nrmSlot], row);
+            nrm[0] = row[0];
+            nrm[1] = row[1];
+            nrm[2] = (nrmComps == 3) ? row[2] : 1.0f;
+        }
+        if (clr0Slot >= 0) {
+            loadFastSlot(sFastSlot[clr0Slot], vi[clr0Slot], clr0);
+        }
+        if (clr1Slot >= 0) {
+            loadFastSlot(sFastSlot[clr1Slot], vi[clr1Slot], clr1);
+        }
+        if (colorBytes != nullptr &&
+            v * colorComps + colorComps <= sFastColorCount) {
+            const std::uint8_t* cb = colorBytes + static_cast<size_t>(v) * static_cast<size_t>(colorComps);
+            float* dst = (colorAttr == GX_VA_CLR0) ? clr0 : clr1;
+            for (int c = 0; c < colorComps && c < 4; ++c) {
+                dst[c] = cb[c] * (1.0f / 255.0f);
+            }
+        }
+        float inU[8], inV[8], inZ[8];
+        for (int t = 0; t < 8; ++t) {
+            if (texSlot[t] < 0) {
+                inU[t] = inV[t] = inZ[t] = 0.0f;
+                continue;
+            }
+            float row[4];
+            loadFastSlot(sFastSlot[texSlot[t]], vi[texSlot[t]], row);
+            inU[t] = tu[t] = row[0];
+            inV[t] = tv[t] = row[1];
+            inZ[t] = tz[t] = row[2];
+        }
+        float uv0[8], uv1[8], uq[8];
+        for (int t = 0; t < 8; ++t) {
+            uv0[t] = tu[t];
+            uv1[t] = tv[t];
+            uq[t] = 1.0f;
+        }
+        for (int i = 0; i < ntg; ++i) {
+            const TgOp& tg = tgs[i];
+            float s0 = 0.0f, s1 = 0.0f, s2 = 0.0f;
+            if (tg.src == -1) {
+                s0 = pos[0];
+                s1 = pos[1];
+                s2 = pos[2];
+            } else if (tg.src >= 0) {
+                s0 = inU[tg.src];
+                s1 = inV[tg.src];
+                s2 = inZ[tg.src];
+            }
+            float u, vv, q = 1.0f;
+            if (tg.useMtx == 0) {
+                u = s0;
+                vv = s1;
+            } else {
+                u = tg.m[0] * s0 + tg.m[1] * s1 + tg.m[2] * s2 + tg.m[3];
+                vv = tg.m[4] * s0 + tg.m[5] * s1 + tg.m[6] * s2 + tg.m[7];
+                if (tg.proj3 != 0) {
+                    const float w = tg.m[8] * s0 + tg.m[9] * s1 + tg.m[10] * s2 + tg.m[11];
+                    if (w != 0.0f) {
+                        q = w;
+                    }
+                }
+            }
+            uv0[tg.dst] = u;
+            uv1[tg.dst] = vv;
+            uq[tg.dst] = q;
+            tu[tg.dst] = u;
+            tv[tg.dst] = vv;
+        }
+        float* cout = cap + static_cast<size_t>(v) * static_cast<size_t>(capStride);
+        int w = 0;
+        for (int i = 0; i < ncap; ++i) {
+            int n = caps[i].comps;
+            if (caps[i].kind == 0) {
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = pos[c];
+                }
+            } else if (caps[i].kind == 1) {
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = nrm[c];
+                }
+            } else if (caps[i].kind == 2) {
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = clr0[c];
+                }
+            } else if (caps[i].kind == 3) {
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = clr1[c];
+                }
+            } else if (caps[i].kind >= 4) {
+                const int t = caps[i].kind - 4;
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = (c == 0) ? tu[t] : (c == 1) ? tv[t] : tz[t];
+                }
+            } else {
+                for (int c = 0; c < n; ++c) {
+                    cout[w++] = 0.0f;
+                }
+            }
+        }
+        if (!render) {
+            continue;
+        }
+        float* o = draw + static_cast<size_t>(v) * kStride;
+        const float px = pos[0], py = pos[1], pz = (posComps == 3) ? pos[2] : 0.0f;
+        o[0] = px;
+        o[1] = py;
+        o[2] = pz;
+        const float nx = nrm[0], ny = nrm[1], nz = nrm[2];
+        const float posView[3] = {
+            px * posMtx[0] + py * posMtx[1] + pz * posMtx[2] + posMtx[3],
+            px * posMtx[4] + py * posMtx[5] + pz * posMtx[6] + posMtx[7],
+            px * posMtx[8] + py * posMtx[9] + pz * posMtx[10] + posMtx[11],
+        };
+        float nrmView[3] = {
+            nx * nrmMtx[0] + ny * nrmMtx[1] + nz * nrmMtx[2],
+            nx * nrmMtx[3] + ny * nrmMtx[4] + nz * nrmMtx[5],
+            nx * nrmMtx[6] + ny * nrmMtx[7] + nz * nrmMtx[8],
+        };
+        const float nLenSq =
+            nrmView[0] * nrmView[0] + nrmView[1] * nrmView[1] + nrmView[2] * nrmView[2];
+        if (nLenSq > 0.0f) {
+            const float inv = 1.0f / std::sqrt(nLenSq);
+            nrmView[0] *= inv;
+            nrmView[1] *= inv;
+            nrmView[2] *= inv;
+        }
+        float lit0[4], lit1[4];
+        if constexpr (Uniform) {
+            Platform::CompatGx::evalUniformLighting<Attn, Diff>(
+                lin.chan, lin.amb, lin.mat, lin.lights, uniMask, posView, nrmView, clr0, clr1, lit0,
+                lit1);
+        } else {
+            Platform::CompatGx::evaluateChannelLighting(lin.chan, lin.amb, lin.mat, lin.lights, posView,
+                                                        nrmView, clr0, clr1, lit0, lit1);
+        }
+        o[3] = lit0[0];
+        o[4] = lit0[1];
+        o[5] = lit0[2];
+        o[6] = lit0[3];
+        o[7] = lit1[0];
+        o[8] = lit1[1];
+        o[9] = lit1[2];
+        o[10] = lit1[3];
+        for (int t = 0; t < 8; ++t) {
+            o[11 + 3 * t] = uv0[t];
+            o[12 + 3 * t] = uv1[t];
+            o[13 + 3 * t] = uq[t];
+        }
+    }
+}
+
+
+// Tight planet strip: F32 pos/nrm/tex, one RGBA8 color, uniform lighting.
+// Kept small on purpose — the general expander inlines into a 10 KB loop and
+// drops out of the instruction cache (~13 ms). This one stays a few hundred
+// bytes so the same formula finishes inside a retrace.
+// Branch-free planet body. Channel flags, light colors and the two texgen
+// matrices are per primitive; baking them here is what keeps the loop in L1.
+// Attn/Diff stay template parameters so spot/clamp compiles without a switch.
+inline float spotDiffuse(const Platform::CompatGx::LightParams& L, const float pv0, const float pv1,
+                         const float pv2, const float nv0, const float nv1, const float nv2) {
+    const float d0 = L.pos[0] - pv0;
+    const float d1 = L.pos[1] - pv1;
+    const float d2 = L.pos[2] - pv2;
+    const float dist2 = d0 * d0 + d1 * d1 + d2 * d2;
+    const float dist = std::sqrt(dist2);
+    float lx, ly, lz;
+    if (dist != 0.0f) {
+        lx = d0 / dist;
+        ly = d1 / dist;
+        lz = d2 / dist;
+    } else {
+        lx = nv0;
+        ly = nv1;
+        lz = nv2;
+    }
+    const float ndl = nv0 * lx + nv1 * ly + nv2 * lz;
+    const float cosA = Platform::CompatGx::gxMax0(lx * L.dir[0] + ly * L.dir[1] + lz * L.dir[2]);
+    const float cosAttn = Platform::CompatGx::gxMax0(L.a[0] + L.a[1] * cosA + L.a[2] * cosA * cosA);
+    const float distAttn = L.k[0] + L.k[1] * dist + L.k[2] * dist2;
+    const float attn = (distAttn != 0.0f) ? cosAttn / distAttn : 0.0f;
+    return attn * Platform::CompatGx::gxMax0(ndl);
+}
+
+inline float shadeComp(int amb, int mat, float d0, float d1, float c0, float c1) {
+    int lacc = amb;
+    lacc += Platform::CompatGx::gxFastRound(d0 * c0);
+    lacc += Platform::CompatGx::gxFastRound(d1 * c1);
+    lacc = Platform::CompatGx::gxMul255(mat, Platform::CompatGx::gxClamp255(lacc));
+    return lacc / 255.0f;
+}
+
+// Indexed F32 pos/nrm/tex0 + RGBA8 color, two MTX2x4 texgens from TEX0, two spot
+// lights, both channels fed from registers. Same numbers as the general path.
+LUMA_NOINLINE void lightTwoSpot(
+    const Platform::CompatGx::LightParams& L0, const Platform::CompatGx::LightParams& L1, int a0r,
+    int a0g, int a0b, int a0a, int a1r, int a1g, int a1b, int a1a, int m0r, int m0g, int m0b, int m0a,
+    int m1r, int m1g, int m1b, int m1a, float c0r, float c0g, float c0b, float c0a, float c1r,
+    float c1g, float c1b, float c1a, float pv0, float pv1, float pv2, float nv0, float nv1, float nv2,
+    float* o) {
+    const float d0 = spotDiffuse(L0, pv0, pv1, pv2, nv0, nv1, nv2);
+    const float d1 = spotDiffuse(L1, pv0, pv1, pv2, nv0, nv1, nv2);
+    o[0] = shadeComp(a0r, m0r, d0, d1, c0r, c1r);
+    o[1] = shadeComp(a0g, m0g, d0, d1, c0g, c1g);
+    o[2] = shadeComp(a0b, m0b, d0, d1, c0b, c1b);
+    o[3] = shadeComp(a0a, m0a, d0, d1, c0a, c1a);
+    o[4] = shadeComp(a1r, m1r, d0, d1, c0r, c1r);
+    o[5] = shadeComp(a1g, m1g, d0, d1, c0g, c1g);
+    o[6] = shadeComp(a1b, m1b, d0, d1, c0b, c1b);
+    o[7] = shadeComp(a1a, m1a, d0, d1, c0a, c1a);
+}
+
+void expandTightBody(int nverts, float* draw, float* cap, const std::uint32_t* indices, int slots,
+                     int posSlot, int nrmSlot, int clr0Slot, int texSlot, const float* posMtx,
+                     const float* nrmMtx, const Platform::CompatGx::LightingInputs& lin,
+                     const float m0[12], const float m1[12]) {
+    const FastSlot& sp = sFastSlot[posSlot];
+    const FastSlot& sn = sFastSlot[nrmSlot];
+    const FastSlot& sc = sFastSlot[clr0Slot];
+    const FastSlot& st = sFastSlot[texSlot];
+    const auto& L0 = lin.lights[0];
+    const auto& L1 = lin.lights[1];
+    const float c0r = L0.color[0], c0g = L0.color[1], c0b = L0.color[2], c0a = L0.color[3];
+    const float c1r = L1.color[0], c1g = L1.color[1], c1b = L1.color[2], c1a = L1.color[3];
+    const int a0r = lin.amb[0][0], a0g = lin.amb[0][1], a0b = lin.amb[0][2], a0a = lin.amb[0][3];
+    const int a1r = lin.amb[1][0], a1g = lin.amb[1][1], a1b = lin.amb[1][2], a1a = lin.amb[1][3];
+    const int m0r = lin.mat[0][0], m0g = lin.mat[0][1], m0b = lin.mat[0][2], m0a = lin.mat[0][3];
+    const int m1r = lin.mat[1][0], m1g = lin.mat[1][1], m1b = lin.mat[1][2], m1a = lin.mat[1][3];
+    const float pm0 = posMtx[0], pm1 = posMtx[1], pm2 = posMtx[2], pm3 = posMtx[3];
+    const float pm4 = posMtx[4], pm5 = posMtx[5], pm6 = posMtx[6], pm7 = posMtx[7];
+    const float pm8 = posMtx[8], pm9 = posMtx[9], pm10 = posMtx[10], pm11 = posMtx[11];
+    const float nm0 = nrmMtx[0], nm1 = nrmMtx[1], nm2 = nrmMtx[2];
+    const float nm3 = nrmMtx[3], nm4 = nrmMtx[4], nm5 = nrmMtx[5];
+    const float nm6 = nrmMtx[6], nm7 = nrmMtx[7], nm8 = nrmMtx[8];
+    const float t0_0 = m0[0], t0_1 = m0[1], t0_3 = m0[3], t0_4 = m0[4], t0_5 = m0[5], t0_7 = m0[7];
+    const float t1_0 = m1[0], t1_1 = m1[1], t1_3 = m1[3], t1_4 = m1[4], t1_5 = m1[5], t1_7 = m1[7];
+    for (int v = 0; v < nverts; ++v) {
+        const std::uint32_t* vi = indices + static_cast<size_t>(v) * static_cast<size_t>(slots);
+        float pf[3], nf[3], tf[2];
+        std::memcpy(pf, sp.base + static_cast<size_t>(vi[posSlot]) * static_cast<size_t>(sp.stride), 12);
+        std::memcpy(nf, sn.base + static_cast<size_t>(vi[nrmSlot]) * static_cast<size_t>(sn.stride), 12);
+        std::memcpy(tf, st.base + static_cast<size_t>(vi[texSlot]) * static_cast<size_t>(st.stride), 8);
+        const std::uint8_t* cb = sc.base + static_cast<size_t>(vi[clr0Slot]) * static_cast<size_t>(sc.stride);
+        const float cr = cb[0] * (1.0f / 255.0f);
+        const float cg = cb[1] * (1.0f / 255.0f);
+        const float cbb = cb[2] * (1.0f / 255.0f);
+        const float ca = cb[3] * (1.0f / 255.0f);
+        const float px = pf[0], py = pf[1], pz = pf[2];
+        const float nx = nf[0], ny = nf[1], nz = nf[2];
+        const float u0 = t0_0 * tf[0] + t0_1 * tf[1] + t0_3;
+        const float v0 = t0_4 * tf[0] + t0_5 * tf[1] + t0_7;
+        const float u1 = t1_0 * tf[0] + t1_1 * tf[1] + t1_3;
+        const float vv1 = t1_4 * tf[0] + t1_5 * tf[1] + t1_7;
+        float* cout = cap + static_cast<size_t>(v) * 12;
+        cout[0] = px; cout[1] = py; cout[2] = pz;
+        cout[3] = nx; cout[4] = ny; cout[5] = nz;
+        cout[6] = cr; cout[7] = cg; cout[8] = cbb; cout[9] = ca;
+        cout[10] = u0; cout[11] = v0;
+        if (draw == nullptr) continue;
+        const float pv0 = px * pm0 + py * pm1 + pz * pm2 + pm3;
+        const float pv1 = px * pm4 + py * pm5 + pz * pm6 + pm7;
+        const float pv2 = px * pm8 + py * pm9 + pz * pm10 + pm11;
+        float nv0 = nx * nm0 + ny * nm1 + nz * nm2;
+        float nv1 = nx * nm3 + ny * nm4 + nz * nm5;
+        float nv2 = nx * nm6 + ny * nm7 + nz * nm8;
+        const float nLenSq = nv0 * nv0 + nv1 * nv1 + nv2 * nv2;
+        if (nLenSq > 0.0f) {
+            const float inv = 1.0f / std::sqrt(nLenSq);
+            nv0 *= inv; nv1 *= inv; nv2 *= inv;
+        }
+        float* o = draw + static_cast<size_t>(v) * 35;
+        o[0] = px; o[1] = py; o[2] = pz;
+        lightTwoSpot(L0, L1, a0r, a0g, a0b, a0a, a1r, a1g, a1b, a1a, m0r, m0g, m0b, m0a, m1r, m1g,
+                     m1b, m1a, c0r, c0g, c0b, c0a, c1r, c1g, c1b, c1a, pv0, pv1, pv2, nv0, nv1, nv2,
+                     o + 3);
+        o[11] = u0; o[12] = v0; o[13] = 1.0f;
+        o[14] = u1; o[15] = vv1; o[16] = 1.0f;
+        o[17] = 0; o[18] = 0; o[19] = 1;
+        o[20] = 0; o[21] = 0; o[22] = 1;
+        o[23] = 0; o[24] = 0; o[25] = 1;
+        o[26] = 0; o[27] = 0; o[28] = 1;
+        o[29] = 0; o[30] = 0; o[31] = 1;
+        o[32] = 0; o[33] = 0; o[34] = 1;
+    }
+}
+
+bool expandTightStrip(int nverts, bool render, std::vector<float>& drawData) {
+    auto fail = [](const char*) { return false; };
+    if (sFastSlots < 3 || sFastSlots > 6) {
+        return fail("slotcount");
+    }
+    int posSlot = -1, nrmSlot = -1, clr0Slot = -1;
+    int texSlot[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    int ntex = 0;
+    for (int i = 0; i < sFastSlots; ++i) {
+        const FastSlot& f = sFastSlot[i];
+        if (f.attr == GX_VA_POS) {
+            if (f.type != GX_F32 || f.frac != 0 || f.comps != 3) return fail("pos");
+            posSlot = i;
+        } else if (f.attr == GX_VA_NRM) {
+            if (f.type != GX_F32 || f.frac != 0 || f.comps != 3) return fail("nrm");
+            nrmSlot = i;
+        } else if (f.attr == GX_VA_CLR0) {
+            if (!f.isColor || f.comps != 4) return fail("clr");
+            clr0Slot = i;
+        } else if (f.attr == GX_VA_CLR1) {
+            return fail("clr1");
+        } else if (f.attr >= GX_VA_TEX0 && f.attr <= GX_VA_TEX3) {
+            if (f.type != GX_F32 || f.frac != 0 || f.comps != 2) return fail("tex");
+            texSlot[f.attr - GX_VA_TEX0] = i;
+            ++ntex;
+        } else {
+            return fail("attr");
+        }
+    }
+    if (posSlot < 0 || nrmSlot < 0) return fail("missing");
+    if (sFastHasColor) {
+        if (sFastColorAttr != GX_VA_CLR0 || sFastColorComps != 4 || clr0Slot >= 0) return fail("dcolor");
+    } else if (clr0Slot < 0) {
+        // color-less strips stay on the general path (rare; not the planets)
+        return fail("nocolor");
+    }
+    int capStride = 0;
+    CapOp caps[8];
+    int ncap = 0;
+    if (static_cast<int>(sVcdOrder.size()) > 8) return fail("vcdsize");
+    for (const auto& slot : sVcdOrder) {
+        CapOp& c = caps[ncap];
+        c.comps = slot.comps;
+        if (slot.attr == GX_VA_POS) c.kind = 0;
+        else if (slot.attr == GX_VA_NRM) c.kind = 1;
+        else if (slot.attr == GX_VA_CLR0) c.kind = 2;
+        else if (slot.attr >= GX_VA_TEX0 && slot.attr <= GX_VA_TEX3) c.kind = 4 + (slot.attr - GX_VA_TEX0);
+        else return fail("vcdattr");
+        capStride += slot.comps;
+        ++ncap;
+    }
+    TgOp tgs[4];
+    int ntg = 0;
+    for (int c = 0; c < 8; ++c) {
+        const Platform::CompatGx::TexGenUnit& g = sTexGenUnits[c];
+        if (g.write == 0) continue;
+        if (ntg >= 4) return fail("ntg");
+        TgOp& t = tgs[ntg++];
+        t.dst = c;
+        t.proj3 = g.proj3;
+        t.useMtx = g.useMtx;
+        std::memcpy(t.m, g.m, sizeof(t.m));
+        if (g.srcAttr == GX_VA_POS) t.src = -1;
+        else if (g.srcAttr >= GX_VA_TEX0 && g.srcAttr <= GX_VA_TEX3) t.src = g.srcAttr - GX_VA_TEX0;
+        else return fail("tgsrc");
+    }
+    const Platform::CompatGx::LightingInputs lin = Platform::CompatGx::lightingInputs();
+    int uniAttn = 0, uniDiff = 0;
+    unsigned uniMask = 0;
+    if (!Platform::CompatGx::uniformLighting(lin.chan, &uniAttn, &uniDiff, &uniMask)) return fail("uni");
+    if (uniMask != 3 || uniAttn != 1 || uniDiff != 2) return fail("mask");
+    sVertexData.resize(static_cast<size_t>(nverts) * static_cast<size_t>(capStride));
+    sVertexStride = capStride;
+    float* draw = nullptr;
+    if (render) {
+        drawData.resize(static_cast<size_t>(nverts) * 35);
+        draw = drawData.data();
+    }
+    // Only the baked layout: indexed RGBA color, one F32 tex, two MTX2x4 texgens
+    // from TEX0, both channels enabled from registers, lights 0 and 1.
+    if (ntex != 1 || ntg != 2 || texSlot[0] < 0 || tgs[0].src != 0 || tgs[1].src != 0 ||
+        tgs[0].useMtx == 0 || tgs[1].useMtx == 0 || tgs[0].proj3 != 0 || tgs[1].proj3 != 0 ||
+        capStride != 12 || clr0Slot < 0) {
+        return fail("layout");
+    }
+    for (int j = 0; j < 4; ++j) {
+        if (lin.chan[j].enable == 0 || lin.chan[j].matSrc != 0 || lin.chan[j].ambSrc != 0) {
+            return fail("chan");
+        }
+    }
+    expandTightBody(nverts, draw, sVertexData.data(), sFastIndices.data(), sFastSlots, posSlot,
+                    nrmSlot, clr0Slot, texSlot[0], Platform::CompatGx::currentPosMtx(),
+                    Platform::CompatGx::currentNrmMtx(), lin, tgs[0].m, tgs[1].m);
+    return true;
+}
+
+void expandFastStrip(int nverts, bool render, std::vector<float>& drawData) {
+    if (expandTightStrip(nverts, render, drawData)) {
+        return;
+    }
+    int capStride = 0;
+    CapOp caps[16];
+    int ncap = 0;
+    for (const auto& slot : sVcdOrder) {
+        CapOp& c = caps[ncap++];
+        c.comps = slot.comps;
+        if (slot.attr == GX_VA_POS) {
+            c.kind = 0;
+        } else if (slot.attr == GX_VA_NRM) {
+            c.kind = 1;
+        } else if (slot.attr == GX_VA_CLR0) {
+            c.kind = 2;
+        } else if (slot.attr == GX_VA_CLR1) {
+            c.kind = 3;
+        } else if (slot.attr >= GX_VA_TEX0 && slot.attr <= GX_VA_TEX7) {
+            c.kind = 4 + (slot.attr - GX_VA_TEX0);
+        } else {
+            c.kind = -1;
+        }
+        capStride += slot.comps;
+    }
+    int posSlot = -1, nrmSlot = -1, clr0Slot = -1, clr1Slot = -1;
+    int texSlot[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    for (int i = 0; i < sFastSlots; ++i) {
+        if (sFastSlot[i].attr == GX_VA_POS) {
+            posSlot = i;
+        } else if (sFastSlot[i].attr == GX_VA_NRM) {
+            nrmSlot = i;
+        } else if (sFastSlot[i].attr == GX_VA_CLR0) {
+            clr0Slot = i;
+        } else if (sFastSlot[i].attr == GX_VA_CLR1) {
+            clr1Slot = i;
+        } else if (sFastSlot[i].attr >= GX_VA_TEX0 && sFastSlot[i].attr <= GX_VA_TEX7) {
+            texSlot[sFastSlot[i].attr - GX_VA_TEX0] = i;
+        }
+    }
+    sVertexData.resize(static_cast<size_t>(nverts) * static_cast<size_t>(capStride));
+    sVertexStride = capStride;
+    constexpr int kStride = 35;
+    if (render) {
+        drawData.resize(static_cast<size_t>(nverts) * kStride);
+    }
+    const float* posMtx = Platform::CompatGx::currentPosMtx();
+    const float* nrmMtx = Platform::CompatGx::currentNrmMtx();
+    const Platform::CompatGx::LightingInputs lin = Platform::CompatGx::lightingInputs();
+    int uniAttn = 0;
+    int uniDiff = 0;
+    unsigned uniMask = 0;
+    const bool uniLit = Platform::CompatGx::uniformLighting(lin.chan, &uniAttn, &uniDiff, &uniMask);
+    TgOp tgs[8];
+    int ntg = 0;
+    for (int c = 0; c < 8; ++c) {
+        const Platform::CompatGx::TexGenUnit& g = sTexGenUnits[c];
+        if (g.write == 0) {
+            continue;
+        }
+        TgOp& t = tgs[ntg++];
+        t.dst = c;
+        t.proj3 = g.proj3;
+        t.useMtx = g.useMtx;
+        std::memcpy(t.m, g.m, sizeof(t.m));
+        if (g.srcAttr == GX_VA_POS) {
+            t.src = -1;
+        } else if (g.srcAttr >= GX_VA_TEX0 && g.srcAttr <= GX_VA_TEX7) {
+            t.src = g.srcAttr - GX_VA_TEX0;
+        } else {
+            t.src = -2;
+        }
+    }
+    const int posComps = (posSlot >= 0) ? sFastSlot[posSlot].comps : 0;
+    const int nrmComps = (nrmSlot >= 0) ? sFastSlot[nrmSlot].comps : 0;
+    float* cap = sVertexData.data();
+    float* draw = render ? drawData.data() : nullptr;
+    const std::uint32_t* indices = sFastIndices.data();
+    const int slots = sFastSlots;
+    if (!uniLit) {
+        expandHotBody<2, 0, false>(nverts, render, draw, cap, capStride, indices, slots, posSlot,
+                                   nrmSlot, clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx,
+                                   nrmMtx, lin, uniMask, posComps, nrmComps);
+        return;
+    }
+    switch (uniAttn * 4 + uniDiff) {
+    case 0 * 4 + 0:
+        expandHotBody<0, 0, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 0 * 4 + 1:
+        expandHotBody<0, 1, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 0 * 4 + 2:
+        expandHotBody<0, 2, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 1 * 4 + 0:
+        expandHotBody<1, 0, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 1 * 4 + 1:
+        expandHotBody<1, 1, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 1 * 4 + 2:
+        expandHotBody<1, 2, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 2 * 4 + 1:
+        expandHotBody<2, 1, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    case 2 * 4 + 2:
+        expandHotBody<2, 2, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    default:
+        expandHotBody<2, 0, true>(nverts, render, draw, cap, capStride, indices, slots, posSlot, nrmSlot,
+                                  clr0Slot, clr1Slot, texSlot, caps, ncap, tgs, ntg, posMtx, nrmMtx, lin,
+                                  uniMask, posComps, nrmComps);
+        break;
+    }
+}
+
+void flushFastIndexImpl();
+
+bool noteFastColorByte(std::uint8_t b) {
+    if (!sFastIndex || !sFastHasColor) {
+        return false;
+    }
+    if (sFastColorCount < static_cast<int>(sFastColorBytes.size())) {
+        sFastColorBytes[static_cast<size_t>(sFastColorCount++)] = b;
+    }
+    if (sFastColorCount >= static_cast<int>(sFastColorBytes.size()) &&
+        gGxIndexCapture.count >= gGxIndexCapture.expected) {
+        flushFastIndexImpl();
+    }
+    return true;
+}
+
+void flushFastIndexImpl() {
+    if (!sFastIndex) {
+        return;
+    }
+    if (gGxIndexCapture.count < gGxIndexCapture.expected) {
+        return;
+    }
+    if (sFastHasColor && sFastColorCount < static_cast<int>(sFastColorBytes.size())) {
+        return;
+    }
+    gGxIndexCapture.active = false;
+    sFastCount = gGxIndexCapture.count;
+    sNvertsDone = (sFastSlots > 0) ? sFastCount / sFastSlots : 0;
+    flushDraw();
+}
+
 void flushDraw() {
+    if (sFastIndex) {
+        gGxIndexCapture.active = false;
+        if (sFastCount == 0) {
+            sFastCount = gGxIndexCapture.count;
+        }
+        const int slots = sFastSlots;
+        const int n = (slots > 0) ? sFastCount / slots : 0;
+        const bool render = Platform::Renderer::instance().isInitialized() &&
+                            Platform::Renderer::instance().inPass();
+        if (n > 0) {
+            expandFastStrip(n, render, sFastDrawOut);
+            sFastDrawReady = render;
+        }
+        sFastIndex = false;
+        sFastCount = 0;
+        gGxIndexCapture.count = 0;
+        sNvertsDone = n;
+    }
     if (sVertexData.empty()) {
         sInBegin = false;
         sNvertsDone = 0;
+        sFastDrawReady = false;
         return;
     }
     logTcSpan();
@@ -938,7 +1813,11 @@ void flushDraw() {
     // fully overwritten below and costs one linear pass.
     bool triList = false;   // flat TriangleList, coalescible with lists
     bool triStrip = false;  // native TriangleStrip, coalescible with strips
-    if (sPrimitive == GX_QUADS && (nverts % 4) == 0) {
+    if (sFastDrawReady) {
+        drawData.swap(sFastDrawOut);
+        sFastDrawReady = false;
+        triStrip = true;
+    } else if (sPrimitive == GX_QUADS && (nverts % 4) == 0) {
         drawData.resize(static_cast<size_t>(nverts / 4 * 6) * kFixedStride);
         float* dst = drawData.data();
         for (int q = 0; q < nverts; q += 4) {
@@ -1694,9 +2573,40 @@ void dlRun(const u8* data, size_t size) {
                     sVertexTexQ.clear();
                     sVtxWriteIndex = 0;
                     rebuildVcd();
+                    const bool fastStrip = tryArmFastIndex(nverts, false);
                     sInBegin = (nverts > 0);
-                    for (u16 i = 0; i < nverts && r.ok; ++i) {
-                        dlReadVertex(r);
+                    if (fastStrip) {
+                        int w = 0;
+                        int cw = 0;
+                        for (int v = 0; v < nverts && r.ok; ++v) {
+                            for (const VcdSlot& slot : sVcdOrder) {
+                                if (slot.source == GX_DIRECT) {
+                                    for (int c = 0; c < slot.comps; ++c) {
+                                        const std::uint8_t b = r.readU8();
+                                        if (cw < static_cast<int>(sFastColorBytes.size())) {
+                                            sFastColorBytes[static_cast<size_t>(cw)] = b;
+                                        }
+                                        ++cw;
+                                    }
+                                } else {
+                                    const std::uint32_t ix = (slot.source == GX_INDEX16) ? r.readU16()
+                                                                                         : r.readU8();
+                                    if (w < static_cast<int>(sFastIndices.size())) {
+                                        sFastIndices[static_cast<size_t>(w)] = ix;
+                                    }
+                                    ++w;
+                                }
+                            }
+                        }
+                        sFastCount = w;
+                        sFastColorCount = cw;
+                        gGxIndexCapture.active = false;
+                        sNvertsDone = (sFastSlots > 0) ? w / sFastSlots : 0;
+                        flushDraw();
+                    } else {
+                        for (u16 i = 0; i < nverts && r.ok; ++i) {
+                            dlReadVertex(r);
+                        }
                     }
                     break;
                 }
@@ -1713,6 +2623,10 @@ void dlRun(const u8* data, size_t size) {
 }
 
 } // namespace
+
+void gxFlushFastIndex() {
+    flushFastIndexImpl();
+}
 
 // --- GX API implementations ---------------------------------------------------
 
@@ -1858,6 +2772,7 @@ void GXBegin(GXPrimitive prim, GXVtxFmt vtxfmt, u16 nverts) {
     sVertexData.reserve(static_cast<size_t>(nverts) * static_cast<size_t>(strideTotal));
     sVertexTexCoords.reserve(static_cast<size_t>(nverts) * 16);
     sVertexTexQ.reserve(static_cast<size_t>(nverts) * 8);
+    tryArmFastIndex(nverts, true);
     sInBegin = (nverts > 0);
 }
 
